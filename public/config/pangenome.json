@@ -1,0 +1,43 @@
+{
+    "id": "pangenome",
+    "name": "Pangenome Data",
+    "version": "1.0.0",
+    "description": "Configuration for Pangenome data tables",
+    "icon": "bi-diagram-2",
+    "tables": {
+        "Pangenome_Summary": {
+            "displayName": "Pangenome Summary",
+            "columns": [
+                {
+                    "column": "genome_id",
+                    "dataType": "id",
+                    "copyable": true
+                },
+                {
+                    "column": "completeness",
+                    "dataType": "percentage",
+                    "transform": {
+                        "type": "percentage",
+                        "options": {
+                            "showBar": true,
+                            "color": "#10b981"
+                        }
+                    }
+                },
+                {
+                    "column": "contamination",
+                    "dataType": "percentage",
+                    "transform": {
+                        "type": "heatmap",
+                        "options": {
+                            "min": 0,
+                            "max": 10,
+                            "colorScale": "sequential",
+                            "color": "#ef4444"
+                        }
+                    }
+                }
+            ]
+        }
+    }
+}

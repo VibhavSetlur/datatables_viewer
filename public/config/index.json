@@ -1,0 +1,36 @@
+{
+    "app": {
+        "name": "DataTables Viewer",
+        "version": "3.1.0",
+        "description": "Professional researcher-grade data exploration tool",
+        "apiUrl": "https://appdev.kbase.us/services/berdl_table_scanner",
+        "environment": "appdev"
+    },
+    "dataTypes": {
+        "genome_data_tables": {
+            "configUrl": "/config/genome-data-tables.json",
+            "matches": [
+                "KBaseFBA.GenomeDataLakeTables-2.0",
+                "KBaseFBA.GenomeDataLakeTables",
+                "GenomeDataLakeTables"
+            ],
+            "autoLoad": true,
+            "priority": 1
+        },
+        "pangenome": {
+            "configUrl": "/config/pangenome.json",
+            "matches": [
+                "KBaseGenomes.Pangenome"
+            ],
+            "autoLoad": true
+        }
+    },
+    "defaults": {
+        "pageSize": 50,
+        "theme": "light",
+        "density": "default",
+        "showRowNumbers": true,
+        "locale": "en-US",
+        "dateFormat": "YYYY-MM-DD"
+    }
+}

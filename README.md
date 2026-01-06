@@ -1,88 +1,52 @@
-# GenomeDataTables Viewer
+# DataTables Viewer
 
-A research-grade, highly configurable visualization suite for rendering SQL-based genome data tables. Designed for flexibility, this tool allows data scientists to define how genomic data is presented without changing application code.
+A modern, high-performance web application for rendering generic SQL tables with advanced configuration options, built with **Vite** and **TypeScript**.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![KBase](https://img.shields.io/badge/KBase-Compatible-green.svg)](https://kbase.us)
+## 🚀 Overview
 
-## Features
+This project replaces the legacy GenomeDataTables Viewer with a modular, type-safe architecture. It is designed to be:
+- **Generic**: Renders any table data structure provided by the API.
+- **Configurable**: Fully driven by `genome-data.config.json`.
+- **Performant**: optimized for speed and large datasets.
 
--   **Data Agnostic**: Renders any SQL-based data table exposed via the TableScanner API.
--   **Configurable Transformations**: Define column logic (Links, Merges, Ontology Lookups, Sequences) via JSON.
--   **Semantic Categorization**: Group columns by biological context (e.g., "Functional Annotation", "Genomic Coordinates") with user-controllable toggles.
--   **Research-Grade UI**: Polished, professional interface with Sticky Headers, Pagination, and Sort/Filter capabilities.
+## 📂 Project Structure
 
-## Quick Start
+- **`src/`**: Source code
+    - **`core/`**: Core logic (ApiClient, StateManager, CategoryManager).
+    - **`ui/`**: UI components (TableRenderer).
+    - **`utils/`**: Utilities (Transformers, ConfigManager).
+    - **`types/`**: TypeScript type definitions.
+- **`public/`**: Static assets (`genome-data.config.json`).
+- **`archive/`**: Contains the legacy JavaScript/HTML implementation (`js/`, `css/`, `viewer.html`, etc.).
 
-### 1. Serve the Application
-The viewer requires a simple HTTP server to run (to handle JSON config loading).
+## 🛠️ Setup & Development
 
+### Prerequisites
+- Node.js (v18+)
+- npm
+
+### Installation
 ```bash
-# Serve the directory using Python
-python3 -m http.server 8000
-
-# OR using Node.js
-# npx http-server .
+npm install
 ```
 
-### 2. Open in Browser
-Visit `http://localhost:8000` in your web browser.
-
-By default, it will attempt to load the configuration from `configs/genome-data.config.json` and connect to the KBase environment defined in `APP_CONFIG`.
-
-### 3. URL Parameters
-You can override default settings via URL parameters:
--   `?berdl=76990/7/2`: Load a specific BERDL table object.
--   `?table=genes`: Load a specific table name immediately.
--   `?token=XYZ`: Provide an auth token (for development).
-
-## Configuration
-
-Control the viewer's behavior using `configs/genome-data.config.json`.
-
-```json
-{
-  "columns": [
-    {
-      "column": "Uniprot_ID",
-      "displayName": "UniProt",
-      "transform": {
-        "type": "link",
-        "options": { "urlTemplate": "https://www.uniprot.org/uniprotkb/{value}" }
-      }
-    }
-  ]
-}
+### Running Locally
+Start the development server:
+```bash
+npm run dev
 ```
+The app will be available at `http://localhost:5173`.
 
-See [docs/CONFIGURATION_GUIDE.md](docs/CONFIGURATION_GUIDE.md) for the complete schema and transformation options.
-
-## Project Structure
-
-```text
-├── index.html                  # Application Entry Point
-├── configs/                    # JSON Configurations
-├── css/                        # Research-Grade Styles
-├── js/                         # Application Logic
-│   ├── table-renderer.js       # Main Rendering Engine
-│   ├── transformers.js         # Column Transformation Logic
-│   ├── category-manager.js     # Column Grouping Logic
-│   └── kbase-client.js         # API Client
-└── docs/                       # Comprehensive Documentation
-    ├── CONFIGURATION_GUIDE.md  # JSON Schema & Examples
-    └── DEVELOPER_GUIDE.md      # Architecture & Extension
+### Building for Production
+```bash
+npm run build
 ```
+The output will be in the `dist/` directory.
 
-## Developer Guide
+## 📖 Architecture
 
-Want to extend the viewer or create custom transformers? Check [docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md).
-
-## Requirements
-
--   Modern Web Browser (Chrome, Firefox, Safari, Edge)
--   GenomeDataTables / TableScanner API Endpoint
--   KBase Auth Token (if accessing private data)
-
-## License
-
-MIT License - see [LICENSE](LICENSE) for details.
+The application follows a modular design pattern:
+- **ApiClient**: Handles communication with the backend (BFF compliant).
+- **StateManager**: Centralized state store (Redux-lite pattern) for managing table data, pagination, and filters.
+- **TableRenderer**: converting state into optimized DOM elements.
+- **Transformers**: Plugin system for transforming cell data (links, badges, ontology terms).

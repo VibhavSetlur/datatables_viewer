@@ -1,0 +1,1412 @@
+/**
+ * DataTables Viewer - Research-Grade Scientific UI
+ * High-density, IDE-style layout with Theme Support
+ * Version 3.1
+ */
+
+/* ============================================
+   CSS CUSTOM PROPERTIES
+   ============================================ */
+:root {
+    /* Light Theme (Default) */
+    --bg-app: #f1f5f9;
+    --bg-sidebar: #ffffff;
+    --bg-main: #ffffff;
+    --bg-header: #f8fafc;
+    --bg-hover: rgba(59, 130, 246, 0.06);
+    --bg-selected: rgba(59, 130, 246, 0.12);
+    --bg-highlight: #fef08a;
+
+    --border-color: #e2e8f0;
+    --border-subtle: #f1f5f9;
+
+    --text-primary: #0f172a;
+    --text-secondary: #475569;
+    --text-muted: #94a3b8;
+    --text-link: #2563eb;
+
+    --accent: #3b82f6;
+    --accent-dark: #1d4ed8;
+    --accent-light: #eff6ff;
+
+    --success: #22c55e;
+    --warning: #f59e0b;
+    --danger: #ef4444;
+
+    /* Typography */
+    --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-mono: 'JetBrains Mono', 'SF Mono', monospace;
+
+    /* Layout */
+    --sidebar-width: 280px;
+    --toolbar-height: 44px;
+    --footer-height: 36px;
+
+    /* Density */
+    --row-height: 32px;
+    --cell-font-size: 12px;
+    --cell-padding: 6px 10px;
+}
+
+/* Dark Theme */
+[data-theme="dark"] {
+    --bg-app: #0f172a;
+    --bg-sidebar: #1e293b;
+    --bg-main: #1e293b;
+    --bg-header: #334155;
+    --bg-hover: rgba(59, 130, 246, 0.15);
+    --bg-selected: rgba(59, 130, 246, 0.25);
+    --bg-highlight: #854d0e;
+
+    --border-color: #334155;
+    --border-subtle: #1e293b;
+
+    --text-primary: #f8fafc;
+    --text-secondary: #cbd5e1;
+    --text-muted: #94a3b8;
+    /* Improved contrast for WCAG AA */
+    --text-link: #60a5fa;
+
+    --accent-light: rgba(59, 130, 246, 0.2);
+}
+
+/* Presentation Mode (Larger) */
+[data-density="presentation"] {
+    --row-height: 44px;
+    --cell-font-size: 14px;
+    --cell-padding: 10px 14px;
+}
+
+/* Compact Mode */
+[data-density="compact"] {
+    --row-height: 28px;
+    --cell-font-size: 11px;
+    --cell-padding: 4px 8px;
+}
+
+/* ============================================
+   RESET & BASE
+   ============================================ */
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+html,
+body {
+    height: 100%;
+    font-family: var(--font-ui);
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text-primary);
+    background: var(--bg-app);
+    -webkit-font-smoothing: antialiased;
+}
+
+#app {
+    height: 100vh;
+    width: 100vw;
+    overflow: hidden;
+}
+
+/* ============================================
+   LAYOUT
+   ============================================ */
+.ts-app {
+    display: flex;
+    height: 100vh;
+    width: 100vw;
+    transition: background 0.2s;
+}
+
+/* ============================================
+   SIDEBAR
+   ============================================ */
+.ts-sidebar {
+    width: var(--sidebar-width);
+    flex-shrink: 0;
+    background: var(--bg-sidebar);
+    border-right: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.ts-sidebar-header {
+    height: 48px;
+    padding: 0 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-sidebar);
+}
+
+.ts-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.ts-brand-icon {
+    width: 26px;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--accent);
+    color: white;
+    border-radius: 6px;
+    font-size: 13px;
+}
+
+.ts-brand-name {
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--text-primary);
+}
+
+.ts-sidebar-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px;
+}
+
+.ts-sidebar-body::-webkit-scrollbar {
+    width: 5px;
+}
+
+.ts-sidebar-body::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.ts-sidebar-body::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 3px;
+}
+
+/* Firefox Scrollbars */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-color) transparent;
+}
+
+/* Sections */
+.ts-section {
+    margin-bottom: 14px;
+}
+
+.ts-section-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    margin-bottom: 4px;
+}
+
+.ts-section-icon {
+    color: var(--text-muted);
+    font-size: 11px;
+}
+
+.ts-section-title {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: var(--text-muted);
+}
+
+.ts-section-action {
+    margin-left: auto;
+    font-size: 10px;
+    color: var(--text-link);
+    cursor: pointer;
+    background: none;
+    border: none;
+    padding: 0;
+}
+
+.ts-section-action:hover {
+    text-decoration: underline;
+}
+
+/* ============================================
+   FORM CONTROLS
+   ============================================ */
+.ts-field {
+    margin-bottom: 8px;
+}
+
+.ts-label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    margin-bottom: 3px;
+}
+
+.ts-label .required {
+    color: var(--danger);
+}
+
+.ts-input {
+    width: 100%;
+    height: 30px;
+    padding: 0 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 5px;
+    font-size: 12px;
+    color: var(--text-primary);
+    background: var(--bg-main);
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.ts-input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-light);
+}
+
+.ts-input::placeholder {
+    color: var(--text-muted);
+}
+
+.ts-select {
+    width: 100%;
+    height: 30px;
+    padding: 0 10px;
+    padding-right: 26px;
+    border: 1px solid var(--border-color);
+    border-radius: 5px;
+    font-size: 12px;
+    color: var(--text-primary);
+    background: var(--bg-main) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath fill='%2364748b' d='M2 4l3 3 3-3'/%3E%3C/svg%3E") no-repeat right 10px center;
+    -webkit-appearance: none;
+    appearance: none;
+    cursor: pointer;
+}
+
+[data-theme="dark"] .ts-select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath fill='%2394a3b8' d='M2 4l3 3 3-3'/%3E%3C/svg%3E");
+}
+
+.ts-select:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-light);
+}
+
+/* Focus Indicators for Accessibility */
+:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+/* Primary Button */
+.ts-btn-primary {
+    width: 100%;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 5px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.ts-btn-primary:hover {
+    background: var(--accent-dark);
+}
+
+.ts-btn-primary:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.ts-btn-primary i {
+    font-size: 13px;
+}
+
+/* Secondary Button */
+.ts-btn-secondary {
+    width: 100%;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    background: var(--bg-main);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 5px;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.ts-btn-secondary:hover {
+    background: var(--bg-hover);
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.ts-btn-secondary i {
+    font-size: 12px;
+}
+
+.ts-btn-group {
+    display: flex;
+    gap: 6px;
+}
+
+.ts-btn-group .ts-btn-secondary {
+    flex: 1;
+}
+
+/* Table Info */
+.ts-table-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px;
+    background: var(--bg-header);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    margin-top: 6px;
+}
+
+.ts-table-info-icon {
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--accent-light);
+    color: var(--accent);
+    border-radius: 6px;
+    font-size: 14px;
+}
+
+.ts-table-info-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.ts-table-info-name {
+    font-weight: 600;
+    font-size: 12px;
+    color: var(--text-primary);
+}
+
+.ts-table-info-meta {
+    font-size: 10px;
+    color: var(--text-muted);
+}
+
+.ts-row-badge {
+    padding: 3px 8px;
+    background: var(--accent);
+    color: white;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+}
+
+/* ============================================
+   COLUMN LIST (Sidebar)
+   ============================================ */
+.ts-col-list {
+    max-height: 180px;
+    overflow-y: auto;
+    border: 1px solid var(--border-color);
+    border-radius: 5px;
+    background: var(--bg-main);
+}
+
+.ts-col-list::-webkit-scrollbar {
+    width: 4px;
+}
+
+.ts-col-list::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 2px;
+}
+
+.ts-col-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    font-size: 11px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    border-bottom: 1px solid var(--border-subtle);
+    transition: background 0.1s;
+}
+
+.ts-col-item:last-child {
+    border-bottom: none;
+}
+
+.ts-col-item:hover {
+    background: var(--bg-hover);
+}
+
+.ts-col-item input {
+    width: 13px;
+    height: 13px;
+    accent-color: var(--accent);
+    cursor: pointer;
+}
+
+/* ============================================
+   TOGGLE SWITCHES
+   ============================================ */
+.ts-toggle-list {
+    list-style: none;
+}
+
+.ts-toggle-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 7px 10px;
+    margin-bottom: 2px;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background 0.1s;
+}
+
+.ts-toggle-item:hover {
+    background: var(--bg-hover);
+}
+
+.ts-toggle-item.active {
+    background: var(--bg-selected);
+}
+
+.ts-toggle-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+
+.ts-toggle-item.active .ts-toggle-label {
+    color: var(--accent);
+}
+
+.ts-toggle-label i {
+    font-size: 12px;
+    width: 14px;
+    text-align: center;
+}
+
+.ts-switch {
+    width: 32px;
+    height: 18px;
+    background: var(--border-color);
+    border-radius: 9px;
+    position: relative;
+    transition: background 0.2s;
+    flex-shrink: 0;
+}
+
+.ts-switch::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 14px;
+    height: 14px;
+    background: white;
+    border-radius: 50%;
+    transition: transform 0.2s;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+}
+
+.ts-switch.on {
+    background: var(--accent);
+}
+
+.ts-switch.on::after {
+    transform: translateX(14px);
+}
+
+/* ============================================
+   FILTER CHIPS
+   ============================================ */
+.ts-filter-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 6px 0;
+}
+
+.ts-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 6px;
+    background: var(--accent-light);
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 500;
+}
+
+.ts-chip-clear {
+    width: 12px;
+    height: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    color: var(--accent);
+    cursor: pointer;
+    font-size: 10px;
+}
+
+.ts-chip-clear:hover {
+    color: var(--accent-dark);
+}
+
+/* ============================================
+   MAIN STAGE
+   ============================================ */
+.ts-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-main);
+    overflow: hidden;
+    min-width: 0;
+}
+
+/* ============================================
+   TOOLBAR
+   ============================================ */
+.ts-toolbar {
+    height: var(--toolbar-height);
+    padding: 0 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-main);
+    flex-shrink: 0;
+}
+
+.ts-search-box {
+    position: relative;
+    width: 240px;
+}
+
+.ts-search-icon {
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-muted);
+    font-size: 12px;
+    pointer-events: none;
+}
+
+.ts-search {
+    width: 100%;
+    height: 30px;
+    padding: 0 28px 0 30px;
+    border: 1px solid var(--border-color);
+    border-radius: 5px;
+    font-size: 12px;
+    color: var(--text-primary);
+    background: var(--bg-header);
+    transition: all 0.15s;
+}
+
+.ts-search:focus {
+    outline: none;
+    border-color: var(--accent);
+    background: var(--bg-main);
+    box-shadow: 0 0 0 2px var(--accent-light);
+}
+
+.ts-search-clear {
+    position: absolute;
+    right: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 11px;
+    cursor: pointer;
+    opacity: 0;
+    border-radius: 50%;
+}
+
+.ts-search-box:hover .ts-search-clear,
+.ts-search:focus~.ts-search-clear {
+    opacity: 1;
+}
+
+.ts-search-clear:hover {
+    background: var(--border-color);
+    color: var(--text-primary);
+}
+
+.ts-spacer {
+    flex: 1;
+}
+
+.ts-tb {
+    height: 28px;
+    padding: 0 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    background: var(--bg-main);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.1s;
+}
+
+.ts-tb:hover {
+    background: var(--bg-hover);
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.ts-tb i {
+    font-size: 12px;
+}
+
+.ts-tb-icon {
+    width: 28px;
+    padding: 0;
+}
+
+.ts-sep {
+    width: 1px;
+    height: 18px;
+    background: var(--border-color);
+}
+
+/* ============================================
+   DATA GRID
+   ============================================ */
+.ts-grid {
+    flex: 1;
+    overflow: auto;
+    position: relative;
+}
+
+.ts-grid::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+.ts-grid::-webkit-scrollbar-track {
+    background: var(--bg-header);
+}
+
+.ts-grid::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 4px;
+}
+
+.ts-grid::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
+}
+
+.ts-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-family: var(--font-mono);
+    font-size: var(--cell-font-size);
+}
+
+.ts-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--bg-header);
+    color: var(--text-secondary);
+    font-family: var(--font-ui);
+    font-weight: 600;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    text-align: left;
+    padding: var(--cell-padding);
+    height: var(--row-height);
+    border-bottom: 1px solid var(--border-color);
+    white-space: nowrap;
+}
+
+.ts-table thead th.sortable {
+    cursor: pointer;
+    user-select: none;
+}
+
+.ts-table thead th.sortable:hover {
+    background: var(--bg-selected);
+    color: var(--text-primary);
+}
+
+/* Sticky First Column */
+.ts-col-fixed {
+    position: sticky;
+    left: 0;
+    z-index: 11;
+    background: var(--bg-header);
+    border-right: 1px solid var(--border-color);
+    box-shadow: 2px 0 4px rgba(0, 0, 0, 0.04);
+}
+
+thead .ts-col-fixed {
+    z-index: 20;
+}
+
+tbody .ts-col-fixed {
+    background: var(--bg-main);
+    font-weight: 500;
+}
+
+/* Selection Column */
+.ts-col-select {
+    width: 32px;
+    min-width: 32px;
+    text-align: center;
+    padding: 0 !important;
+}
+
+.ts-col-select input[type="checkbox"] {
+    width: 13px;
+    height: 13px;
+    accent-color: var(--accent);
+    cursor: pointer;
+}
+
+/* Row Number Column */
+.ts-col-num {
+    width: 40px;
+    min-width: 40px;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 10px;
+}
+
+/* Filter Row */
+.ts-filter-row th {
+    top: var(--row-height);
+    padding: 4px 5px;
+    height: 32px;
+    z-index: 9;
+    background: var(--bg-header);
+}
+
+.ts-filter-row .ts-col-fixed {
+    z-index: 19;
+}
+
+.ts-filter-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.ts-filter-input {
+    width: 100%;
+    height: 24px;
+    padding: 0 22px 0 8px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 4px;
+    font-family: var(--font-ui);
+    font-size: 11px;
+    color: var(--text-primary);
+    background: var(--bg-main);
+    transition: all 0.15s;
+}
+
+.ts-filter-input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-light);
+}
+
+.ts-filter-input.has-value {
+    border-color: var(--accent);
+    background: var(--accent-light);
+}
+
+.ts-filter-clear {
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 14px;
+    height: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 10px;
+    cursor: pointer;
+    opacity: 0;
+    border-radius: 50%;
+}
+
+.ts-filter-wrap:hover .ts-filter-clear,
+.ts-filter-input:focus~.ts-filter-clear,
+.ts-filter-input.has-value~.ts-filter-clear {
+    opacity: 1;
+}
+
+.ts-filter-clear:hover {
+    background: var(--border-color);
+    color: var(--text-primary);
+}
+
+/* Data Cells */
+.ts-table tbody td {
+    height: var(--row-height);
+    padding: var(--cell-padding);
+    border-bottom: 1px solid var(--border-subtle);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--text-primary);
+    vertical-align: middle;
+}
+
+/* Cell types with specific widths */
+.ts-cell-id {
+    max-width: 200px;
+}
+
+.ts-cell-sequence {
+    max-width: 400px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+}
+
+.ts-cell-description {
+    max-width: 350px;
+}
+
+.ts-table tbody tr:hover td {
+    background: var(--bg-hover);
+}
+
+.ts-table tbody tr:hover .ts-col-fixed {
+    background: var(--bg-hover);
+}
+
+.ts-table tbody tr.selected td {
+    background: var(--bg-selected);
+}
+
+.ts-table tbody tr.selected .ts-col-fixed {
+    background: var(--bg-selected);
+}
+
+/* ============================================
+   CELL STYLES & TRANSFORMERS
+   ============================================ */
+
+mark.highlight {
+    background: var(--bg-highlight);
+    color: inherit;
+    padding: 1px 2px;
+    border-radius: 2px;
+}
+
+.ts-mono {
+    font-family: var(--font-mono);
+    font-size: 11px;
+}
+
+.ts-link {
+    color: var(--text-link);
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.ts-link:hover {
+    text-decoration: underline;
+}
+
+.ts-badge {
+    display: inline-flex;
+    padding: 2px 7px;
+    background: var(--accent-light);
+    color: var(--accent);
+    border-radius: 10px;
+    font-family: var(--font-ui);
+    font-size: 10px;
+    font-weight: 500;
+}
+
+/* ============================================
+   LOADING SPINNER
+   ============================================ */
+.ts-spinner {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border: 2px solid var(--border-color);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: ts-spin 0.6s linear infinite;
+}
+
+@keyframes ts-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+button .ts-spinner {
+    margin-right: 4px;
+}
+
+.ts-copy-id {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.ts-copy-btn {
+    width: 16px;
+    height: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    opacity: 0;
+    border-radius: 3px;
+    font-size: 10px;
+}
+
+.ts-copy-id:hover .ts-copy-btn {
+    opacity: 1;
+}
+
+.ts-copy-btn:hover {
+    background: var(--border-color);
+    color: var(--text-primary);
+}
+
+/* ============================================
+   FOOTER
+   ============================================ */
+.ts-footer {
+    height: var(--footer-height);
+    padding: 0 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-top: 1px solid var(--border-color);
+    background: var(--bg-main);
+    flex-shrink: 0;
+}
+
+.ts-status {
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+.ts-status strong {
+    color: var(--text-primary);
+}
+
+.ts-pager {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.ts-page-btn {
+    width: 26px;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-main);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 11px;
+}
+
+.ts-page-btn:hover:not(:disabled) {
+    background: var(--bg-hover);
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.ts-page-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.ts-page-info {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    min-width: 70px;
+    text-align: center;
+}
+
+/* ============================================
+   SETTINGS POPUP (Bottom Left)
+   ============================================ */
+.ts-settings-trigger {
+    position: fixed;
+    bottom: 12px;
+    left: 12px;
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-sidebar);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 16px;
+    z-index: 100;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    transition: all 0.2s;
+}
+
+.ts-settings-trigger:hover {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+}
+
+.ts-settings-popup {
+    position: fixed;
+    bottom: 56px;
+    left: 12px;
+    width: 220px;
+    background: var(--bg-sidebar);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+    z-index: 100;
+    display: none;
+    overflow: hidden;
+}
+
+.ts-settings-popup.show {
+    display: block;
+}
+
+.ts-settings-header {
+    padding: 10px 12px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: var(--text-muted);
+    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-header);
+}
+
+.ts-settings-body {
+    padding: 8px;
+}
+
+.ts-settings-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 10px;
+    border-radius: 5px;
+    margin-bottom: 4px;
+}
+
+.ts-settings-row:hover {
+    background: var(--bg-hover);
+}
+
+.ts-settings-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.ts-settings-label i {
+    font-size: 14px;
+    width: 18px;
+    text-align: center;
+    color: var(--text-muted);
+}
+
+/* Density Options */
+.ts-density-options {
+    display: flex;
+    gap: 4px;
+    background: var(--bg-header);
+    border-radius: 4px;
+    padding: 2px;
+}
+
+.ts-density-opt {
+    height: 24px;
+    padding: 0 10px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: transparent;
+    border: none;
+    font-size: 10px;
+    color: var(--text-muted);
+    cursor: pointer;
+    border-radius: 3px;
+    transition: all 0.1s;
+}
+
+.ts-density-opt:hover {
+    background: var(--bg-hover);
+}
+
+.ts-density-opt.active {
+    background: var(--accent);
+    color: white;
+}
+
+.ts-density-opt i {
+    font-size: 11px;
+}
+
+/* ============================================
+   FLOATING ACTION BAR
+   ============================================ */
+.ts-action-bar {
+    position: fixed;
+    bottom: 50px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    background: var(--text-primary);
+    color: var(--bg-main);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+    z-index: 100;
+    font-size: 12px;
+}
+
+.ts-action-bar-count {
+    font-weight: 600;
+    margin-right: 6px;
+}
+
+.ts-action-bar-btn {
+    height: 26px;
+    padding: 0 10px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.ts-action-bar-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.ts-action-bar-close {
+    width: 22px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.6);
+    cursor: pointer;
+    margin-left: 6px;
+    border-radius: 50%;
+}
+
+.ts-action-bar-close:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+}
+
+/* ============================================
+   EMPTY STATE
+   ============================================ */
+.ts-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    text-align: center;
+    padding: 40px;
+}
+
+.ts-empty-icon {
+    width: 72px;
+    height: 72px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-header);
+    color: var(--text-muted);
+    border-radius: 50%;
+    font-size: 28px;
+    margin-bottom: 16px;
+}
+
+.ts-empty-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+}
+
+.ts-empty-desc {
+    font-size: 12px;
+    color: var(--text-muted);
+    max-width: 280px;
+}
+
+/* ============================================
+   ALERTS
+   ============================================ */
+.ts-alert {
+    padding: 8px 12px;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.ts-alert i {
+    font-size: 13px;
+}
+
+.ts-alert-danger {
+    background: #fef2f2;
+    color: #dc2626;
+}
+
+.ts-alert-warning {
+    background: #fffbeb;
+    color: #d97706;
+}
+
+.ts-alert-success {
+    background: #f0fdf4;
+    color: #16a34a;
+}
+
+[data-theme="dark"] .ts-alert-danger {
+    background: rgba(220, 38, 38, 0.15);
+}
+
+[data-theme="dark"] .ts-alert-warning {
+    background: rgba(217, 119, 6, 0.15);
+}
+
+[data-theme="dark"] .ts-alert-success {
+    background: rgba(22, 163, 74, 0.15);
+}
+
+/* ============================================
+   TOOLTIP
+   ============================================ */
+.ts-tooltip {
+    position: fixed;
+    background: var(--text-primary);
+    color: var(--bg-main);
+    padding: 5px 9px;
+    border-radius: 4px;
+    font-size: 11px;
+    max-width: 260px;
+    z-index: 1000;
+    pointer-events: none;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    display: none;
+}
+
+.ts-tooltip.show {
+    display: block;
+}
+
+/* ============================================
+   SPINNER
+   ============================================ */
+@keyframes spin {
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+.ts-spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+}
