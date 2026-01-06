@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Research-grade configurable table viewer for GenomeDataTables">
+    <meta name="theme-color" content="#6366f1">
+    <title>GenomeDataTables Viewer | KBase</title>
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
+
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+
+    <!-- Table Renderer Styles -->
+    <link rel="stylesheet" href="css/table-renderer.css">
+
+    <style>
+        /* Page-specific overrides */
+        html,
+        body {
+            height: 100%;
+            overflow: hidden;
+        }
+
+        #app {
+            height: 100%;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Application Container -->
+    <div id="app"></div>
+
+    <!-- Core Scripts -->
+    <script src="js/config-schema.js"></script>
+    <script src="js/transformers.js"></script>
+    <script src="js/category-manager.js"></script>
+    <script src="js/kbase-client.js"></script>
+    <script src="js/table-renderer.js"></script>
+
+    <!-- Application Initialization -->
+    <script>
+        (function () {
+            'use strict';
+
+            // =================================================================
+            // CONFIGURATION
+            // =================================================================
+
+            /**
+             * Application configuration
+             * Modify these settings as needed
+             */
+            const APP_CONFIG = {
+                // Path to the JSON configuration file (cache busted)
+                configUrl: 'configs/genome-data.config.json?v=' + Date.now(),
+
+                // Default KBase environment (local for dev server on port 8000)
+                // Options: 'local' (http://localhost:8000), 'appdev', 'prod'
+                environment: 'local',
+
+                // Optional: Pre-set KBase token (for development)
+                // In production, use a proper token management system
+                token: null,
+
+                // Optional: Default BERDLTable ID to load (example: "76990/7/2")
+                defaultBerdlId: '76990/7/2',
+
+                // Optional: Default table to load
+                defaultTable: null
+            };
+
+            // =================================================================
+            // INITIALIZATION
+            // =================================================================
+
+            /**
+             * Initialize the application
+             */
+            async function initApp() {
+                const container = document.getElementById('app');
+
+                if (!container) {
+                    console.error('App container not found');
+                    return;
+                }
+
+                try {
+                    // Create renderer instance
+                    const renderer = new TableRenderer({
+                        container: container,
+                        configUrl: APP_CONFIG.configUrl
+                    });
+
+                    // Initialize with configuration
+                    await renderer.init();
+
+                    // Set token if provided
+                    if (APP_CONFIG.token) {
+                        renderer.setToken(APP_CONFIG.token);
+                    }
+
+                    // Check for URL parameters
+                    const urlParams = new URLSearchParams(window.location.search);
+                    const berdlId = urlParams.get('berdl') || APP_CONFIG.defaultBerdlId;
+                    const tableName = urlParams.get('table') || APP_CONFIG.defaultTable;
+                    const token = urlParams.get('token');
+
+                    if (token) {
+                        renderer.setToken(token);
+                    }
+
+                    // Auto-load if parameters provided
+                    if (berdlId && tableName) {
+                        await renderer.loadTable(berdlId, tableName);
+                    } else if (berdlId) {
+                        document.getElementById('ts-berdl-id').value = berdlId;
+                    }
+
+                    // Expose renderer globally for debugging
+                    window.tableRenderer = renderer;
+
+                    console.log('KBase Table Renderer initialized successfully');
+                    console.log('Access the renderer instance via: window.tableRenderer');
+
+                } catch (error) {
+                    console.error('Failed to initialize Table Renderer:', error);
+                    container.innerHTML = `
+                        <div style="padding: 2rem; color: #ef4444; background: #1e293b; min-height: 100vh;">
+                            <h1>Initialization Error</h1>
+                            <p>${error.message}</p>
+                            <pre style="background: #0f172a; padding: 1rem; border-radius: 8px; overflow-x: auto;">
+${error.stack || 'No stack trace available'}
+                            </pre>
+                        </div>
+                    `;
+                }
+            }
+
+            // =================================================================
+            // CUSTOM TRANSFORMER REGISTRATION
+            // =================================================================
+
+            /**
+             * Register custom transformers here before app initialization
+             * 
+             * Example:
+             * Transformers.register('myTransformer', (value, options, rowData) => {
+             *     return `<span class="custom">${value}</span>`;
+             * });
+             */
+
+            // Sequence transformer - displays DNA/protein sequence with formatting
+            if (typeof Transformers !== 'undefined') {
+                Transformers.register('sequence', (value, options, rowData) => {
+                    if (!value) return '';
+
+                    const maxLength = options.maxLength || 50;
+                    const displayValue = value.length > maxLength
+                        ? value.substring(0, maxLength) + '...'
+                        : value;
+
+                    return `<span class="ts-sequence" style="font-family: var(--ts-font-mono); letter-spacing: 0.5px;">${displayValue}</span>`;
+                });
+
+                // Score/numeric formatter with color coding
+                Transformers.register('score', (value, options, rowData) => {
+                    if (value === null || value === undefined) return '';
+
+                    const num = parseFloat(value);
+                    if (isNaN(num)) return value;
+
+                    const min = options.min || 0;
+                    const max = options.max || 100;
+                    const normalized = Math.max(0, Math.min(1, (num - min) / (max - min)));
+
+                    // Color gradient from red to green
+                    const r = Math.round(255 * (1 - normalized));
+                    const g = Math.round(255 * normalized);
+                    const color = `rgb(${r}, ${g}, 100)`;
+
+                    return `<span style="color: ${color}; font-weight: 500;">${num.toFixed(options.precision || 2)}</span>`;
+                });
+            }
+
+            // =================================================================
+            // START APPLICATION
+            // =================================================================
+
+            // Wait for DOM to be ready
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', initApp);
+            } else {
+                initApp();
+            }
+
+        })();
+    </script>
+</body>
+
+</html>

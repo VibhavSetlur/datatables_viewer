@@ -1,0 +1,4230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GenomeData Table Viewer</title>
+    <meta name="description" content="Research-grade viewer for GenomeData tables.">
+    
+    <!-- Bootstrap Icons (CDN) -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+    <style>
+        /**
+ * KBase Table Renderer Stylesheet
+ * 
+ * Professional dark/light theme with research-grade aesthetics.
+ * Uses CSS custom properties for theming.
+ * 
+ * @author KBase Team
+ * @license MIT
+ */
+
+/* =============================================================================
+   CSS CUSTOM PROPERTIES (THEME TOKENS)
+   ============================================================================= */
+
+/* =============================================================================
+   CSS CUSTOM PROPERTIES (THEME TOKENS)
+   ============================================================================= */
+
+:root {
+    /* Primary Brand Colors - Scientific Blue & Indigo */
+    --ts-primary-dark: #2563eb;
+    /* Blue 600 */
+    --ts-primary: #3b82f6;
+    /* Blue 500 */
+    --ts-primary-light: #60a5fa;
+    /* Blue 400 */
+    --ts-primary-subtle: rgba(59, 130, 246, 0.15);
+
+    /* Secondary Accents - Cyan/Teal for data viz */
+    --ts-accent: #06b6d4;
+    /* Cyan 500 */
+    --ts-accent-hover: #0891b2;
+    /* Cyan 600 */
+
+    /* Status Colors - High Contrast */
+    --ts-success: #34d399;
+    /* Emerald 400 */
+    --ts-success-bg: rgba(16, 185, 129, 0.2);
+    --ts-warning: #fbbf24;
+    /* Amber 400 */
+    --ts-warning-bg: rgba(245, 158, 11, 0.2);
+    --ts-danger: #f87171;
+    /* Red 400 */
+    --ts-danger-bg: rgba(239, 68, 68, 0.2);
+    --ts-info: #38bdf8;
+    /* Sky 400 */
+    --ts-info-bg: rgba(56, 189, 248, 0.2);
+
+    /* Typography */
+    --ts-font-sans: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    --ts-font-mono: 'JetBrains Mono', 'Fira Code', 'Roboto Mono', monospace;
+
+    /* Spacing System */
+    --ts-spacing-xs: 0.25rem;
+    --ts-spacing-sm: 0.5rem;
+    --ts-spacing-md: 1rem;
+    --ts-spacing-lg: 1.5rem;
+    --ts-spacing-xl: 2.5rem;
+
+    /* Elevations */
+    --ts-radius-sm: 4px;
+    --ts-radius-md: 6px;
+    --ts-radius-lg: 8px;
+
+    /* Shadows */
+    --ts-shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1);
+    --ts-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+    --ts-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+    --ts-shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+
+    /* Transitions */
+    --ts-transition-fast: 150ms ease;
+    --ts-transition-normal: 250ms ease;
+}
+
+/* 
+   THEME DEFINITIONS 
+   High-Contrast Dark vs Clean Light
+*/
+
+[data-theme="dark"],
+:root {
+    /* Backgrounds: Deep Dark Blue/Slate */
+    --ts-bg-page: #0f172a;
+    /* Slate 900 */
+    --ts-bg-card: #1e293b;
+    /* Slate 800 */
+    --ts-bg-surface: #334155;
+    /* Slate 700 */
+
+    /* Inputs */
+    --ts-bg-input: #1e293b;
+
+    /* Interactive States */
+    --ts-bg-hover: rgba(56, 189, 248, 0.1);
+    --ts-bg-active: rgba(56, 189, 248, 0.2);
+
+    /* Text */
+    --ts-text: #f8fafc;
+    /* Slate 50 */
+    --ts-text-muted: #cbd5e1;
+    /* Slate 300 */
+    --ts-text-dim: #94a3b8;
+    /* Slate 400 */
+
+    /* Borders */
+    --ts-border: #334155;
+    /* Slate 700 */
+    --ts-border-focus: #3b82f6;
+    --ts-border-subtle: #1e293b;
+
+    /* Table specifics */
+    --ts-table-header-bg: #1e293b;
+    --ts-table-stripe: rgba(255, 255, 255, 0.02);
+    --ts-table-border: #334155;
+
+    --ts-scrollbar-track: #0f172a;
+    --ts-scrollbar-thumb: #475569;
+}
+
+[data-theme="light"] {
+    /* Backgrounds: Pure Clean White */
+    --ts-bg-page: #ffffff;
+    --ts-bg-card: #ffffff;
+    --ts-bg-surface: #f8fafc;
+    /* Slate 50 */
+    --ts-bg-input: #ffffff;
+
+    /* Interactive States */
+    --ts-bg-hover: #f1f5f9;
+    /* Slate 100 */
+    --ts-bg-active: #e2e8f0;
+    /* Slate 200 */
+
+    /* Text - High Contrast */
+    --ts-text: #0f172a;
+    /* Slate 900 - nearly black */
+    --ts-text-muted: #334155;
+    /* Slate 700 */
+    --ts-text-dim: #64748b;
+    /* Slate 500 */
+
+    /* Borders */
+    --ts-border: #cbd5e1;
+    /* Slate 300 */
+    --ts-border-focus: #2563eb;
+    --ts-border-subtle: #f1f5f9;
+
+    /* Table specifics */
+    --ts-table-header-bg: #f8fafc;
+    --ts-table-stripe: #f8fafc;
+    --ts-table-border: #e2e8f0;
+
+    --ts-scrollbar-track: #ffffff;
+    --ts-scrollbar-thumb: #cbd5e1;
+}
+
+/* =============================================================================
+   BASE STYLES
+   ============================================================================= */
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    padding: 0;
+    font-family: var(--ts-font-sans);
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--ts-text);
+    background: var(--ts-bg-page);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom Scrollbar for Webkit */
+::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--ts-scrollbar-track);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--ts-scrollbar-thumb);
+    border-radius: 5px;
+    border: 2px solid var(--ts-scrollbar-track);
+}
+
+::-webkit-scrollbar-corner {
+    background: transparent;
+}
+
+/* =============================================================================
+   LAYOUT
+   ============================================================================= */
+
+/* =============================================================================
+   LAYOUT
+   ============================================================================= */
+
+.ts-app {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.ts-header {
+    background: var(--ts-bg-card);
+    border-bottom: 1px solid var(--ts-border);
+    padding: 0 var(--ts-spacing-lg);
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.ts-header-title {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: var(--ts-text);
+    display: flex;
+    align-items: center;
+    gap: var(--ts-spacing-sm);
+    letter-spacing: -0.01em;
+}
+
+.ts-main {
+    flex: 1;
+    padding: var(--ts-spacing-lg);
+    max-width: 100%;
+    overflow-x: hidden;
+}
+
+.ts-container {
+    max-width: 1920px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--ts-spacing-md);
+    height: 100%;
+}
+
+/* =============================================================================
+   TOOLBAR
+   ============================================================================= */
+
+.ts-toolbar {
+    display: flex;
+    align-items: center;
+    gap: var(--ts-spacing-md);
+    padding: var(--ts-spacing-md);
+    background: var(--ts-bg-card);
+    border: 1px solid var(--ts-border);
+    border-radius: var(--ts-radius-lg);
+    box-shadow: var(--ts-shadow-sm);
+}
+
+.ts-connection-toolbar {
+    background: var(--ts-bg-surface);
+}
+
+.ts-toolbar-group {
+    display: flex;
+    align-items: center;
+    gap: var(--ts-spacing-sm);
+}
+
+.ts-toolbar-divider {
+    width: 1px;
+    height: 24px;
+    background: var(--ts-border);
+    margin: 0 var(--ts-spacing-xs);
+}
+
+/* =============================================================================
+   FORMS & INPUTS
+   ============================================================================= */
+
+.ts-input,
+.ts-select {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.8125rem;
+    font-family: var(--ts-font-sans);
+    color: var(--ts-text);
+    background: var(--ts-bg-input);
+    border: 1px solid var(--ts-border);
+    border-radius: var(--ts-radius-md);
+    outline: none;
+    transition: all var(--ts-transition-fast);
+}
+
+.ts-input:focus,
+.ts-select:focus {
+    border-color: var(--ts-border-focus);
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+
+.ts-input::placeholder {
+    color: var(--ts-text-dim);
+    opacity: 0.8;
+}
+
+/* =============================================================================
+   BUTTONS
+   ============================================================================= */
+
+.ts-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--ts-text);
+    background: var(--ts-bg-surface);
+    border: 1px solid var(--ts-border);
+    border-radius: var(--ts-radius-md);
+    cursor: pointer;
+    transition: all var(--ts-transition-fast);
+    line-height: 1;
+}
+
+.ts-btn:hover:not(:disabled) {
+    background: var(--ts-bg-hover);
+    border-color: var(--ts-text-muted);
+}
+
+.ts-btn-primary {
+    background: var(--ts-primary);
+    border-color: var(--ts-primary);
+    color: white;
+}
+
+.ts-btn-primary:hover:not(:disabled) {
+    background: var(--ts-primary-dark);
+    border-color: var(--ts-primary-dark);
+}
+
+.ts-btn-danger {
+    background: var(--ts-bg-surface);
+    color: var(--ts-danger);
+    border-color: var(--ts-border);
+}
+
+.ts-btn-danger:hover {
+    background: var(--ts-danger-bg);
+    border-color: var(--ts-danger);
+}
+
+/* =============================================================================
+   CATEGORY PANEL TAB-STYLE
+   ============================================================================= */
+
+.ts-category-panel {
+    display: flex;
+    gap: 2px;
+    padding: 4px;
+    background: var(--ts-bg-surface);
+    border-radius: var(--ts-radius-lg);
+    border: 1px solid var(--ts-border);
+}
+
+.ts-category-toggle {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.6rem 1rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--ts-text-muted);
+    background: transparent;
+    border: none;
+    border-radius: var(--ts-radius-md);
+    cursor: pointer;
+    transition: all var(--ts-transition-fast);
+    box-shadow: none;
+}
+
+.ts-category-toggle:hover {
+    color: var(--ts-text);
+    background: var(--ts-bg-hover);
+    transform: none;
+}
+
+.ts-category-toggle.active {
+    background: var(--ts-bg-card);
+    color: var(--ts-primary);
+    box-shadow: var(--ts-shadow-sm);
+    border: 1px solid var(--ts-border);
+}
+
+
+.ts-category-toggle i {
+    font-size: 0.875rem;
+}
+
+.ts-category-count {
+    font-size: 0.625rem;
+    padding: 0 6px;
+    height: 16px;
+    display: inline-flex;
+    align-items: center;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 99px;
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.ts-category-toggle:not(.active) .ts-category-count {
+    background: var(--ts-bg-input);
+    color: var(--ts-text-dim);
+    border: 1px solid var(--ts-border);
+}
+
+/* =============================================================================
+   TABLE CONTAINER
+   ============================================================================= */
+
+.ts-table-container {
+    background: var(--ts-bg-card);
+    border: 1px solid var(--ts-border);
+    border-radius: var(--ts-radius-lg);
+    overflow: hidden;
+    box-shadow: var(--ts-shadow-md);
+}
+
+.ts-table-scroll {
+    max-height: 70vh;
+    overflow: auto;
+}
+
+/* =============================================================================
+   TABLE
+   ============================================================================= */
+
+.ts-table {
+    width: 100%;
+    border-collapse: separate;
+    /* Required for sticky headers borders */
+    border-spacing: 0;
+    font-size: 0.8125rem;
+    /* 13px */
+    font-family: var(--ts-font-sans);
+    /* Use sans for cells for readability */
+}
+
+.ts-table thead {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.ts-table th {
+    background: var(--ts-table-header-bg);
+    color: var(--ts-text-muted);
+    font-family: var(--ts-font-sans);
+    font-weight: 700;
+    font-size: 0.6875rem;
+    /* 11px */
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    text-align: left;
+    padding: 0.75rem 1rem;
+    border-bottom: 2px solid var(--ts-border);
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+    transition: background var(--ts-transition-fast), color var(--ts-transition-fast);
+}
+
+.ts-table th:hover {
+    background: var(--ts-bg-hover);
+    color: var(--ts-text);
+}
+
+.ts-table th.sortable::after {
+    content: '';
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    vertical-align: middle;
+    margin-left: 0.5rem;
+    background-repeat: no-repeat;
+    background-position: center;
+    opacity: 0.3;
+}
+
+/* Sort Icons using SVG data URIs for cleaner look */
+.ts-table th.sort-asc,
+.ts-table th.sort-desc {
+    color: var(--ts-primary);
+    background: var(--ts-primary-subtle);
+    border-bottom-color: var(--ts-primary);
+}
+
+.ts-table th.sort-asc::after {
+    content: '▲';
+    opacity: 1;
+    font-size: 8px;
+}
+
+.ts-table th.sort-desc::after {
+    content: '▼';
+    opacity: 1;
+    font-size: 8px;
+}
+
+.ts-table th.hidden-col,
+.ts-table td.hidden-col {
+    display: none;
+}
+
+.ts-table td {
+    padding: 0.625rem 1rem;
+    border-bottom: 1px solid var(--ts-border);
+    max-width: 320px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    transition: background var(--ts-transition-fast);
+    color: var(--ts-text);
+}
+
+/* Specific fonts for ID columns */
+.ts-table td[class*="id"],
+.ts-table td[class*="ID"] {
+    font-family: var(--ts-font-mono);
+    font-size: 0.75rem;
+}
+
+.ts-table td.align-right {
+    text-align: right;
+}
+
+.ts-table td.align-center {
+    text-align: right;
+}
+
+/* Zebra Striping & Hover */
+.ts-table tbody tr {
+    transition: background var(--ts-transition-fast);
+}
+
+.ts-table tbody tr:nth-child(even) {
+    background: var(--ts-table-stripe);
+}
+
+.ts-table tbody tr:hover {
+    background: var(--ts-bg-hover) !important;
+    /* Force hover visibility */
+}
+
+/* Filter row */
+.ts-filter-row th {
+    padding: 0.25rem 0.5rem;
+    background: var(--ts-bg-surface);
+    border-bottom: 1px solid var(--ts-border);
+}
+
+.ts-col-filter {
+    width: 100%;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.75rem;
+    font-family: var(--ts-font-mono);
+    background: var(--ts-bg-input);
+    border: 1px solid var(--ts-border);
+    border-radius: var(--ts-radius-sm);
+    color: var(--ts-text);
+    outline: none;
+    transition: all var(--ts-transition-fast);
+}
+
+.ts-col-filter:focus {
+    border-color: var(--ts-primary);
+    box-shadow: 0 0 0 2px var(--ts-primary-subtle);
+}
+
+/* =============================================================================
+   CELL LINKS
+   ============================================================================= */
+
+.ts-cell-link {
+    color: var(--ts-info);
+    text-decoration: none;
+    font-weight: 500;
+    padding: 2px 6px;
+    border-radius: 4px;
+    transition: all var(--ts-transition-fast);
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.ts-cell-link:hover {
+    color: white;
+    background: var(--ts-info);
+    text-decoration: none;
+}
+
+.ts-cell-link i {
+    font-size: 0.75em;
+    opacity: 0.7;
+}
+
+/* =============================================================================
+   BADGES
+   ============================================================================= */
+
+.ts-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 99px;
+    /* Pill */
+    font-size: 0.6875rem;
+    font-weight: 600;
+    font-family: var(--ts-font-mono);
+    letter-spacing: -0.02em;
+    text-transform: uppercase;
+}
+
+.ts-badge-success {
+    background: var(--ts-success-bg);
+    color: var(--ts-success);
+    border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.ts-badge-warning {
+    background: var(--ts-warning-bg);
+    color: var(--ts-warning);
+    border: 1px solid rgba(245, 158, 11, 0.2);
+}
+
+.ts-badge-danger {
+    background: var(--ts-danger-bg);
+    color: var(--ts-danger);
+    border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.ts-badge-info {
+    background: var(--ts-info-bg);
+    color: var(--ts-info);
+    border: 1px solid rgba(59, 130, 246, 0.2);
+}
+
+/* =============================================================================
+   ONTOLOGY TERMS
+   ============================================================================= */
+
+.ts-ontology {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.ts-ontology-id {
+    font-family: var(--ts-font-mono);
+    font-size: 0.6875rem;
+    color: var(--ts-text-dim);
+    background: var(--ts-bg-surface);
+    padding: 1px 4px;
+    border-radius: 4px;
+}
+
+.ts-loading-term {
+    color: var(--ts-text-dim);
+    font-style: italic;
+    font-size: 0.75rem;
+    animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+
+    0%,
+    100% {
+        opacity: 0.6;
+    }
+
+    50% {
+        opacity: 1;
+    }
+}
+
+/* =============================================================================
+   STATUS BAR
+   ============================================================================= */
+
+.ts-status-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--ts-spacing-md);
+    padding: 0.75rem 1.25rem;
+    background: var(--ts-bg-surface);
+    border-top: 1px solid var(--ts-border);
+    font-size: 0.75rem;
+    color: var(--ts-text-muted);
+    font-family: var(--ts-font-mono);
+    /* Monospace for status data */
+    justify-content: space-between;
+}
+
+.ts-status-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.ts-status-value {
+    font-weight: 600;
+    color: var(--ts-primary-light);
+}
+
+/* =============================================================================
+   PAGINATION
+   ============================================================================= */
+
+.ts-pagination {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 2px;
+    background: var(--ts-bg-input);
+    border: 1px solid var(--ts-border);
+    border-radius: var(--ts-radius-md);
+}
+
+.ts-page-btn {
+    min-width: 32px;
+    height: 32px;
+    padding: 0 6px;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--ts-text-muted);
+    background: transparent;
+    border: none;
+    border-radius: var(--ts-radius-sm);
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.ts-page-btn:hover:not(:disabled) {
+    background: var(--ts-bg-hover);
+    color: var(--ts-primary-light);
+}
+
+.ts-page-btn.active {
+    background: var(--ts-bg-card);
+    color: var(--ts-primary);
+    font-weight: 700;
+    box-shadow: var(--ts-shadow-sm);
+}
+
+.ts-page-btn:disabled {
+    opacity: 0.3;
+    cursor: default;
+}
+
+/* =============================================================================
+   DROPDOWNS & PANELS
+   ============================================================================= */
+
+.ts-dropdown {
+    position: relative;
+    display: inline-block;
+}
+
+.ts-panel {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    z-index: 1000;
+    background: var(--ts-bg-card);
+    border: 1px solid var(--ts-border);
+    border-radius: var(--ts-radius-lg);
+    box-shadow: var(--ts-shadow-xl);
+    padding: var(--ts-spacing-md);
+    min-width: 260px;
+    max-height: 400px;
+    overflow-y: auto;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-10px) scale(0.95);
+    transform-origin: top right;
+    transition: all var(--ts-transition-normal);
+}
+
+.ts-panel.show {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0) scale(1);
+}
+
+/* Column Panel Items */
+.ts-col-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.375rem 0.5rem;
+    font-size: 0.8125rem;
+    color: var(--ts-text);
+    cursor: pointer;
+    border-radius: var(--ts-radius-sm);
+    transition: background var(--ts-transition-fast);
+}
+
+.ts-col-toggle:hover {
+    background: var(--ts-bg-hover);
+}
+
+.ts-col-toggle input {
+    accent-color: var(--ts-primary);
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+}
+
+/* Settings Items */
+.ts-setting-item {
+    margin-bottom: 0.75rem;
+}
+
+.ts-setting-item:last-child {
+    margin-bottom: 0;
+}
+
+.ts-setting-item label {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--ts-text-muted);
+    margin-bottom: 0.25rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.ts-btn-group .ts-btn.active {
+    background: var(--ts-primary);
+    color: white;
+    border-color: var(--ts-primary);
+}
+
+/* =============================================================================
+   ALERTS
+   ============================================================================= */
+
+.ts-alert {
+    padding: 1rem;
+    border-radius: var(--ts-radius-md);
+    background: var(--ts-bg-surface);
+    border-left: 4px solid var(--ts-primary);
+    margin-bottom: var(--ts-spacing-md);
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 0.875rem;
+    box-shadow: var(--ts-shadow-sm);
+    animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.ts-alert-warning {
+    border-left-color: var(--ts-warning);
+    background: linear-gradient(to right, var(--ts-warning-bg), transparent);
+}
+
+.ts-alert-danger {
+    border-left-color: var(--ts-danger);
+    background: linear-gradient(to right, var(--ts-danger-bg), transparent);
+}
+
+.ts-alert-success {
+    border-left-color: var(--ts-success);
+    background: linear-gradient(to right, var(--ts-success-bg), transparent);
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* =============================================================================
+   DENSITY MODES
+   ============================================================================= */
+
+/* Compact Mode Overrides */
+[data-density="compact"] .ts-table th,
+[data-density="compact"] .ts-table td {
+    padding: 0.35rem 0.5rem;
+    font-size: 0.75rem;
+}
+
+[data-density="compact"] .ts-btn {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.75rem;
+}
+
+[data-density="compact"] .ts-btn-icon {
+    width: 28px;
+    height: 28px;
+}
+
+.ts-alert-info {
+    background: var(--ts-bg-surface);
+    border-left-color: var(--ts-info);
+    color: var(--ts-text);
+}
+
+/* =============================================================================
+   TOOLTIPS
+   ============================================================================= */
+
+.ts-tooltip {
+    position: fixed;
+    background: var(--ts-bg-page);
+    /* Darker/Lighter than card for contrast */
+    border: 1px solid var(--ts-border-focus);
+    border-radius: var(--ts-radius-md);
+    padding: 0.75rem;
+    font-size: 0.75rem;
+    max-width: 400px;
+    z-index: 1000;
+    box-shadow: var(--ts-shadow-xl);
+    pointer-events: none;
+    display: none;
+    backdrop-filter: blur(4px);
+}
+
+.ts-tooltip.show {
+    display: block;
+    animation: fadeIn 0.1s ease-out;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+.ts-tooltip-header {
+    font-family: var(--ts-font-sans);
+    font-weight: 700;
+    color: var(--ts-primary-light);
+    margin-bottom: 0.5rem;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-bottom: 1px solid var(--ts-border);
+    padding-bottom: 0.25rem;
+}
+
+.ts-tooltip-value {
+    font-family: var(--ts-font-mono);
+    white-space: pre-wrap;
+    word-break: break-all;
+    color: var(--ts-text);
+    line-height: 1.5;
+}
+
+/* =============================================================================
+   LOADING STATES
+   ============================================================================= */
+
+.ts-loading,
+.ts-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 4rem 2rem;
+    color: var(--ts-text-muted);
+    text-align: center;
+}
+
+.ts-spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid var(--ts-border);
+    border-top-color: var(--ts-primary);
+    border-radius: 50%;
+    animation: ts-spin 0.8s cubic-bezier(0.55, 0.055, 0.675, 0.19) infinite;
+    margin-bottom: var(--ts-spacing-md);
+}
+
+@keyframes ts-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.ts-empty i {
+    font-size: 3rem;
+    color: var(--ts-primary-subtle);
+    margin-bottom: var(--ts-spacing-md);
+}
+
+/* =============================================================================
+   RESPONSIVE
+   ============================================================================= */
+
+/* =============================================================================
+   RESPONSIVE
+   ============================================================================= */
+
+@media (max-width: 768px) {
+    .ts-header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.5rem;
+    }
+
+    .ts-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .ts-status-bar {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.5rem;
+    }
+
+    .ts-pagination {
+        justify-content: center;
+    }
+
+    .ts-toolbar-group {
+        flex-wrap: wrap;
+        width: 100%;
+    }
+
+    .ts-input,
+    .ts-select,
+    .ts-btn {
+        width: 100%;
+    }
+
+    .ts-toolbar-divider {
+        display: none;
+    }
+
+    /* Stack filters and buttons on mobile */
+    .ts-filter-row th {
+        padding: 0.5rem;
+    }
+
+    .ts-table-scroll {
+        max-height: 50vh;
+    }
+}
+
+/* =============================================================================
+   PRINT STYLES
+   ============================================================================= */
+
+@media print {
+
+    .ts-header,
+    .ts-toolbar,
+    .ts-category-panel,
+    .ts-status-bar,
+    .ts-pagination,
+    #setup-screen {
+        display: none !important;
+    }
+
+    .ts-app {
+        display: block;
+        height: auto;
+        overflow: visible;
+    }
+
+    .ts-main {
+        padding: 0;
+        overflow: visible;
+    }
+
+    .ts-table-container {
+        border: 1px solid #000;
+        box-shadow: none;
+        overflow: visible;
+    }
+
+    .ts-table-scroll {
+        max-height: none;
+        overflow: visible;
+    }
+
+    .ts-table {
+        font-size: 9pt;
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    .ts-table th,
+    .ts-table td {
+        border: 1px solid #ccc;
+        color: #000;
+        white-space: normal;
+        /* Allow wrapping in print */
+    }
+
+    .ts-table th {
+        background: #eee !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+}
+        
+        /* Setup Screen Styles (Inline for immediate rendering) */
+        #setup-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: var(--ts-bg-page);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+        }
+        
+        .setup-card {
+            background: var(--ts-bg-card);
+            padding: 2rem;
+            border-radius: var(--ts-radius-lg);
+            box-shadow: var(--ts-shadow-xl);
+            max-width: 500px;
+            width: 90%;
+            text-align: center;
+            border: 1px solid var(--ts-border);
+        }
+        
+        .drop-zone {
+            border: 2px dashed var(--ts-border);
+            border-radius: var(--ts-radius-md);
+            padding: 2rem;
+            margin: 1rem 0;
+            transition: all 0.2s;
+            background: var(--ts-bg-input);
+            cursor: pointer;
+        }
+        
+        .drop-zone:hover {
+            border-color: var(--ts-primary);
+            background: var(--ts-bg-hover);
+        }
+        
+        .drop-zone.dragover {
+            border-color: var(--ts-primary);
+            background: var(--ts-primary-muted);
+        }
+    </style>
+</head>
+<body>
+    
+    <!-- Setup / Loading Screen -->
+    <div id="setup-screen">
+        <div class="setup-card">
+            <h2 style="margin-top:0; color:var(--ts-primary)">Genome Data Viewer</h2>
+            <p style="color:var(--ts-text-muted)">Research Edition</p>
+            
+            <div id="setup-drop-zone" class="drop-zone">
+                <i class="bi bi-file-earmark-code" style="font-size: 2rem; color: var(--ts-text-dim)"></i>
+                <p style="margin:0.5rem 0 0">Drag & Drop Config File</p>
+            </div>
+            
+            <div style="margin: 1rem 0; position: relative;">
+                <hr style="border: 0; border-top: 1px solid var(--ts-border);">
+                <span style="position: absolute; top: -10px; left: 50%; transform: translateX(-50%); background: var(--ts-bg-card); padding: 0 10px; color: var(--ts-text-dim); font-size: 0.75rem;">OR</span>
+            </div>
+            
+            <button class="ts-btn ts-btn-primary" onclick="document.getElementById('config-input').click()">
+                Load Local Config
+            </button>
+            <input type="file" id="config-input" accept=".json" style="display:none">
+            
+            <div style="margin-top: 1rem">
+                <textarea id="config-paste" class="ts-input" rows="3" placeholder="Paste JSON config here..." style="width:100%; resize: vertical;"></textarea>
+            </div>
+            <button class="ts-btn" style="margin-top: 0.5rem; width: 100%" onclick="loadPastedConfig()">Load JSON</button>
+             <p id="setup-error" style="color: var(--ts-danger); font-size: 0.8rem; margin-top: 1rem; display: none;"></p>
+        </div>
+    </div>
+
+    <!-- Main App Container -->
+    <div id="app" class="ts-app"></div>
+
+    <script>
+        // 1. Embedded Default Config
+        const DEFAULT_CONFIG = {
+    "name": "GenomeDataTables Viewer",
+    "description": "Configuration for viewing genomic data from pangenome analysis",
+    "categories": [
+        {
+            "id": "core",
+            "name": "Core Info",
+            "description": "Essential gene identifiers and names",
+            "icon": "bi-database",
+            "color": "#6366f1",
+            "defaultVisible": true
+        },
+        {
+            "id": "functional",
+            "name": "Functional Annotation",
+            "description": "Function and product information",
+            "icon": "bi-gear",
+            "color": "#22c55e",
+            "defaultVisible": true
+        },
+        {
+            "id": "external",
+            "name": "External Links",
+            "description": "Links to external databases",
+            "icon": "bi-box-arrow-up-right",
+            "color": "#06b6d4",
+            "defaultVisible": true
+        }
+    ],
+    "columns": [
+        {
+            "column": "ID",
+            "displayName": "Gene ID",
+            "categories": [
+                "core"
+            ],
+            "sortable": true,
+            "filterable": true,
+            "width": "120px",
+            "transform": {
+                "type": "sequence",
+                "options": {
+                    "maxLength": 15
+                }
+            }
+        },
+        {
+            "column": "Database_ID",
+            "displayName": "DB Ref",
+            "categories": [
+                "core"
+            ],
+            "sortable": true,
+            "width": "120px"
+        },
+        {
+            "column": "Primary_function",
+            "displayName": "Product",
+            "categories": [
+                "functional"
+            ],
+            "sortable": true,
+            "filterable": true,
+            "width": "300px"
+        },
+        {
+            "column": "Uniprot_ID",
+            "displayName": "UniProt",
+            "categories": [
+                "external"
+            ],
+            "sortable": true,
+            "width": "100px",
+            "transform": {
+                "type": "link",
+                "options": {
+                    "urlTemplate": "https://www.uniprot.org/uniprotkb/{value}",
+                    "target": "_blank",
+                    "icon": "bi-link-45deg"
+                }
+            }
+        },
+        {
+            "column": "Merged_Info",
+            "displayName": "Gene Info",
+            "categories": [
+                "core"
+            ],
+            "transform": {
+                "type": "merge",
+                "options": {
+                    "columns": [
+                        "ID",
+                        "Uniprot_ID"
+                    ],
+                    "template": "{ID} ({Uniprot_ID})"
+                }
+            }
+        }
+    ],
+    "defaultSettings": {
+        "pageSize": 50,
+        "theme": "light",
+        "showRowNumbers": true
+    },
+    "environment": "local",
+    "apiUrl": "http://localhost:8000"
+};
+        
+        // 2. Bundled Application Logic
+        
+/* --- config-schema.js --- */
+/**
+ * Configuration Schema Definitions
+ * 
+ * Type definitions for the table renderer configuration.
+ * Uses JSDoc for IDE support without requiring TypeScript.
+ * 
+ * @fileoverview Configuration type definitions for KBase Table Renderer
+ * @author KBase Team
+ * @license MIT
+ */
+
+'use strict';
+
+// =============================================================================
+// TRANSFORMER CONFIGURATION TYPES
+// =============================================================================
+
+/**
+ * Link transformer options - converts cell value to clickable link
+ * @typedef {Object} LinkTransformOptions
+ * @property {string} urlTemplate - URL with {value} placeholder (e.g., "https://uniprot.org/{value}")
+ * @property {string} [labelTemplate] - Display text template (default: raw value)
+ * @property {string} [icon] - Bootstrap Icons class (e.g., "bi-box-arrow-up-right")
+ * @property {string} [target="_blank"] - Link target attribute
+ */
+
+/**
+ * Merge transformer options - combines multiple column values
+ * @typedef {Object} MergeTransformOptions
+ * @property {string[]} columns - Column names to merge
+ * @property {string} [template] - Custom template like "{col1} ({col2})"
+ * @property {string} [separator=" | "] - Separator when no template provided
+ */
+
+/**
+ * Ontology transformer options - resolves term IDs to names
+ * @typedef {Object} OntologyTransformOptions
+ * @property {"GO"|"KEGG"|"EC"|"custom"} ontologyType - Ontology database type
+ * @property {string} [lookupEndpoint] - Custom API endpoint for resolution
+ * @property {boolean} [showId=true] - Display ID alongside name
+ * @property {number} [cacheTimeout=3600000] - Cache timeout in milliseconds
+ */
+
+/**
+ * Badge transformer options - displays value as colored badge
+ * @typedef {Object} BadgeTransformOptions
+ * @property {Object<string, string>} [colorMap] - Value-to-color mapping
+ * @property {string} [defaultColor="#6366f1"] - Fallback badge color
+ */
+
+/**
+ * Custom transformer options - user-defined transformation
+ * @typedef {Object} CustomTransformOptions
+ * @property {string} functionName - Registered function name in Transformers
+ * @property {Object} [params] - Additional parameters passed to function
+ */
+
+/**
+ * Transformer configuration
+ * @typedef {Object} TransformerConfig
+ * @property {"link"|"merge"|"ontology"|"badge"|"custom"} type - Transformer type
+ * @property {LinkTransformOptions|MergeTransformOptions|OntologyTransformOptions|BadgeTransformOptions|CustomTransformOptions} options
+ */
+
+// =============================================================================
+// COLUMN CONFIGURATION
+// =============================================================================
+
+/**
+ * Configuration for a single table column
+ * @typedef {Object} ColumnConfig
+ * @property {string} column - Column name in the data source
+ * @property {string} [displayName] - UI display name (default: column name)
+ * @property {string[]} [categories=[]] - Category IDs this column belongs to
+ * @property {TransformerConfig} [transform] - Content transformation
+ * @property {boolean} [hidden=false] - Initially hidden from view
+ * @property {number} [width] - Column width in pixels
+ * @property {boolean} [sortable=true] - Allow sorting by this column
+ * @property {boolean} [filterable=true] - Allow filtering by this column
+ * @property {string} [align="left"] - Text alignment ("left"|"center"|"right")
+ */
+
+// =============================================================================
+// CATEGORY CONFIGURATION
+// =============================================================================
+
+/**
+ * Configuration for a column category (grouping)
+ * @typedef {Object} CategoryConfig
+ * @property {string} id - Unique category identifier
+ * @property {string} name - Display name in UI
+ * @property {string} [icon] - Bootstrap Icons class
+ * @property {string} [color] - Badge/icon color (hex or CSS color)
+ * @property {boolean} [defaultVisible=true] - Initially visible
+ * @property {string} [description] - Tooltip description
+ */
+
+// =============================================================================
+// DEFAULT SETTINGS
+// =============================================================================
+
+/**
+ * Default table settings
+ * @typedef {Object} DefaultSettings
+ * @property {number} [pageSize=100] - Rows per page
+ * @property {string} [sortColumn] - Default sort column
+ * @property {"asc"|"desc"} [sortOrder="asc"] - Default sort direction
+ * @property {"dark"|"light"} [theme="dark"] - Default theme
+ * @property {boolean} [showFilters=false] - Show column filters initially
+ */
+
+// =============================================================================
+// MAIN CONFIGURATION
+// =============================================================================
+
+/**
+ * Complete table renderer configuration
+ * @typedef {Object} TableRendererConfig
+ * @property {string} name - Configuration name
+ * @property {string} [description] - Description for users
+ * @property {string} [version="1.0.0"] - Configuration version
+ * @property {CategoryConfig[]} [categories=[]] - Category definitions
+ * @property {ColumnConfig[]} columns - Column configurations
+ * @property {DefaultSettings} [defaultSettings={}] - Default table settings
+ */
+
+// =============================================================================
+// API RESPONSE TYPES (from TableScanner)
+// =============================================================================
+
+/**
+ * Table data response from TableScanner API
+ * @typedef {Object} TableDataResponse
+ * @property {string[]} headers - Column names in order
+ * @property {Array<Array<string|number|null>>} data - Row data as array of arrays
+ * @property {number} row_count - Number of rows in this response
+ * @property {number} total_count - Total rows in table (before filtering)
+ * @property {number} filtered_count - Rows matching filter criteria
+ * @property {string} table_name - Name of the queried table
+ * @property {number} response_time_ms - Total response time in milliseconds
+ * @property {number} [db_query_ms] - Database query time
+ * @property {number} [conversion_ms] - Data conversion time
+ * @property {string} [source] - Data source ("Cache" or "Downloaded")
+ */
+
+/**
+ * Table info from list tables response
+ * @typedef {Object} TableInfo
+ * @property {string} name - Table name
+ * @property {number} [row_count] - Number of rows
+ * @property {number} [column_count] - Number of columns
+ */
+
+// =============================================================================
+// CONFIG VALIDATION
+// =============================================================================
+
+/**
+ * Validates a table renderer configuration
+ * @param {Object} config - Configuration object to validate
+ * @returns {{valid: boolean, errors: string[]}} Validation result
+ */
+function validateConfig(config) {
+    const errors = [];
+
+    // Required fields
+    if (!config.name || typeof config.name !== 'string') {
+        errors.push('Configuration must have a "name" string property');
+    }
+
+    if (!Array.isArray(config.columns) || config.columns.length === 0) {
+        errors.push('Configuration must have a non-empty "columns" array');
+    }
+
+    // Validate categories
+    if (config.categories) {
+        if (!Array.isArray(config.categories)) {
+            errors.push('"categories" must be an array');
+        } else {
+            const categoryIds = new Set();
+            config.categories.forEach((cat, i) => {
+                if (!cat.id) errors.push(`Category at index ${i} missing "id"`);
+                if (!cat.name) errors.push(`Category at index ${i} missing "name"`);
+                if (categoryIds.has(cat.id)) {
+                    errors.push(`Duplicate category id: "${cat.id}"`);
+                }
+                categoryIds.add(cat.id);
+            });
+        }
+    }
+
+    // Validate columns
+    if (Array.isArray(config.columns)) {
+        const columnNames = new Set();
+        config.columns.forEach((col, i) => {
+            if (!col.column) {
+                errors.push(`Column at index ${i} missing "column" property`);
+            }
+            if (columnNames.has(col.column)) {
+                errors.push(`Duplicate column: "${col.column}"`);
+            }
+            columnNames.add(col.column);
+
+            // Validate transformer
+            if (col.transform) {
+                const validTypes = ['link', 'merge', 'ontology', 'badge', 'custom'];
+                if (!validTypes.includes(col.transform.type)) {
+                    errors.push(`Column "${col.column}" has invalid transform type: "${col.transform.type}"`);
+                }
+            }
+
+            // Validate category references
+            if (col.categories && config.categories) {
+                const validCategoryIds = new Set(config.categories.map(c => c.id));
+                col.categories.forEach(catId => {
+                    if (!validCategoryIds.has(catId)) {
+                        errors.push(`Column "${col.column}" references unknown category: "${catId}"`);
+                    }
+                });
+            }
+        });
+    }
+
+    return {
+        valid: errors.length === 0,
+        errors
+    };
+}
+
+/**
+ * Merges user config with defaults
+ * @param {Partial<TableRendererConfig>} userConfig - User configuration
+ * @returns {TableRendererConfig} Complete configuration with defaults
+ */
+function mergeWithDefaults(userConfig) {
+    const defaults = {
+        name: 'Untitled Configuration',
+        description: '',
+        version: '1.0.0',
+        categories: [],
+        columns: [],
+        defaultSettings: {
+            pageSize: 100,
+            sortOrder: 'asc',
+            theme: 'dark',
+            showFilters: false
+        }
+    };
+
+    return {
+        ...defaults,
+        ...userConfig,
+        defaultSettings: {
+            ...defaults.defaultSettings,
+            ...(userConfig.defaultSettings || {})
+        }
+    };
+}
+
+// Export for module usage
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { validateConfig, mergeWithDefaults };
+}
+
+
+/* --- transformers.js --- */
+/**
+ * Column Transformers
+ * 
+ * Plugin-based system for transforming cell content during rendering.
+ * Each transformer receives the cell value, options, and full row data.
+ * 
+ * @fileoverview Column transformation plugins for KBase Table Renderer
+ * @author KBase Team
+ * @license MIT
+ */
+
+'use strict';
+
+/**
+ * Transformer registry and implementations
+ */
+const Transformers = {
+    /**
+     * Ontology term cache for performance
+     * @type {Map<string, {name: string, timestamp: number}>}
+     */
+    _ontologyCache: new Map(),
+
+    /**
+     * Cache timeout in milliseconds (default: 1 hour)
+     */
+    _cacheTimeout: 3600000,
+
+    // =========================================================================
+    // LINK TRANSFORMER
+    // =========================================================================
+
+    /**
+     * Link Transformer - Converts cell value to external link
+     * 
+     * @param {string|number|null} value - Cell value
+     * @param {Object} options - Transformer options
+     * @param {string} options.urlTemplate - URL with {value} placeholder
+     * @param {string} [options.labelTemplate] - Display text template
+     * @param {string} [options.icon] - Icon class
+     * @param {string} [options.target="_blank"] - Link target
+     * @param {Object} rowData - Full row data object
+     * @returns {string} HTML string
+     * 
+     * @example
+     * // UniProt link
+     * Transformers.link("P12345", {
+     *     urlTemplate: "https://www.uniprot.org/uniprotkb/{value}"
+     * }, rowData);
+     * // Returns: <a href="https://www.uniprot.org/uniprotkb/P12345" ...>P12345</a>
+     */
+    link(value, options, rowData) {
+        if (value === null || value === undefined || value === '') {
+            return '';
+        }
+
+        const stringValue = String(value);
+        const encodedValue = encodeURIComponent(stringValue);
+
+        // Build URL from template
+        let url = options.urlTemplate.replace(/\{value\}/g, encodedValue);
+
+        // Support additional placeholders from row data
+        if (rowData) {
+            Object.keys(rowData).forEach(key => {
+                const placeholder = `{${key}}`;
+                if (url.includes(placeholder)) {
+                    url = url.replace(
+                        new RegExp(placeholder.replace(/[{}]/g, '\\$&'), 'g'),
+                        encodeURIComponent(String(rowData[key] || ''))
+                    );
+                }
+            });
+        }
+
+        // Build label
+        let label = stringValue;
+        if (options.labelTemplate) {
+            label = options.labelTemplate.replace(/\{value\}/g, stringValue);
+            if (rowData) {
+                Object.keys(rowData).forEach(key => {
+                    label = label.replace(
+                        new RegExp(`\\{${key}\\}`, 'g'),
+                        String(rowData[key] || '')
+                    );
+                });
+            }
+        }
+
+        const target = options.target || '_blank';
+        const rel = target === '_blank' ? ' rel="noopener noreferrer"' : '';
+        const iconHtml = options.icon ? `<i class="${options.icon}"></i> ` : '';
+
+        return `<a href="${url}" target="${target}"${rel} class="ts-cell-link">${iconHtml}${Transformers._escapeHtml(label)}</a>`;
+    },
+
+    // =========================================================================
+    // MERGE TRANSFORMER
+    // =========================================================================
+
+    /**
+     * Merge Transformer - Combines multiple column values
+     * 
+     * @param {string|number|null} value - Primary cell value (often unused)
+     * @param {Object} options - Transformer options
+     * @param {string[]} options.columns - Column names to merge
+     * @param {string} [options.template] - Custom template like "{col1} ({col2})"
+     * @param {string} [options.separator=" | "] - Separator when no template
+     * @param {boolean} [options.skipEmpty=true] - Skip null/empty values
+     * @param {Object} rowData - Full row data object
+     * @returns {string} Merged value
+     * 
+     * @example
+     * // Template merge
+     * Transformers.merge(null, {
+     *     columns: ["gene_name", "locus_tag"],
+     *     template: "{gene_name} ({locus_tag})"
+     * }, { gene_name: "dnaA", locus_tag: "RS00005" });
+     * // Returns: "dnaA (RS00005)"
+     */
+    merge(value, options, rowData) {
+        if (!rowData || !options.columns || !Array.isArray(options.columns)) {
+            return '';
+        }
+
+        const skipEmpty = options.skipEmpty !== false;
+
+        // Template-based merge
+        if (options.template) {
+            let result = options.template;
+            options.columns.forEach(col => {
+                const colValue = rowData[col];
+                const placeholder = `{${col}}`;
+
+                if (skipEmpty && (colValue === null || colValue === undefined || colValue === '')) {
+                    // Remove placeholder and surrounding delimiters for empty values
+                    result = result.replace(new RegExp(`\\s*\\(${placeholder}\\)`, 'g'), '');
+                    result = result.replace(new RegExp(`${placeholder}\\s*[|,;:]\\s*`, 'g'), '');
+                    result = result.replace(new RegExp(`\\s*[|,;:]\\s*${placeholder}`, 'g'), '');
+                    result = result.replace(placeholder, '');
+                } else {
+                    result = result.replace(placeholder, String(colValue || ''));
+                }
+            });
+            return Transformers._escapeHtml(result.trim());
+        }
+
+        // Separator-based merge
+        const separator = options.separator || ' | ';
+        const values = options.columns
+            .map(col => rowData[col])
+            .filter(v => !skipEmpty || (v !== null && v !== undefined && v !== ''))
+            .map(v => String(v));
+
+        return Transformers._escapeHtml(values.join(separator));
+    },
+
+    // =========================================================================
+    // ONTOLOGY TRANSFORMER
+    // =========================================================================
+
+    /**
+     * Ontology Transformer - Resolves term IDs to human-readable names
+     * 
+     * This transformer uses caching for performance and returns placeholder
+     * until async resolution completes.
+     * 
+     * @param {string|number|null} value - Ontology term ID
+     * @param {Object} options - Transformer options
+     * @param {"GO"|"KEGG"|"EC"|"custom"} options.ontologyType - Ontology type
+     * @param {boolean} [options.showId=true] - Show ID alongside name
+     * @param {string} [options.lookupEndpoint] - Custom API for resolution
+     * @param {Object} rowData - Full row data object
+     * @returns {string} HTML string with term name
+     * 
+     * @example
+     * Transformers.ontology("GO:0008150", { ontologyType: "GO", showId: true }, {});
+     * // Returns: "biological_process (GO:0008150)" or placeholder while loading
+     */
+    ontology(value, options, rowData) {
+        if (value === null || value === undefined || value === '') {
+            return '';
+        }
+
+        const termId = String(value).trim();
+        const cacheKey = `${options.ontologyType}:${termId}`;
+
+        // Check cache
+        const cached = Transformers._ontologyCache.get(cacheKey);
+        if (cached && (Date.now() - cached.timestamp < Transformers._cacheTimeout)) {
+            return Transformers._formatOntologyTerm(termId, cached.name, options);
+        }
+
+        // Return placeholder with data attribute for async loading
+        const placeholder = Transformers._formatOntologyTerm(termId, null, options);
+
+        // Trigger async lookup (will update DOM when complete)
+        Transformers._lookupOntologyTerm(termId, options, cacheKey);
+
+        return placeholder;
+    },
+
+    /**
+     * Formats ontology term for display
+     * @private
+     */
+    _formatOntologyTerm(termId, termName, options) {
+        const showId = options.showId !== false;
+        const escapedId = Transformers._escapeHtml(termId);
+
+        if (termName) {
+            const escapedName = Transformers._escapeHtml(termName);
+            if (showId) {
+                return `<span class="ts-ontology" data-term="${escapedId}">${escapedName} <span class="ts-ontology-id">(${escapedId})</span></span>`;
+            }
+            return `<span class="ts-ontology" data-term="${escapedId}">${escapedName}</span>`;
+        }
+
+        // Placeholder while loading
+        return `<span class="ts-ontology ts-loading-term" data-term="${escapedId}">${escapedId}</span>`;
+    },
+
+    /**
+     * Async ontology term lookup
+     * @private
+     */
+    async _lookupOntologyTerm(termId, options, cacheKey) {
+        try {
+            let name = null;
+
+            switch (options.ontologyType) {
+                case 'GO':
+                    name = await Transformers._lookupGO(termId);
+                    break;
+                case 'KEGG':
+                    name = await Transformers._lookupKEGG(termId);
+                    break;
+                case 'EC':
+                    name = await Transformers._lookupEC(termId);
+                    break;
+                case 'custom':
+                    if (options.lookupEndpoint) {
+                        name = await Transformers._lookupCustom(termId, options.lookupEndpoint);
+                    }
+                    break;
+            }
+
+            if (name) {
+                Transformers._ontologyCache.set(cacheKey, {
+                    name,
+                    timestamp: Date.now()
+                });
+
+                // Update DOM elements with this term
+                Transformers._updateOntologyElements(termId, name, options);
+            }
+        } catch (error) {
+            console.warn(`Ontology lookup failed for ${termId}:`, error);
+        }
+    },
+
+    /**
+     * Updates DOM elements after async ontology lookup
+     * @private
+     */
+    _updateOntologyElements(termId, name, options) {
+        const elements = document.querySelectorAll(`.ts-ontology[data-term="${termId}"]`);
+        elements.forEach(el => {
+            el.classList.remove('ts-loading-term');
+            const showId = options.showId !== false;
+            if (showId) {
+                el.innerHTML = `${Transformers._escapeHtml(name)} <span class="ts-ontology-id">(${Transformers._escapeHtml(termId)})</span>`;
+            } else {
+                el.textContent = name;
+            }
+        });
+    },
+
+    /**
+     * GO term lookup via QuickGO API
+     * @private
+     */
+    async _lookupGO(termId) {
+        const response = await fetch(`https://www.ebi.ac.uk/QuickGO/services/ontology/go/terms/${termId}`, {
+            headers: { 'Accept': 'application/json' }
+        });
+        if (!response.ok) return null;
+        const data = await response.json();
+        return data.results?.[0]?.name || null;
+    },
+
+    /**
+     * KEGG lookup (simplified - returns ID for now)
+     * @private
+     */
+    async _lookupKEGG(termId) {
+        // KEGG API is complex; return ID as fallback
+        // In production, implement proper KEGG REST API call
+        return termId;
+    },
+
+    /**
+     * EC number lookup via ExPASy
+     * @private
+     */
+    async _lookupEC(termId) {
+        // EC lookup would use ExPASy ENZYME database
+        // Simplified for now
+        return termId;
+    },
+
+    /**
+     * Custom endpoint lookup
+     * @private
+     */
+    async _lookupCustom(termId, endpoint) {
+        const url = endpoint.replace('{value}', encodeURIComponent(termId));
+        const response = await fetch(url);
+        if (!response.ok) return null;
+        const data = await response.json();
+        return data.name || data.label || data.term || null;
+    },
+
+    // =========================================================================
+    // BADGE TRANSFORMER
+    // =========================================================================
+
+    /**
+     * Badge Transformer - Displays value as colored badge
+     * 
+     * @param {string|number|null} value - Cell value
+     * @param {Object} options - Transformer options
+     * @param {Object<string, string>} [options.colorMap] - Value-to-color map
+     * @param {string} [options.defaultColor="#6366f1"] - Default badge color
+     * @param {Object} rowData - Full row data object
+     * @returns {string} HTML badge element
+     */
+    badge(value, options, rowData) {
+        if (value === null || value === undefined || value === '') {
+            return '';
+        }
+
+        const stringValue = String(value);
+        const colorMap = options.colorMap || {};
+        const color = colorMap[stringValue] || options.defaultColor || '#6366f1';
+
+        return `<span class="ts-badge" style="background: ${color}20; color: ${color}; border: 1px solid ${color}40;">${Transformers._escapeHtml(stringValue)}</span>`;
+    },
+
+    // =========================================================================
+    // SEQUENCE TRANSFORMER
+    // =========================================================================
+
+    /**
+     * Sequence Transformer - Formats DNA/Protein sequences
+     * 
+     * @param {string} value - Sequence string
+     * @param {Object} options - Options
+     * @param {boolean} [options.monospace=true] - Use monospace font
+     * @param {number} [options.maxLength] - Truncate after N chars
+     * @param {number} [options.chunkSize] - Add spaces every N chars (e.g. 10)
+     * @returns {string} Formatted HTML
+     */
+    sequence(value, options) {
+        if (!value) return '';
+        let str = String(value);
+
+        // Chunking
+        if (options.chunkSize && options.chunkSize > 0) {
+            const regex = new RegExp(`.{1,${options.chunkSize}}`, 'g');
+            str = str.match(regex).join(' ');
+        }
+
+        // Truncation
+        if (options.maxLength && str.length > options.maxLength) {
+            const fullStr = Transformers._escapeHtml(str); // Escape before embedding
+            str = str.substring(0, options.maxLength) + '...';
+            // Return with title for tooltip
+            return `<span title="${fullStr}" style="${options.monospace !== false ? 'font-family: var(--ts-font-mono);' : ''}">${Transformers._escapeHtml(str)}</span>`;
+        }
+
+        const style = options.monospace !== false ? 'font-family: var(--ts-font-mono);' : '';
+        return `<span style="${style}">${Transformers._escapeHtml(str)}</span>`;
+    },
+
+    // =========================================================================
+    // TRUNCATE TRANSFORMER
+    // =========================================================================
+
+    /**
+     * Truncate Transformer - Shortens long text
+     */
+    truncate(value, options) {
+        if (!value) return '';
+        const str = String(value);
+        const length = options.length || 20;
+
+        if (str.length <= length) return Transformers._escapeHtml(str);
+
+        const truncated = str.substring(0, length) + '...';
+        return `<span title="${Transformers._escapeHtml(str)}">${Transformers._escapeHtml(truncated)}</span>`;
+    },
+
+    /**
+     * Registered custom transformers
+     * @type {Map<string, Function>}
+     */
+    _customTransformers: new Map(),
+
+    /**
+     * Register a custom transformer function
+     * 
+     * @param {string} name - Function name
+     * @param {Function} fn - Transformer function (value, options, rowData) => string
+     */
+    register(name, fn) {
+        if (typeof fn !== 'function') {
+            throw new Error(`Transformer "${name}" must be a function`);
+        }
+        Transformers._customTransformers.set(name, fn);
+    },
+
+    /**
+     * Custom Transformer - Executes registered custom function
+     * 
+     * @param {string|number|null} value - Cell value
+     * @param {Object} options - Transformer options
+     * @param {string} options.functionName - Registered function name
+     * @param {Object} [options.params] - Additional parameters
+     * @param {Object} rowData - Full row data object
+     * @returns {string} Transformed value
+     */
+    custom(value, options, rowData) {
+        const fn = Transformers._customTransformers.get(options.functionName);
+        if (!fn) {
+            console.warn(`Custom transformer "${options.functionName}" not registered`);
+            return value ? String(value) : '';
+        }
+
+        try {
+            return fn(value, options.params || {}, rowData);
+        } catch (error) {
+            console.error(`Custom transformer "${options.functionName}" error:`, error);
+            return value ? String(value) : '';
+        }
+    },
+
+    // =========================================================================
+    // UTILITY METHODS
+    // =========================================================================
+
+    /**
+     * Escape HTML special characters
+     * @private
+     */
+    _escapeHtml(text) {
+        if (text === null || text === undefined) return '';
+        const div = document.createElement('div');
+        div.textContent = String(text);
+        return div.innerHTML;
+    },
+
+    /**
+     * Apply a transformation based on configuration
+     * 
+     * @param {string|number|null} value - Cell value
+     * @param {Object} transformConfig - Transform configuration
+     * @param {Object} rowData - Full row data object
+     * @returns {string} Transformed HTML string
+     */
+    apply(value, transformConfig, rowData) {
+        if (!transformConfig || !transformConfig.type) {
+            return value !== null && value !== undefined ? Transformers._escapeHtml(String(value)) : '';
+        }
+
+        const transformer = Transformers[transformConfig.type];
+        if (!transformer || typeof transformer !== 'function') {
+            console.warn(`Unknown transformer type: "${transformConfig.type}"`);
+            return value !== null && value !== undefined ? Transformers._escapeHtml(String(value)) : '';
+        }
+
+        return transformer(value, transformConfig.options || {}, rowData);
+    },
+
+    /**
+     * Clear the ontology cache
+     */
+    clearCache() {
+        Transformers._ontologyCache.clear();
+    }
+};
+
+// Export for module usage
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = Transformers;
+}
+
+
+/* --- kbase-client.js --- */
+/**
+ * KBase TableScanner API Client
+ * 
+ * Wrapper for interacting with the TableScanner REST API.
+ * Handles authentication, caching, and error handling.
+ * 
+ * @fileoverview TableScanner API integration
+ * @author KBase Team
+ * @license MIT
+ */
+
+'use strict';
+
+/**
+ * KBase Table Client - API wrapper for TableScanner
+ */
+class KBaseTableClient {
+    /**
+     * Create a KBaseTableClient instance
+     * 
+     * @param {Object} options - Client options
+     * @param {string} [options.baseUrl] - TableScanner API base URL
+     * @param {string} [options.token] - KBase authentication token
+     * @param {string} [options.environment="appdev"] - KBase environment (appdev|prod)
+     */
+    constructor(options = {}) {
+        this.baseUrl = options.baseUrl || this._getDefaultUrl(options.environment);
+        this.token = options.token || null;
+        this.environment = options.environment || 'appdev';
+
+        /** @type {Map<string, {data: any, timestamp: number}>} Response cache */
+        this._cache = new Map();
+
+        /** @type {number} Cache TTL in milliseconds (5 minutes) */
+        this._cacheTTL = 300000;
+    }
+
+    /**
+     * Get default API URL based on environment
+     * @private
+     */
+    _getDefaultUrl(env) {
+        const urls = {
+            appdev: 'https://appdev.kbase.us/services/berdl_table_scanner',
+            prod: 'https://kbase.us/services/berdl_table_scanner',
+            local: 'http://localhost:8000'
+        };
+        return urls[env] || urls.appdev;
+    }
+
+    /**
+     * Get authorization headers
+     * @private
+     */
+    _getHeaders() {
+        const headers = {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+        };
+
+        if (this.token) {
+            headers['Authorization'] = this.token;
+        }
+
+        return headers;
+    }
+
+    /**
+     * Generate cache key from request parameters
+     * @private
+     */
+    _getCacheKey(endpoint, params) {
+        return `${endpoint}:${JSON.stringify(params || {})}`;
+    }
+
+    /**
+     * Check and return cached response if valid
+     * @private
+     */
+    _getFromCache(key) {
+        const cached = this._cache.get(key);
+        if (cached && (Date.now() - cached.timestamp < this._cacheTTL)) {
+            return cached.data;
+        }
+        return null;
+    }
+
+    /**
+     * Store response in cache
+     * @private
+     */
+    _setCache(key, data) {
+        this._cache.set(key, {
+            data,
+            timestamp: Date.now()
+        });
+    }
+
+    /**
+     * Clear the response cache
+     */
+    clearCache() {
+        this._cache.clear();
+    }
+
+    /**
+     * Make a GET request
+     * @private
+     */
+    async _get(endpoint, params = {}, useCache = true) {
+        const cacheKey = this._getCacheKey(endpoint, params);
+
+        if (useCache) {
+            const cached = this._getFromCache(cacheKey);
+            if (cached) return cached;
+        }
+
+        const url = new URL(`${this.baseUrl}${endpoint}`);
+        Object.entries(params).forEach(([key, value]) => {
+            if (value !== null && value !== undefined) {
+                url.searchParams.set(key, String(value));
+            }
+        });
+
+        const response = await fetch(url.toString(), {
+            method: 'GET',
+            headers: this._getHeaders()
+        });
+
+        if (!response.ok) {
+            const error = await this._parseError(response);
+            throw new Error(error);
+        }
+
+        const data = await response.json();
+        this._setCache(cacheKey, data);
+        return data;
+    }
+
+    /**
+     * Make a POST request
+     * @private
+     */
+    async _post(endpoint, body, useCache = false) {
+        const cacheKey = this._getCacheKey(endpoint, body);
+
+        if (useCache) {
+            const cached = this._getFromCache(cacheKey);
+            if (cached) return cached;
+        }
+
+        const response = await fetch(`${this.baseUrl}${endpoint}`, {
+            method: 'POST',
+            headers: this._getHeaders(),
+            body: JSON.stringify(body)
+        });
+
+        if (!response.ok) {
+            const error = await this._parseError(response);
+            throw new Error(error);
+        }
+
+        const data = await response.json();
+        if (useCache) {
+            this._setCache(cacheKey, data);
+        }
+        return data;
+    }
+
+    /**
+     * Parse error response
+     * @private
+     */
+    async _parseError(response) {
+        try {
+            const data = await response.json();
+            return data.detail || data.message || `HTTP ${response.status}`;
+        } catch {
+            return `HTTP ${response.status}: ${response.statusText}`;
+        }
+    }
+
+    // =========================================================================
+    // PUBLIC API METHODS
+    // =========================================================================
+
+    /**
+     * List pangenomes in a BERDLTables object
+     * 
+     * @param {string} berdlTableId - BERDLTables object reference (e.g., "76990/7/2")
+     * @returns {Promise<Object>} Pangenomes response
+     */
+    async listPangenomes(berdlTableId) {
+        return this._get(`/object/${berdlTableId}/pangenomes`, {
+            kb_env: this.environment
+        });
+    }
+
+    /**
+     * List tables in a BERDLTables object or pangenome
+     * 
+     * @param {string} berdlTableId - BERDLTables object reference
+     * @param {string} [pangenomeId] - Optional pangenome ID
+     * @returns {Promise<Object>} Tables list response
+     */
+    async listTables(berdlTableId, pangenomeId = null) {
+        if (pangenomeId) {
+            return this._get(`/object/${berdlTableId}/pangenomes/${pangenomeId}/tables`, {
+                kb_env: this.environment
+            });
+        }
+        return this._get(`/object/${berdlTableId}/tables`, {
+            kb_env: this.environment
+        });
+    }
+
+    /**
+     * Get table schema (columns)
+     * 
+     * @param {string} berdlTableId - BERDLTables object reference
+     * @param {string} tableName - Table name
+     * @returns {Promise<Object>} Schema response with columns
+     */
+    async getTableSchema(berdlTableId, tableName) {
+        return this._get(`/object/${berdlTableId}/tables/${tableName}/schema`, {
+            kb_env: this.environment
+        });
+    }
+
+    /**
+     * Query table data via REST endpoint
+     * 
+     * @param {string} berdlTableId - BERDLTables object reference
+     * @param {string} tableName - Table name
+     * @param {Object} [options] - Query options
+     * @param {number} [options.limit=100] - Maximum rows
+     * @param {number} [options.offset=0] - Pagination offset
+     * @param {string} [options.sortColumn] - Sort column
+     * @param {string} [options.sortOrder="asc"] - Sort direction
+     * @param {string} [options.searchValue] - Global search term
+     * @param {Object} [options.columnFilters] - Column-specific filters
+     * @returns {Promise<Object>} Table data response
+     */
+    async getTableDataREST(berdlTableId, tableName, options = {}) {
+        const params = {
+            kb_env: this.environment,
+            limit: options.limit || 100,
+            offset: options.offset || 0
+        };
+
+        if (options.sortColumn) {
+            params.sort_column = options.sortColumn;
+            params.sort_order = options.sortOrder || 'ASC';
+        }
+
+        if (options.searchValue) {
+            params.search_value = options.searchValue;
+        }
+
+        return this._get(`/object/${berdlTableId}/tables/${tableName}/data`, params, false);
+    }
+
+    /**
+     * Query table data via POST endpoint (more flexible)
+     * 
+     * @param {Object} request - Full request object
+     * @param {string} request.berdl_table_id - BERDLTables object reference
+     * @param {string} request.table_name - Table name
+     * @param {number} [request.limit=100] - Maximum rows
+     * @param {number} [request.offset=0] - Pagination offset
+     * @param {string} [request.columns="all"] - Columns to return
+     * @param {string} [request.sort_column] - Sort column
+     * @param {string} [request.sort_order="ASC"] - Sort direction
+     * @param {string} [request.search_value] - Global search term
+     * @param {Object} [request.col_filter] - Column filters
+     * @returns {Promise<Object>} Table data response
+     */
+    async getTableData(request) {
+        const body = {
+            berdl_table_id: request.berdl_table_id,
+            table_name: request.table_name,
+            limit: request.limit || 100,
+            offset: request.offset || 0,
+            kb_env: this.environment
+        };
+
+        if (request.columns) body.columns = request.columns;
+        if (request.sort_column) body.sort_column = request.sort_column;
+        if (request.sort_order) body.sort_order = request.sort_order;
+        if (request.search_value) body.search_value = request.search_value;
+        if (request.col_filter) body.col_filter = request.col_filter;
+        if (request.query_filters) body.query_filters = request.query_filters;
+
+        return this._post('/table-data', body);
+    }
+
+    /**
+     * Clear server-side cache for a BERDLTables object
+     * 
+     * @param {string} [berdlTableId] - Optional: clear specific object, or all if not provided
+     * @returns {Promise<Object>} Cache clear response
+     */
+    async clearServerCache(berdlTableId = null) {
+        const params = berdlTableId ? { berdl_table_id: berdlTableId } : {};
+
+        const url = new URL(`${this.baseUrl}/clear-cache`);
+        Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+
+        const response = await fetch(url.toString(), {
+            method: 'POST',
+            headers: this._getHeaders()
+        });
+
+        if (!response.ok) {
+            const error = await this._parseError(response);
+            throw new Error(error);
+        }
+
+        return response.json();
+    }
+
+    /**
+     * Check service health
+     * 
+     * @returns {Promise<Object>} Health status
+     */
+    async checkHealth() {
+        return this._get('/health');
+    }
+
+    /**
+     * Get service status
+     * 
+     * @returns {Promise<Object>} Service status with version info
+     */
+    async getStatus() {
+        return this._get('/status');
+    }
+
+    // =========================================================================
+    // CONVENIENCE METHODS
+    // =========================================================================
+
+    /**
+     * Convert API response to row objects
+     * Transforms array-of-arrays format to array of objects
+     * 
+     * @param {Object} response - Table data response
+     * @returns {Array<Object>} Array of row objects
+     */
+    static responseToObjects(response) {
+        if (!response.headers || !response.data) {
+            return [];
+        }
+
+        return response.data.map(row => {
+            const obj = {};
+            response.headers.forEach((header, index) => {
+                obj[header] = row[index];
+            });
+            return obj;
+        });
+    }
+
+    /**
+     * Set authentication token
+     * 
+     * @param {string} token - KBase auth token
+     */
+    setToken(token) {
+        this.token = token;
+        this.clearCache();
+    }
+
+    /**
+     * Set API environment
+     * 
+     * @param {string} environment - "appdev" or "prod"
+     */
+    setEnvironment(environment) {
+        this.environment = environment;
+        this.baseUrl = this._getDefaultUrl(environment);
+        this.clearCache();
+    }
+}
+
+// Export for module usage
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = KBaseTableClient;
+}
+
+
+/* --- category-manager.js --- */
+/**
+ * Category Manager
+ * 
+ * Manages column visibility based on category groupings.
+ * Enables bulk show/hide of related columns.
+ * 
+ * @fileoverview Category-based column visibility management
+ * @author KBase Team
+ * @license MIT
+ */
+
+'use strict';
+
+/**
+ * CategoryManager - Manages column visibility by category
+ */
+class CategoryManager {
+    /**
+     * Create a CategoryManager instance
+     * 
+     * @param {Object} config - Table renderer configuration
+     * @param {Array<{id: string, name: string, defaultVisible?: boolean}>} config.categories
+     * @param {Array<{column: string, categories?: string[]}>} config.columns
+     */
+    constructor(config) {
+        /** @type {Map<string, Object>} Category definitions by ID */
+        this.categories = new Map();
+
+        /** @type {Map<string, Set<string>>} Columns belonging to each category */
+        this.columnsByCategory = new Map();
+
+        /** @type {Map<string, Set<string>>} Categories for each column */
+        this.categoriesByColumn = new Map();
+
+        /** @type {Set<string>} Currently visible category IDs */
+        this.visibleCategories = new Set();
+
+        /** @type {Set<string>} All column names */
+        this.allColumns = new Set();
+
+        /** @type {Set<string>} Columns not assigned to any category */
+        this.uncategorizedColumns = new Set();
+
+        this._initialize(config);
+    }
+
+    /**
+     * Initialize category mappings from configuration
+     * @private
+     */
+    _initialize(config) {
+        const categories = config.categories || [];
+        const columns = config.columns || [];
+
+        // Build category lookup
+        categories.forEach(cat => {
+            this.categories.set(cat.id, {
+                id: cat.id,
+                name: cat.name,
+                icon: cat.icon || null,
+                color: cat.color || null,
+                description: cat.description || null
+            });
+            this.columnsByCategory.set(cat.id, new Set());
+
+            // Set initial visibility
+            if (cat.defaultVisible !== false) {
+                this.visibleCategories.add(cat.id);
+            }
+        });
+
+        // Build column-to-category mappings
+        columns.forEach(col => {
+            const columnName = col.column;
+            this.allColumns.add(columnName);
+            this.categoriesByColumn.set(columnName, new Set());
+
+            if (col.categories && col.categories.length > 0) {
+                col.categories.forEach(catId => {
+                    if (this.categories.has(catId)) {
+                        this.columnsByCategory.get(catId).add(columnName);
+                        this.categoriesByColumn.get(columnName).add(catId);
+                    } else {
+                        console.warn(`Column "${columnName}" references unknown category: "${catId}"`);
+                    }
+                });
+            } else {
+                // Track uncategorized columns
+                this.uncategorizedColumns.add(columnName);
+            }
+        });
+    }
+
+    // =========================================================================
+    // CATEGORY OPERATIONS
+    // =========================================================================
+
+    /**
+     * Toggle a category's visibility
+     * 
+     * @param {string} categoryId - Category ID to toggle
+     * @returns {Set<string>} Updated set of visible columns
+     */
+    toggleCategory(categoryId) {
+        if (!this.categories.has(categoryId)) {
+            console.warn(`Unknown category: "${categoryId}"`);
+            return this.getVisibleColumns();
+        }
+
+        if (this.visibleCategories.has(categoryId)) {
+            this.visibleCategories.delete(categoryId);
+        } else {
+            this.visibleCategories.add(categoryId);
+        }
+
+        return this.getVisibleColumns();
+    }
+
+    /**
+     * Show a specific category
+     * 
+     * @param {string} categoryId - Category ID to show
+     * @returns {Set<string>} Updated set of visible columns
+     */
+    showCategory(categoryId) {
+        if (this.categories.has(categoryId)) {
+            this.visibleCategories.add(categoryId);
+        }
+        return this.getVisibleColumns();
+    }
+
+    /**
+     * Hide a specific category
+     * 
+     * @param {string} categoryId - Category ID to hide
+     * @returns {Set<string>} Updated set of visible columns
+     */
+    hideCategory(categoryId) {
+        this.visibleCategories.delete(categoryId);
+        return this.getVisibleColumns();
+    }
+
+    /**
+     * Show all categories
+     * 
+     * @returns {Set<string>} Updated set of visible columns
+     */
+    showAllCategories() {
+        this.categories.forEach((_, catId) => {
+            this.visibleCategories.add(catId);
+        });
+        return this.getVisibleColumns();
+    }
+
+    /**
+     * Hide all categories
+     * 
+     * @returns {Set<string>} Updated set of visible columns
+     */
+    hideAllCategories() {
+        this.visibleCategories.clear();
+        return this.getVisibleColumns();
+    }
+
+    /**
+     * Check if a category is currently visible
+     * 
+     * @param {string} categoryId - Category ID to check
+     * @returns {boolean} Whether category is visible
+     */
+    isCategoryVisible(categoryId) {
+        return this.visibleCategories.has(categoryId);
+    }
+
+    // =========================================================================
+    // COLUMN VISIBILITY
+    // =========================================================================
+
+    /**
+     * Get all currently visible columns
+     * 
+     * A column is visible if:
+     * - It has no categories (uncategorized) - always visible
+     * - At least one of its categories is visible
+     * 
+     * @returns {Set<string>} Set of visible column names
+     */
+    getVisibleColumns() {
+        const visible = new Set();
+
+        // Uncategorized columns are always visible
+        this.uncategorizedColumns.forEach(col => visible.add(col));
+
+        // Add columns from visible categories
+        this.visibleCategories.forEach(catId => {
+            const columns = this.columnsByCategory.get(catId);
+            if (columns) {
+                columns.forEach(col => visible.add(col));
+            }
+        });
+
+        return visible;
+    }
+
+    /**
+     * Check if a specific column is visible
+     * 
+     * @param {string} columnName - Column name to check
+     * @returns {boolean} Whether column is visible
+     */
+    isColumnVisible(columnName) {
+        // Uncategorized columns are always visible
+        if (this.uncategorizedColumns.has(columnName)) {
+            return true;
+        }
+
+        // Check if any of the column's categories are visible
+        const columnCategories = this.categoriesByColumn.get(columnName);
+        if (!columnCategories || columnCategories.size === 0) {
+            return true; // No categories = visible
+        }
+
+        for (const catId of columnCategories) {
+            if (this.visibleCategories.has(catId)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Get categories for a specific column
+     * 
+     * @param {string} columnName - Column name
+     * @returns {Array<Object>} Array of category objects
+     */
+    getColumnCategories(columnName) {
+        const catIds = this.categoriesByColumn.get(columnName);
+        if (!catIds) return [];
+
+        return Array.from(catIds)
+            .map(id => this.categories.get(id))
+            .filter(Boolean);
+    }
+
+    // =========================================================================
+    // CATEGORY INFO
+    // =========================================================================
+
+    /**
+     * Get all category definitions
+     * 
+     * @returns {Array<Object>} Array of category objects with visibility state
+     */
+    getAllCategories() {
+        return Array.from(this.categories.values()).map(cat => ({
+            ...cat,
+            visible: this.visibleCategories.has(cat.id),
+            columnCount: this.columnsByCategory.get(cat.id)?.size || 0
+        }));
+    }
+
+    /**
+     * Get a specific category by ID
+     * 
+     * @param {string} categoryId - Category ID
+     * @returns {Object|null} Category object or null
+     */
+    getCategory(categoryId) {
+        const cat = this.categories.get(categoryId);
+        if (!cat) return null;
+
+        return {
+            ...cat,
+            visible: this.visibleCategories.has(categoryId),
+            columnCount: this.columnsByCategory.get(categoryId)?.size || 0
+        };
+    }
+
+    /**
+     * Get columns for a specific category
+     * 
+     * @param {string} categoryId - Category ID
+     * @returns {Array<string>} Array of column names
+     */
+    getCategoryColumns(categoryId) {
+        const columns = this.columnsByCategory.get(categoryId);
+        return columns ? Array.from(columns) : [];
+    }
+
+    // =========================================================================
+    // STATE MANAGEMENT
+    // =========================================================================
+
+    /**
+     * Get current visibility state (for persistence)
+     * 
+     * @returns {Object} State object
+     */
+    getState() {
+        return {
+            visibleCategories: Array.from(this.visibleCategories)
+        };
+    }
+
+    /**
+     * Restore visibility state
+     * 
+     * @param {Object} state - Previously saved state
+     */
+    setState(state) {
+        if (state && Array.isArray(state.visibleCategories)) {
+            this.visibleCategories.clear();
+            state.visibleCategories.forEach(catId => {
+                if (this.categories.has(catId)) {
+                    this.visibleCategories.add(catId);
+                }
+            });
+        }
+    }
+
+    /**
+     * Reset to default visibility from configuration
+     * 
+     * @param {Object} config - Original configuration
+     */
+    resetToDefaults(config) {
+        this.visibleCategories.clear();
+        (config.categories || []).forEach(cat => {
+            if (cat.defaultVisible !== false) {
+                this.visibleCategories.add(cat.id);
+            }
+        });
+    }
+}
+
+// Export for module usage
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = CategoryManager;
+}
+
+
+/* --- table-renderer.js --- */
+/**
+ * Table Renderer
+ * 
+ * Core table rendering engine with configuration-driven features.
+ * Integrates transformers, category manager, and KBase client.
+ * 
+ * @fileoverview Main table rendering component
+ * @author KBase Team
+ * @license MIT
+ */
+
+'use strict';
+
+/**
+ * TableRenderer - Main table rendering engine
+ */
+class TableRenderer {
+    /**
+     * Create a TableRenderer instance
+     * 
+     * @param {Object} options - Renderer options
+     * @param {HTMLElement} options.container - Container element for the table
+     * @param {Object} [options.config] - Table configuration object
+     * @param {string} [options.configUrl] - URL to load configuration from
+     * @param {KBaseTableClient} [options.client] - API client instance
+     */
+    constructor(options) {
+        if (!options.container) {
+            throw new Error('TableRenderer requires a container element');
+        }
+
+        this.container = options.container;
+        this.config = null;
+        this.configUrl = options.configUrl || null;
+        this.client = options.client || null;
+
+        /** @type {CategoryManager|null} */
+        this.categoryManager = null;
+
+        /** @type {Object} Current state */
+        this.state = {
+            berdlTableId: null,
+            tableName: null,
+            headers: [],
+            data: [],
+            totalCount: 0,
+            filteredCount: 0,
+            currentPage: 0,
+            pageSize: 100,
+            sortColumn: null,
+            sortOrder: 'asc',
+            columnFilters: {},
+            searchValue: '',
+            visibleColumns: new Set(),
+            loading: false,
+            error: null,
+            theme: 'dark'
+        };
+
+        /** @type {Object} DOM element references */
+        this.dom = {};
+
+        /** @type {Map<string, Object>} Column config lookup */
+        this.columnConfigMap = new Map();
+    }
+
+    // =========================================================================
+    // INITIALIZATION
+    // =========================================================================
+
+    /**
+     * Initialize the renderer
+     * 
+     * @param {Object} [config] - Configuration to use (overrides configUrl)
+     */
+    async init(config = null) {
+        try {
+            // Load configuration
+            if (config) {
+                this.config = typeof mergeWithDefaults === 'function'
+                    ? mergeWithDefaults(config)
+                    : config;
+            } else if (typeof window.DEFAULT_CONFIG !== 'undefined') {
+                // Use embedded config (for portable viewer)
+                this.config = typeof mergeWithDefaults === 'function'
+                    ? mergeWithDefaults(window.DEFAULT_CONFIG)
+                    : window.DEFAULT_CONFIG;
+                console.log('Loaded configuration from embedded DEFAULT_CONFIG');
+            } else if (this.configUrl) {
+                const response = await fetch(this.configUrl);
+                if (!response.ok) throw new Error(`Failed to load config: ${response.status}`);
+                const loadedConfig = await response.json();
+                this.config = typeof mergeWithDefaults === 'function'
+                    ? mergeWithDefaults(loadedConfig)
+                    : loadedConfig;
+            } else {
+                this.config = {
+                    name: 'Table Viewer',
+                    categories: [],
+                    columns: [],
+                    defaultSettings: { pageSize: 100, theme: 'dark' }
+                };
+            }
+
+            // Validate config
+            if (typeof validateConfig === 'function') {
+                const validation = validateConfig(this.config);
+                if (!validation.valid) {
+                    console.warn('Configuration validation warnings:', validation.errors);
+                }
+            }
+
+            // Build column config lookup
+            this.config.columns.forEach(col => {
+                this.columnConfigMap.set(col.column, col);
+            });
+
+            // Initialize category manager
+            if (typeof CategoryManager !== 'undefined') {
+                this.categoryManager = new CategoryManager(this.config);
+            }
+
+            // Apply default settings
+            const defaults = this.config.defaultSettings || {};
+            this.state.pageSize = defaults.pageSize || 100;
+            this.state.sortColumn = defaults.sortColumn || null;
+            this.state.sortOrder = defaults.sortOrder || 'asc';
+            this.state.theme = defaults.theme || 'dark';
+
+            // IMPORTANT: Initialize Client with Configured Environment
+            // Default to 'local' if not specified for robust testing
+            const env = this.config.environment || 'local';
+
+            // If client wasn't passed in constructor, create it now
+            if (!this.client && typeof KBaseTableClient !== 'undefined') {
+                this.client = new KBaseTableClient({
+                    environment: env,
+                    // Allow explicit API URL override from config
+                    baseUrl: this.config.apiUrl || null
+                });
+            } else if (this.client) {
+                // If client exists, just update environment
+                this.client.setEnvironment(env);
+            }
+
+            // Render UI
+            this._renderUI();
+            this._bindEvents();
+            this._applyTheme();
+
+        } catch (error) {
+            console.error('TableRenderer init error:', error);
+            this.state.error = error.message;
+            this._renderError();
+        }
+    }
+
+    // =========================================================================
+    // UI RENDERING
+    // =========================================================================
+
+    /**
+     * Render the complete UI structure
+     * @private
+     */
+    _renderUI() {
+        this.container.innerHTML = `
+            <div class="ts-app" data-theme="${this.state.theme}" data-density="${this.state.density || 'normal'}">
+                <!-- Header -->
+                <header class="ts-header">
+                    <div class="ts-header-title">
+                        <i class="bi bi-grid-3x3-gap-fill"></i>
+                        <span id="ts-title">${this._escapeHtml(this.config.name)}</span>
+                    </div>
+                    <div class="ts-toolbar-group">
+                        <button class="ts-btn" id="ts-reset-btn" title="Reset Filters & Sorts">
+                            <i class="bi bi-arrow-counterclockwise"></i> Reset View
+                        </button>
+                        <div class="ts-dropdown">
+                            <button class="ts-btn ts-btn-icon" id="ts-settings-btn" title="View Settings">
+                                <i class="bi bi-gear"></i>
+                            </button>
+                            <div class="ts-panel" id="ts-settings-panel" style="right: 0; min-width: 200px;">
+                                <div style="font-weight: 600; margin-bottom: 0.5rem; color: var(--ts-primary);">Display Options</div>
+                                <div class="ts-setting-item">
+                                    <label>Theme</label>
+                                    <button class="ts-btn ts-btn-sm" id="ts-theme-toggle" style="width: 100%">
+                                        <i class="bi bi-moon-stars"></i> Toggle Theme
+                                    </button>
+                                </div>
+                                <div class="ts-setting-item" style="margin-top: 0.75rem;">
+                                    <label>Density</label>
+                                    <div class="ts-btn-group" style="display: flex; gap: 4px;">
+                                        <button class="ts-btn ts-btn-sm" data-density="compact" style="flex:1">Compact</button>
+                                        <button class="ts-btn ts-btn-sm" data-density="normal" style="flex:1">Normal</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </header>
+
+                <!-- Main content -->
+                <main class="ts-main">
+                    <div class="ts-container">
+                        <!-- Alert area -->
+                        <div id="ts-alerts"></div>
+
+                        <!-- Data Source Control -->
+                        <div class="ts-toolbar" id="ts-connection-toolbar">
+                        
+                        <!-- DATA CONNECTION BAR -->
+                        <div class="ts-toolbar ts-connection-toolbar">
+                             <div class="ts-toolbar-group" style="flex: 1;">
+                                <label style="font-size: 0.75rem; color: var(--ts-text-muted); font-weight: 500;">DATA SOURCE:</label>
+                                <input type="text" class="ts-input" id="ts-berdl-id" placeholder="BERDL Table ID (e.g., 76990/7/2)" style="flex: 1; font-family: var(--ts-font-mono);">
+                                <button class="ts-btn ts-btn-primary" id="ts-load-btn">
+                                    <i class="bi bi-cloud-download"></i> Load Data
+                                </button>
+                             </div>
+                             
+                             <div class="ts-toolbar-divider"></div>
+                             
+                             <div class="ts-toolbar-group">
+                                <input type="password" class="ts-input" id="ts-token-input" placeholder="KBase Token (Optional)" style="width: 150px;">
+                             </div>
+                        </div>
+
+                        <!-- CATEGORY TABS -->
+                        <div id="ts-category-panel" class="ts-category-panel"></div>
+
+                        <!-- TABLE CONTROLS -->
+                        <div class="ts-toolbar ts-table-toolbar">
+                            <div class="ts-toolbar-group" style="flex: 1;">
+                                <div style="position: relative; width: 100%; max-width: 400px;">
+                                    <i class="bi bi-search" style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--ts-text-muted);"></i>
+                                    <input type="text" class="ts-input ts-input-lg" id="ts-search" placeholder="Search Filter..." style="width: 100%; padding-left: 32px;">
+                                </div>
+                            </div>
+
+                            <div class="ts-toolbar-group">
+                                <button class="ts-btn" id="ts-filters-btn" title="Toggle Filters">
+                                    <i class="bi bi-funnel"></i> Filters 
+                                    <span id="ts-active-filter-badge" class="ts-badge ts-badge-info" style="display:none; margin-left: 4px;">0</span>
+                                </button>
+                                
+                                <div class="ts-dropdown">
+                                    <button class="ts-btn" id="ts-columns-btn">
+                                        <i class="bi bi-layout-three-columns"></i> Columns
+                                    </button>
+                                    <div class="ts-panel" id="ts-column-panel">
+                                        <!-- Columns injected here -->
+                                        <div style="padding: 1rem; text-align: center; color: var(--ts-text-muted);">
+                                            Load a table to manage columns
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="ts-toolbar-divider"></div>
+                                
+                                <button class="ts-btn" id="ts-refresh-btn" title="Refresh Data">
+                                    <i class="bi bi-arrow-clockwise"></i>
+                                </button>
+                                
+                                <div class="ts-dropdown">
+                                    <button class="ts-btn" id="ts-export-btn">
+                                        <i class="bi bi-download"></i> Export
+                                    </button>
+                                    <div class="ts-panel" id="ts-export-panel" style="min-width: 200px;">
+                                        <div class="ts-setting-item">
+                                            <button class="ts-btn" style="width: 100%; justify-content: flex-start; margin-bottom: 4px;" onclick="window.tableRenderer._exportCsv()">
+                                                <i class="bi bi-file-earmark-spreadsheet"></i> CSV (Current View)
+                                            </button>
+                                            <button class="ts-btn" style="width: 100%; justify-content: flex-start;" onclick="window.tableRenderer._exportCsvAll()">
+                                                <i class="bi bi-database-down"></i> CSV (All Rows)
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <button class="ts-btn ts-btn-danger" id="ts-reset-btn" title="Reset View">
+                                    Reset
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- ALERTS AREA -->
+                        <div id="ts-alert-area"></div>
+
+                        <!-- DATA TABLE -->
+                        <div class="ts-table-container">
+                            <div class="ts-table-scroll" id="ts-table-scroll">
+                                <div class="ts-empty">
+                                    <i class="bi bi-inbox"></i>
+                                    <h3>Ready to Explore</h3>
+                                    <p>Enter a Table ID above to load genomic data.</p>
+                                </div>
+                            </div>
+                            
+                            <!-- STATUS BAR -->
+                            <div class="ts-status-bar">
+                                <div class="ts-status-item" id="ts-status-text">
+                                    Ready
+                                </div>
+                                <div class="ts-pagination" id="ts-pagination">
+                                    <!-- Pagination injected here -->
+                                </div>
+                                <div class="ts-status-item">
+                                    <select class="ts-select" id="ts-page-size" style="padding: 2px 24px 2px 8px; height: 28px;">
+                                        <option value="20">20 / page</option>
+                                        <option value="50">50 / page</option>
+                                        <option value="100" selected>100 / page</option>
+                                        <option value="500">500 / page</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </main>
+
+                <!-- Hidden Tooltip -->
+                <div id="ts-tooltip" class="ts-tooltip"></div>
+            </div>
+        `;
+
+        // Cache DOM elements
+        this.dom = {
+            app: this.container.querySelector('.ts-app'),
+            header: this.container.querySelector('.ts-header'), // Fixed selector
+            settingsBtn: this.container.querySelector('#ts-settings-btn'),
+            settingsPanel: this.container.querySelector('#ts-settings-panel'),
+            themeToggle: this.container.querySelector('#ts-theme-toggle'),
+
+            loadBtn: this.container.querySelector('#ts-load-btn'),
+            berdlId: this.container.querySelector('#ts-berdl-id'),
+            tokenInput: this.container.querySelector('#ts-token-input'),
+
+            categoryPanel: this.container.querySelector('#ts-category-panel'),
+
+            search: this.container.querySelector('#ts-search'),
+            filtersBtn: this.container.querySelector('#ts-filters-btn'),
+            columnsBtn: this.container.querySelector('#ts-columns-btn'),
+            columnPanel: this.container.querySelector('#ts-column-panel'),
+            refreshBtn: this.container.querySelector('#ts-refresh-btn'),
+            exportBtn: this.container.querySelector('#ts-export-btn'),
+            exportPanel: this.container.querySelector('#ts-export-panel'),
+            resetBtn: this.container.querySelector('#ts-reset-btn'),
+
+            alertArea: this.container.querySelector('#ts-alert-area'),
+            tableScroll: this.container.querySelector('#ts-table-scroll'),
+            pagination: this.container.querySelector('#ts-pagination'),
+            pageSize: this.container.querySelector('#ts-page-size'),
+            statusText: this.container.querySelector('#ts-status-text'),
+            tooltip: this.container.querySelector('#ts-tooltip')
+        };
+
+        // Add stubs for removed elements to prevent errors in existing event listeners
+        this.dom.tableSelect = { addEventListener: () => { }, value: null };
+        this.dom.fetchBtn = { addEventListener: () => { }, disabled: false, classList: { add: () => { }, remove: () => { } } };
+        this.dom.envSelect = { addEventListener: () => { }, value: 'local' };
+
+        // Set initial page size
+        if (this.dom.pageSize) {
+            this.dom.pageSize.value = String(this.state.pageSize);
+        }
+    }
+
+    /**
+     * Bind event listeners
+     * @private
+     */
+    _bindEvents() {
+        // Load BERDLTable
+        this.dom.loadBtn.addEventListener('click', () => this._loadBerdlTable());
+        this.dom.berdlId.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') this._loadBerdlTable();
+        });
+
+        // Token input
+        if (this.dom.tokenInput) {
+            this.dom.tokenInput.addEventListener('change', () => {
+                this.setToken(this.dom.tokenInput.value);
+            });
+        }
+
+        // Table selection
+        this.dom.tableSelect.addEventListener('change', () => {
+            if (this.dom.tableSelect.value) {
+                this.dom.fetchBtn.disabled = false;
+                this.dom.fetchBtn.classList.add('ts-btn-primary');
+            } else {
+                this.dom.fetchBtn.disabled = true;
+                this.dom.fetchBtn.classList.remove('ts-btn-primary');
+            }
+        });
+
+        // Fetch data
+        this.dom.fetchBtn.addEventListener('click', () => this._fetchTableData());
+
+        // Environment change
+        this.dom.envSelect.addEventListener('change', () => {
+            if (this.client) {
+                this.client.setEnvironment(this.dom.envSelect.value);
+            }
+        });
+
+        // Search
+        this.dom.search.addEventListener('input', this._debounce(() => {
+            this.state.searchValue = this.dom.search.value;
+            this.state.currentPage = 0;
+            this._fetchTableData();
+        }, 300));
+
+        // Page size
+        this.dom.pageSize.addEventListener('change', () => {
+            this.state.pageSize = parseInt(this.dom.pageSize.value);
+            this.state.currentPage = 0;
+            this._fetchTableData();
+        });
+
+        // Toggle filters
+        this.dom.filtersBtn.addEventListener('click', () => {
+            const filterRow = this.dom.tableScroll.querySelector('.ts-filter-row');
+            if (filterRow) {
+                const isHidden = filterRow.style.display === 'none';
+                filterRow.style.display = isHidden ? '' : 'none';
+                this.dom.filtersBtn.classList.toggle('active', isHidden);
+            }
+        });
+
+        // Column panel toggle
+        this.dom.columnsBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.dom.columnPanel.classList.toggle('show');
+            this.dom.settingsPanel.classList.remove('show');
+            this.dom.exportPanel.classList.remove('show');
+        });
+
+        // Settings panel toggle
+        this.dom.settingsBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.dom.settingsPanel.classList.toggle('show');
+            this.dom.columnPanel.classList.remove('show');
+            this.dom.exportPanel.classList.remove('show');
+        });
+
+        // Export panel toggle
+        this.dom.exportBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.dom.exportPanel.classList.toggle('show');
+            this.dom.columnPanel.classList.remove('show');
+            this.dom.settingsPanel.classList.remove('show');
+        });
+
+        // Reset view
+        this.dom.resetBtn.addEventListener('click', () => this._resetView());
+
+        // Theme toggle
+        this.dom.themeToggle.addEventListener('click', () => this._toggleTheme());
+
+        // Density buttons
+        const densityBtns = this.dom.settingsPanel.querySelectorAll('[data-density]');
+        densityBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const density = btn.dataset.density;
+                this.state.density = density;
+                this.dom.app.dataset.density = density;
+                // Update active state
+                densityBtns.forEach(b => b.classList.toggle('active', b.dataset.density === density));
+            });
+        });
+
+        // Click outside to close panels
+        document.addEventListener('click', (e) => {
+            if (!this.dom.columnPanel.contains(e.target) && !this.dom.columnsBtn.contains(e.target)) {
+                this.dom.columnPanel.classList.remove('show');
+            }
+            if (!this.dom.settingsPanel.contains(e.target) && !this.dom.settingsBtn.contains(e.target)) {
+                this.dom.settingsPanel.classList.remove('show');
+            }
+            if (!this.dom.exportPanel.contains(e.target) && !this.dom.exportBtn.contains(e.target)) {
+                this.dom.exportPanel.classList.remove('show');
+            }
+        });
+
+        // Table header sorting
+        this.container.addEventListener('click', (e) => {
+            const th = e.target.closest('.ts-table th[data-col]');
+            if (th && !e.target.classList.contains('ts-col-filter')) {
+                const col = th.dataset.col;
+                if (this.state.sortColumn === col) {
+                    this.state.sortOrder = this.state.sortOrder === 'asc' ? 'desc' : 'asc';
+                } else {
+                    this.state.sortColumn = col;
+                    this.state.sortOrder = 'asc';
+                }
+                this.state.currentPage = 0;
+                this._fetchTableData();
+            }
+        });
+
+        // Column filter input
+        this.container.addEventListener('input', this._debounce((e) => {
+            if (e.target.dataset.filter) {
+                const col = e.target.dataset.filter;
+                const val = e.target.value.trim();
+
+                if (val) {
+                    this.state.columnFilters[col] = val;
+                } else {
+                    delete this.state.columnFilters[col];
+                }
+
+                // Update badge
+                const count = Object.keys(this.state.columnFilters).length;
+                const badge = this.container.querySelector('#ts-active-filter-badge');
+                if (badge) {
+                    badge.textContent = count;
+                    badge.style.display = count > 0 ? 'inline-flex' : 'none';
+                }
+
+                this.state.currentPage = 0;
+                this._fetchTableData();
+            }
+        }, 500));
+
+        // Pagination
+        this.container.addEventListener('click', (e) => {
+            const btn = e.target.closest('.ts-page-btn[data-page]');
+            if (btn && !btn.disabled) {
+                this.state.currentPage = parseInt(btn.dataset.page);
+                this._fetchTableData();
+            }
+        });
+
+        // Column visibility toggle
+        this.container.addEventListener('change', (e) => {
+            if (e.target.dataset.toggleCol) {
+                const col = e.target.dataset.toggleCol;
+                if (e.target.checked) {
+                    this.state.visibleColumns.add(col);
+                } else {
+                    this.state.visibleColumns.delete(col);
+                }
+                this._updateColumnVisibility();
+            }
+        });
+
+        // Category toggles
+        this.container.addEventListener('click', (e) => {
+            const toggle = e.target.closest('.ts-category-toggle');
+            if (toggle && this.categoryManager) {
+                const catId = toggle.dataset.category;
+                this.categoryManager.toggleCategory(catId);
+
+                // Active state handled by render
+                toggle.classList.toggle('active'); // Optimistic UI update
+
+                this.state.visibleColumns = this.categoryManager.getVisibleColumns();
+                this._updateColumnVisibility();
+                this._updateColumnPanel();
+            }
+        });
+
+        // Cell tooltip
+        this.container.addEventListener('mouseover', (e) => {
+            if (e.target.matches('.ts-table td')) {
+                this._showTooltip(e, e.target);
+            }
+        });
+
+        this.container.addEventListener('mouseout', (e) => {
+            if (e.target.matches('.ts-table td')) {
+                this._hideTooltip();
+            }
+        });
+
+        this.container.addEventListener('mousemove', (e) => {
+            if (this.dom.tooltip.classList.contains('show')) {
+                const tooltipWidth = this.dom.tooltip.offsetWidth;
+                const tooltipHeight = this.dom.tooltip.offsetHeight;
+
+                // Smart positioning to avoid off-screen
+                let left = e.clientX + 12;
+                let top = e.clientY + 12;
+
+                if (left + tooltipWidth > window.innerWidth) {
+                    left = e.clientX - tooltipWidth - 12;
+                }
+
+                if (top + tooltipHeight > window.innerHeight) {
+                    top = e.clientY - tooltipHeight - 12;
+                }
+
+                this.dom.tooltip.style.left = left + 'px';
+                this.dom.tooltip.style.top = top + 'px';
+            }
+        });
+    }
+
+    // =========================================================================
+    // DATA OPERATIONS
+    // =========================================================================
+
+    /**
+     * Load BERDLTable and list available tables
+     * @private
+     */
+    async _loadBerdlTable() {
+        const berdlId = this.dom.berdlId.value.trim();
+        if (!berdlId) {
+            this._showAlert('Please enter a BERDLTable ID', 'warning');
+            return;
+        }
+
+        this.state.berdlTableId = berdlId;
+        this._setLoading(true);
+
+        try {
+            if (!this.client) {
+                this.client = new KBaseTableClient({
+                    environment: this.dom.envSelect.value,
+                    token: this.token
+                });
+            }
+
+            const response = await this.client.listTables(berdlId);
+
+            // Populate table select
+            this.dom.tableSelect.innerHTML = '<option value="">Select a table...</option>';
+            (response.tables || []).forEach(table => {
+                const option = document.createElement('option');
+                option.value = table.name;
+                option.textContent = `${table.name} (${table.row_count || '?'} rows)`;
+                this.dom.tableSelect.appendChild(option);
+            });
+
+            this.dom.tableSelect.disabled = false;
+            this.dom.fetchBtn.disabled = true;
+            this._showAlert(`Loaded ${response.tables?.length || 0} tables`, 'success');
+
+        } catch (error) {
+            console.error('Load error:', error);
+            this._showAlert(`Error: ${error.message}`, 'danger');
+        } finally {
+            this._setLoading(false);
+        }
+    }
+
+    /**
+     * Fetch table data
+     * @private
+     */
+    async _fetchTableData() {
+        const tableName = this.dom.tableSelect.value;
+        if (!this.state.berdlTableId || !tableName) return;
+
+        this.state.tableName = tableName;
+        this._setLoading(true);
+
+        try {
+            const request = {
+                berdl_table_id: this.state.berdlTableId,
+                table_name: tableName,
+                limit: this.state.pageSize,
+                offset: this.state.currentPage * this.state.pageSize
+            };
+
+            if (this.state.sortColumn) {
+                request.sort_column = this.state.sortColumn;
+                request.sort_order = this.state.sortOrder.toUpperCase();
+            }
+
+            if (this.state.searchValue) {
+                request.search_value = this.state.searchValue;
+            }
+
+            if (Object.keys(this.state.columnFilters).length > 0) {
+                request.col_filter = this.state.columnFilters;
+            }
+
+            const response = await this.client.getTableData(request);
+
+            // Update state
+            // Update state: Start with API headers
+            const apiHeaders = response.headers || [];
+            this.state.headers = [...apiHeaders];
+
+            // Add configured columns that are not in API headers (synthetic columns)
+            if (this.config && this.config.columns) {
+                this.config.columns.forEach(col => {
+                    // Only add if it creates a new column (e.g. merge)
+                    if (!this.state.headers.includes(col.column)) {
+                        this.state.headers.push(col.column);
+                    }
+                });
+            }
+
+            this.state.data = response.data || [];
+            this.state.totalCount = response.total_count || 0;
+            this.state.filteredCount = response.filtered_count || 0;
+
+            // Initialize visible columns from category manager or show all
+            if (this.categoryManager && this.state.visibleColumns.size === 0) {
+                this.state.visibleColumns = this.categoryManager.getVisibleColumns();
+                // Also add any columns not in config
+                this.state.headers.forEach(h => {
+                    if (!this.columnConfigMap.has(h)) {
+                        this.state.visibleColumns.add(h);
+                    }
+                });
+            } else if (this.state.visibleColumns.size === 0) {
+                this.state.visibleColumns = new Set(this.state.headers);
+            }
+
+            // Render
+            this._renderCategoryPanel();
+            this._renderTable();
+            this._updateStatusBar(response);
+            this._updateColumnPanel();
+
+            // Show toolbars
+            this.dom.categoryPanel.style.display = this.config.categories?.length ? 'flex' : 'none';
+            this.dom.tableToolbar.style.display = 'flex';
+            this.dom.statusBar.style.display = 'flex';
+            this.dom.empty.style.display = 'none';
+
+        } catch (error) {
+            console.error('Fetch error:', error);
+            this._showAlert(`Error: ${error.message}`, 'danger');
+        } finally {
+            this._setLoading(false);
+        }
+    }
+
+    // =========================================================================
+    // TABLE RENDERING
+    // =========================================================================
+
+    /**
+     * Render the data table
+     * @private
+     */
+    _renderTable() {
+        if (this.state.headers.length === 0) {
+            this.dom.tableScroll.innerHTML = '<div class="ts-empty"><i class="bi bi-inbox"></i><p>No data available</p></div>';
+            return;
+        }
+
+        // Convert data to row objects for transformers
+        const rowObjects = this.state.data.map(row => {
+            const obj = {};
+            this.state.headers.forEach((h, i) => obj[h] = row[i]);
+            return obj;
+        });
+
+        let html = '<table class="ts-table">';
+
+        // Header row
+        html += '<thead><tr>';
+        this.state.headers.forEach(header => {
+            const config = this.columnConfigMap.get(header) || {};
+            const isVisible = this.state.visibleColumns.has(header);
+            const isSortable = config.sortable !== false;
+            const sortClass = this.state.sortColumn === header
+                ? (this.state.sortOrder === 'asc' ? 'sort-asc' : 'sort-desc')
+                : '';
+
+            html += `<th data-col="${this._escapeHtml(header)}" 
+                        class="${isVisible ? '' : 'hidden-col'} ${isSortable ? 'sortable' : ''} ${sortClass}">
+                        ${this._escapeHtml(config.displayName || header)}
+                    </th>`;
+        });
+        html += '</tr>';
+
+        // Filter row (hidden by default)
+        html += '<tr class="ts-filter-row" style="display: none;">';
+        this.state.headers.forEach(header => {
+            const config = this.columnConfigMap.get(header) || {};
+            const isVisible = this.state.visibleColumns.has(header);
+            const isFilterable = config.filterable !== false;
+
+            html += `<th class="${isVisible ? '' : 'hidden-col'}">`;
+            if (isFilterable) {
+                const filterValue = this.state.columnFilters[header] || '';
+                html += `<input type="text" class="ts-col-filter" 
+                            data-filter="${this._escapeHtml(header)}" 
+                            placeholder="Filter..." 
+                            value="${this._escapeHtml(filterValue)}">`;
+            }
+            html += '</th>';
+        });
+        html += '</tr></thead>';
+
+        // Body rows
+        html += '<tbody>';
+        rowObjects.forEach(rowObj => {
+            html += '<tr>';
+            this.state.headers.forEach((header, colIdx) => {
+                const config = this.columnConfigMap.get(header) || {};
+                const isVisible = this.state.visibleColumns.has(header);
+                const rawValue = rowObj[header];
+                const align = config.align ? `align-${config.align}` : '';
+
+                // Apply transformation
+                let cellContent;
+                if (config.transform && typeof Transformers !== 'undefined') {
+                    cellContent = Transformers.apply(rawValue, config.transform, rowObj);
+                } else {
+                    cellContent = rawValue !== null && rawValue !== undefined
+                        ? this._escapeHtml(String(rawValue))
+                        : '';
+                }
+
+                html += `<td data-col="${colIdx}" 
+                            data-raw="${this._escapeHtml(String(rawValue || ''))}"
+                            class="${isVisible ? '' : 'hidden-col'} ${align}">
+                            ${cellContent}
+                        </td>`;
+            });
+            html += '</tr>';
+        });
+        html += '</tbody></table>';
+
+        this.dom.tableScroll.innerHTML = html;
+    }
+
+    /**
+     * Render category toggle panel
+     * @private
+     */
+    _renderCategoryPanel() {
+        if (!this.categoryManager || !this.config.categories?.length) {
+            this.dom.categoryPanel.innerHTML = '';
+            return;
+        }
+
+        const categories = this.categoryManager.getAllCategories();
+
+        let html = '<span style="font-size: 0.75rem; color: var(--ts-text-muted); margin-right: 0.5rem;">Categories:</span>';
+
+        categories.forEach(cat => {
+            const iconHtml = cat.icon ? `<i class="${cat.icon}"></i>` : '';
+            const activeClass = cat.visible ? 'active' : '';
+            const style = cat.color ? `border-color: ${cat.color}40;` : '';
+
+            html += `<button class="ts-category-toggle ${activeClass}" 
+                            data-category="${this._escapeHtml(cat.id)}"
+                            style="${style}"
+                            title="${this._escapeHtml(cat.description || '')}">
+                        ${iconHtml}
+                        <span>${this._escapeHtml(cat.name)}</span>
+                        <span class="ts-category-count">${cat.columnCount}</span>
+                    </button>`;
+        });
+
+        this.dom.categoryPanel.innerHTML = html;
+    }
+
+    /**
+     * Update column visibility in table
+     * @private
+     */
+    _updateColumnVisibility() {
+        const table = this.dom.tableScroll.querySelector('.ts-table');
+        if (!table) return;
+
+        this.state.headers.forEach((header, idx) => {
+            const isVisible = this.state.visibleColumns.has(header);
+
+            // Update header cells
+            const ths = table.querySelectorAll(`th[data-col="${header}"], .ts-filter-row th:nth-child(${idx + 1})`);
+            ths.forEach(th => th.classList.toggle('hidden-col', !isVisible));
+
+            // Update data cells
+            const tds = table.querySelectorAll(`td[data-col="${idx}"]`);
+            tds.forEach(td => td.classList.toggle('hidden-col', !isVisible));
+        });
+    }
+
+    /**
+     * Update column visibility panel
+     * @private
+     */
+    _updateColumnPanel() {
+        let html = '<div style="margin-bottom: 0.5rem; display: flex; gap: 4px;">';
+        html += '<button class="ts-btn ts-btn-sm" id="ts-select-all-cols">All</button>';
+        html += '<button class="ts-btn ts-btn-sm" id="ts-select-none-cols">None</button>';
+        html += '</div>';
+
+        this.state.headers.forEach(header => {
+            const config = this.columnConfigMap.get(header) || {};
+            const isVisible = this.state.visibleColumns.has(header);
+            const displayName = config.displayName || header;
+
+            html += `<label class="ts-col-toggle">
+                        <input type="checkbox" data-toggle-col="${this._escapeHtml(header)}" 
+                               ${isVisible ? 'checked' : ''}>
+                        <span>${this._escapeHtml(displayName)}</span>
+                    </label>`;
+        });
+
+        this.dom.columnPanel.innerHTML = html;
+
+        // Bind select all/none
+        this.dom.columnPanel.querySelector('#ts-select-all-cols')?.addEventListener('click', () => {
+            this.state.visibleColumns = new Set(this.state.headers);
+            this._updateColumnVisibility();
+            this._updateColumnPanel();
+        });
+
+        this.dom.columnPanel.querySelector('#ts-select-none-cols')?.addEventListener('click', () => {
+            this.state.visibleColumns.clear();
+            this._updateColumnVisibility();
+            this._updateColumnPanel();
+        });
+    }
+
+    /**
+     * Update status bar with detailed metrics
+     * @private
+     */
+    _updateStatusBar(response) {
+        // Calculate range
+        const total = this.state.filteredCount;
+        const start = total === 0 ? 0 : (this.state.currentPage * this.state.pageSize) + 1;
+        const end = Math.min((this.state.currentPage + 1) * this.state.pageSize, total);
+
+        // Status Text
+        let statusHtml = `
+            <div class="ts-status-item">
+                <span>Showing</span>
+                <span class="ts-status-value">${start.toLocaleString()} - ${end.toLocaleString()}</span>
+                <span>of</span>
+                <span class="ts-status-value">${total.toLocaleString()}</span>
+                <span>rows</span>
+            </div>
+        `;
+
+        if (this.state.filteredCount < this.state.totalCount) {
+            statusHtml += `
+                <div class="ts-status-item">
+                    <span style="opacity: 0.7">(filtered from ${this.state.totalCount.toLocaleString()})</span>
+                </div>
+             `;
+        }
+
+        if (response.response_time_ms) {
+            statusHtml += `
+                <div class="ts-status-item" style="margin-left: auto;">
+                    <i class="bi bi-lightning-charge" style="color: var(--ts-warning);"></i>
+                    <span>${response.response_time_ms.toFixed(0)} ms</span>
+                </div>
+            `;
+        }
+
+        // We replace the individual spans with this robust HTML
+        // Note: The original generic _renderUI setup created generic spans (ts-status-text), 
+        // we might need to query the container directly or rebuild it.
+        // Let's assume we can wipe ts-status-bar and rebuild it if needed, or target specific containers.
+        // Looking at _renderUI: it has <div class="ts-status-bar" id="ts-status-bar"><span id="ts-status-text"></span><div style="flex:1"></div><div id="ts-pagination"></div></div>
+
+        if (this.dom.statusText) {
+            this.dom.statusText.innerHTML = statusHtml;
+            // Ensure the status text container flexes correctly
+            this.dom.statusText.style.display = 'flex';
+            this.dom.statusText.style.gap = '1rem';
+            this.dom.statusText.style.alignItems = 'center';
+        }
+
+        // Render pagination
+        this._renderPagination();
+    }
+
+    /**
+     * Render pagination controls
+     * @private
+     */
+    _renderPagination() {
+        const totalPages = Math.ceil(this.state.filteredCount / this.state.pageSize);
+        if (totalPages <= 1) {
+            this.dom.pagination.innerHTML = '';
+            return;
+        }
+
+        let html = '';
+
+        // First / Prev
+        html += `<button class="ts-page-btn" data-page="0" ${this.state.currentPage === 0 ? 'disabled' : ''} title="First Page">
+                    <i class="bi bi-chevron-double-left"></i>
+                </button>`;
+        html += `<button class="ts-page-btn" data-page="${this.state.currentPage - 1}" 
+                    ${this.state.currentPage === 0 ? 'disabled' : ''} title="Previous Page">
+                    <i class="bi bi-chevron-left"></i>
+                </button>`;
+
+        // Smart Page numbers (Show first, last, and window around current)
+        const windowSize = 2; // +/- 2 pages
+        const startPage = Math.max(0, this.state.currentPage - windowSize);
+        const endPage = Math.min(totalPages - 1, this.state.currentPage + windowSize);
+
+        if (startPage > 0) {
+            html += `<span style="padding: 0 4px; opacity: 0.5;">...</span>`;
+        }
+
+        for (let i = startPage; i <= endPage; i++) {
+            html += `<button class="ts-page-btn ${i === this.state.currentPage ? 'active' : ''}" 
+                        data-page="${i}">${i + 1}</button>`;
+        }
+
+        if (endPage < totalPages - 1) {
+            html += `<span style="padding: 0 4px; opacity: 0.5;">...</span>`;
+        }
+
+        // Next / Last
+        html += `<button class="ts-page-btn" data-page="${this.state.currentPage + 1}" 
+                    ${this.state.currentPage >= totalPages - 1 ? 'disabled' : ''} title="Next Page">
+                    <i class="bi bi-chevron-right"></i>
+                </button>`;
+        html += `<button class="ts-page-btn" data-page="${totalPages - 1}" 
+                    ${this.state.currentPage >= totalPages - 1 ? 'disabled' : ''} title="Last Page">
+                    <i class="bi bi-chevron-double-right"></i>
+                </button>`;
+
+        this.dom.pagination.innerHTML = html;
+    }
+
+    // =========================================================================
+    // UI HELPERS
+    // =========================================================================
+
+    /**
+     * Show loading state
+     * @private
+     */
+    _setLoading(loading) {
+        this.state.loading = loading;
+        this.dom.loadBtn.disabled = loading;
+        this.dom.fetchBtn.disabled = loading || !this.dom.tableSelect.value;
+
+        if (loading && this.dom.empty) {
+            this.dom.empty.innerHTML = '<div class="ts-spinner"></div><p>Loading...</p>';
+        }
+    }
+
+    /**
+     * Show alert message
+     * @private
+     */
+    _showAlert(message, type = 'info') {
+        const alert = document.createElement('div');
+        alert.className = `ts-alert ts-alert-${type}`;
+        alert.innerHTML = `<i class="bi bi-${type === 'success' ? 'check-circle' : type === 'danger' ? 'x-circle' : 'info-circle'}"></i>
+                          <span>${this._escapeHtml(message)}</span>`;
+
+        this.dom.alerts.innerHTML = '';
+        this.dom.alerts.appendChild(alert);
+
+        // Auto-remove after 5 seconds
+        setTimeout(() => alert.remove(), 5000);
+    }
+
+    /**
+     * Show tooltip
+     * @private
+     */
+    _showTooltip(event, cell) {
+        const colIdx = parseInt(cell.dataset.col);
+        const header = this.state.headers[colIdx];
+        const rawValue = cell.dataset.raw;
+        const config = this.columnConfigMap.get(header) || {};
+
+        this.dom.tooltipHeader.textContent = config.displayName || header;
+        this.dom.tooltipValue.textContent = rawValue || '(empty)';
+        this.dom.tooltip.style.left = (event.clientX + 12) + 'px';
+        this.dom.tooltip.style.top = (event.clientY + 12) + 'px';
+        this.dom.tooltip.classList.add('show');
+    }
+
+    /**
+     * Hide tooltip
+     * @private
+     */
+    _hideTooltip() {
+        this.dom.tooltip.classList.remove('show');
+    }
+
+    /**
+     * Toggle theme
+     * @private
+     */
+    _toggleTheme() {
+        this.state.theme = this.state.theme === 'dark' ? 'light' : 'dark';
+        this._applyTheme();
+    }
+
+    /**
+     * Apply current theme
+     * @private
+     */
+    _applyTheme() {
+        this.dom.app.dataset.theme = this.state.theme;
+        const icon = this.dom.themeToggle.querySelector('i');
+        if (icon) {
+            icon.className = this.state.theme === 'dark' ? 'bi bi-sun' : 'bi bi-moon-stars';
+        }
+    }
+
+    /**
+     * Reset view to defaults
+     * @private
+     */
+    _resetView() {
+        this.state.visibleColumns = new Set(this.state.headers);
+        this.state.sortColumn = null;
+        this.state.sortOrder = 'asc';
+        this.state.columnFilters = {};
+        this.state.searchValue = '';
+        this.state.currentPage = 0;
+        this.dom.search.value = '';
+
+        if (this.categoryManager) {
+            this.categoryManager.resetToDefaults(this.config);
+            this.state.visibleColumns = this.categoryManager.getVisibleColumns();
+            // Add unconfigured columns
+            this.state.headers.forEach(h => {
+                if (!this.columnConfigMap.has(h)) {
+                    this.state.visibleColumns.add(h);
+                }
+            });
+        }
+
+        this._renderCategoryPanel();
+        this._fetchTableData();
+    }
+
+    /**
+     * Export current view to CSV
+     * @private
+     */
+    _exportCsv() {
+        const visibleHeaders = this.state.headers.filter(h => this.state.visibleColumns.has(h));
+
+        // Header row
+        let csv = visibleHeaders.map(h => `"${h.replace(/"/g, '""')}"`).join(',') + '\n';
+
+        // Data rows
+        this.state.data.forEach(row => {
+            const values = this.state.headers
+                .filter(h => this.state.visibleColumns.has(h))
+                .map((h, i) => {
+                    const idx = this.state.headers.indexOf(h);
+                    const val = row[idx];
+                    if (val === null || val === undefined) return '';
+                    return `"${String(val).replace(/"/g, '""')}"`;
+                });
+            csv += values.join(',') + '\n';
+        });
+
+        // Download
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `${this.state.tableName || 'export'}_${new Date().toISOString().slice(0, 10)}.csv`;
+        link.click();
+    }
+
+    /**
+     * Render error state
+     * @private
+     */
+    _renderError() {
+        this.container.innerHTML = `
+            <div class="ts-app">
+                <div class="ts-main">
+                    <div class="ts-alert ts-alert-danger">
+                        <i class="bi bi-exclamation-triangle"></i>
+                        <span>Error: ${this._escapeHtml(this.state.error)}</span>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    // =========================================================================
+    // UTILITY METHODS
+    // =========================================================================
+
+    /**
+     * Escape HTML
+     * @private
+     */
+    _escapeHtml(text) {
+        if (text === null || text === undefined) return '';
+        const div = document.createElement('div');
+        div.textContent = String(text);
+        return div.innerHTML;
+    }
+
+    /**
+     * Debounce function
+     * @private
+     */
+    _debounce(fn, delay) {
+        let timeout;
+        return (...args) => {
+            clearTimeout(timeout);
+            timeout = setTimeout(() => fn.apply(this, args), delay);
+        };
+    }
+
+    // =========================================================================
+    // PUBLIC API
+    // =========================================================================
+
+    /**
+     * Set KBase authentication token
+     * @param {string} token - KBase auth token
+     */
+    setToken(token) {
+        this.token = token;
+        if (this.client) {
+            this.client.setToken(token);
+        }
+    }
+
+    /**
+     * Load a specific BERDLTable and table
+     * @param {string} berdlTableId - BERDLTable object ID
+     * @param {string} tableName - Table name
+     */
+    async loadTable(berdlTableId, tableName) {
+        this.dom.berdlId.value = berdlTableId;
+        await this._loadBerdlTable();
+        this.dom.tableSelect.value = tableName;
+        await this._fetchTableData();
+    }
+
+    /**
+     * Get current data as array of objects
+     * @returns {Array<Object>} Current displayed data
+     */
+    getData() {
+        return this.state.data.map(row => {
+            const obj = {};
+            this.state.headers.forEach((h, i) => obj[h] = row[i]);
+            return obj;
+        });
+    }
+
+    /**
+     * Destroy the renderer and clean up
+     */
+    destroy() {
+        this.container.innerHTML = '';
+        this.config = null;
+        this.categoryManager = null;
+        this.client = null;
+    }
+}
+
+// Export for module usage
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = TableRenderer;
+}
+
+
+
+        // 3. Initialization Logic
+        document.addEventListener('DOMContentLoaded', async () => {
+            const setupScreen = document.getElementById('setup-screen');
+            const fileInput = document.getElementById('config-input');
+            const dropZone = document.getElementById('setup-drop-zone');
+            const pasteArea = document.getElementById('config-paste');
+            const errorMsg = document.getElementById('setup-error');
+            
+            function showError(msg) {
+                errorMsg.textContent = msg;
+                errorMsg.style.display = 'block';
+            }
+
+            async function initApp(config) {
+                try {
+                    const appContainer = document.getElementById('app');
+                    // Initialize renderer
+                    window.renderer = new TableRenderer(config);
+                    await window.renderer.render(appContainer);
+                    
+                    // Hide setup screen with fade
+                    setupScreen.style.opacity = '0';
+                    setTimeout(() => setupScreen.style.display = 'none', 300);
+                } catch (e) {
+                    console.error("Initialization Failed:", e);
+                    showError("Failed to initialize viewer: " + e.message);
+                }
+            }
+
+            // File Loading Logic
+            function handleFile(file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const config = JSON.parse(e.target.result);
+                        initApp(config);
+                    } catch (err) {
+                        showError("Invalid JSON file");
+                    }
+                };
+                reader.readAsText(file);
+            }
+
+            // Drag & Drop
+            dropZone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dropZone.classList.add('dragover');
+            });
+            dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+            dropZone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropZone.classList.remove('dragover');
+                if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+            });
+
+            // Input Change
+            fileInput.addEventListener('change', (e) => {
+                if (e.target.files.length) handleFile(e.target.files[0]);
+            });
+
+            // Global Pasted Config Handler
+            window.loadPastedConfig = () => {
+                try {
+                    const val = pasteArea.value.trim();
+                    if (!val) return;
+                    const config = JSON.parse(val);
+                    initApp(config);
+                } catch (e) {
+                    showError("Invalid JSON text");
+                }
+            };
+            
+            // --- AUTO-LOAD LOGIC ---
+            // 1. Check URL param ?config=...
+            const urlParams = new URLSearchParams(window.location.search);
+            const configUrl = urlParams.get('config');
+            
+            if (configUrl) {
+                try {
+                    const resp = await fetch(configUrl);
+                    if (!resp.ok) throw new Error('Failed to fetch config');
+                    const config = await resp.json();
+                    initApp(config);
+                    return;
+                } catch (e) {
+                    console.warn("URL config failed, trying local...", e);
+                }
+            }
+            
+            // 2. Try fetching local relative config (if served)
+            /*
+            try {
+                const controller = new AbortController();
+                const id = setTimeout(() => controller.abort(), 500); // 500ms timeout
+                const resp = await fetch('configs/genome-data.config.json', { signal: controller.signal });
+                clearTimeout(id);
+                if (resp.ok) {
+                    const config = await resp.json();
+                    initApp(config);
+                    return;
+                }
+            } catch (e) {
+                // Ignore fetch errors (likely file:// protocol)
+            }
+            */
+
+            // 3. Use Embedded Default (Fastest, most robust for this replica)
+            if (DEFAULT_CONFIG) {
+                console.log("Using embedded default config");
+                initApp(DEFAULT_CONFIG);
+            } else {
+                // Stay on setup screen
+            }
+
+        });
+    </script>
+</body>
+</html>

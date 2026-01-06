@@ -1,0 +1,30 @@
+# Extra
+extra/
+
+# Dependencies
+node_modules/
+
+# Environment files
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Cache
+.cache/
+*.db
+
+# Logs
+*.log
+
+# Build artifacts
+dist/
+build/
