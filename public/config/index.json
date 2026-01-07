@@ -3,8 +3,8 @@
         "name": "DataTables Viewer",
         "version": "3.1.0",
         "description": "Professional researcher-grade data exploration tool",
-        "apiUrl": "https://appdev.kbase.us/services/berdl_table_scanner",
-        "environment": "appdev"
+        "apiUrl": "http://localhost:8000", 
+        "environment": "local"
     },
     "dataTypes": {
         "genome_data_tables": {
