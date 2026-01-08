@@ -1,8 +1,7 @@
 import { Component, type ComponentOptions } from '../Component';
 import { ConfigManager } from '../../utils/config-manager';
-import { StateManager } from '../../core/StateManager';
+import { StateManager, type AppState } from '../../core/StateManager';
 import { CategoryManager } from '../../core/CategoryManager';
-// import { type ApiConfig } from '../../types/schema'; // Unused
 
 export interface SidebarOptions extends ComponentOptions {
     configManager: ConfigManager;
@@ -20,6 +19,7 @@ export class Sidebar extends Component {
     private stateManager: StateManager;
     private categoryManager: CategoryManager | null = null;
     private options: SidebarOptions;
+    private expandedCategories: Set<string> = new Set();
 
     constructor(options: SidebarOptions) {
         super(options);
@@ -28,11 +28,11 @@ export class Sidebar extends Component {
         this.options = options;
 
         // Subscribe to state changes to update UI
-        this.stateManager.subscribe(state => {
+        this.stateManager.subscribe((state: AppState) => {
             if (this.dom.loadBtn) {
                 this.dom.loadBtn.innerHTML = state.loading
                     ? '<span class="ts-spinner"></span> Loading...'
-                    : '<i class="bi bi-database-fill"></i> Load Data';
+                    : '<i class="bi bi-lightning-charge-fill"></i> Load Data';
                 (this.dom.loadBtn as HTMLButtonElement).disabled = state.loading;
 
                 if (state.activeTableName && state.availableTables.length > 0) {
@@ -40,32 +40,34 @@ export class Sidebar extends Component {
                 }
             }
 
-            // Re-render column list when columns change
-            if (state.columns.length > 0 && this.dom.colList) {
-                this.renderColumnList();
+            // Re-render control list when columns change
+            if (state.columns.length > 0 && this.dom.controlList) {
+                this.renderControlList();
             }
+
+            // Update filter chips if they changed
+            this.renderFilterChips();
         });
     }
 
     public setCategoryManager(manager: CategoryManager) {
         this.categoryManager = manager;
-        this.renderCategories();
-        this.renderColumnList();
-        // Auto-expand columns section when data is loaded
+        this.renderControlList();
+        // Auto-expand control section when data is loaded
         this.expandColumnsSection();
     }
 
-    /** Expand the columns section to show available columns */
+    /** Expand the control section to show available columns */
     public expandColumnsSection() {
-        if (this.dom.colsSection) {
-            this.dom.colsSection.style.display = 'block';
+        if (this.dom.controlSection) {
+            this.dom.controlSection.style.display = 'block';
         }
     }
 
-    /** Collapse the columns section */
+    /** Collapse the control section */
     public collapseColumnsSection() {
-        if (this.dom.colsSection) {
-            this.dom.colsSection.style.display = 'none';
+        if (this.dom.controlSection) {
+            this.dom.controlSection.style.display = 'none';
         }
     }
 
@@ -81,23 +83,28 @@ export class Sidebar extends Component {
 
             <div class="ts-sidebar-body">
                 <!-- Connection -->
-                <section class="ts-section" style="padding: 0 4px;">
-                    <div class="ts-section-header">
+                <section class="ts-section" id="ts-source-section" style="padding: 0 4px;">
+                    <div class="ts-section-header collapsible" id="ts-source-head">
                         <span class="ts-section-title">Data Source</span>
-                        <i class="bi bi-database-fill-gear ts-text-muted"></i>
+                        <div style="display:flex; align-items:center; gap:8px">
+                            <i class="bi bi-chevron-down ts-section-arrow" id="ts-source-arrow"></i>
+                            <i class="bi bi-database-fill-gear ts-text-muted"></i>
+                        </div>
                     </div>
-                    <div class="ts-field">
-                        <label class="ts-label">Auth Token <span style="color:red">*</span></label>
-                        <input type="password" class="ts-input" id="ts-token" placeholder="Enter KBase token...">
+                    <div id="ts-source-body">
+                        <div class="ts-field">
+                            <label class="ts-label">Auth Token <span style="color:red">*</span></label>
+                            <input type="password" class="ts-input" id="ts-token" placeholder="Enter KBase token...">
+                        </div>
+                        <div class="ts-field">
+                            <label class="ts-label">Object ID / UPA</label>
+                            <input type="text" class="ts-input" id="ts-berdl" 
+                                placeholder="e.g., 76990/7/2" value="76990/7/2">
+                        </div>
+                        <button class="ts-btn-primary" id="ts-load" style="height: 34px;">
+                            <i class="bi bi-lightning-charge-fill"></i> Load Data
+                        </button>
                     </div>
-                    <div class="ts-field">
-                        <label class="ts-label">Object ID / UPA</label>
-                        <input type="text" class="ts-input" id="ts-berdl" 
-                            placeholder="e.g., 76990/7/2" value="76990/7/2">
-                    </div>
-                    <button class="ts-btn-primary" id="ts-load">
-                        <i class="bi bi-lightning-charge-fill"></i> Load Data
-                    </button>
                 </section>
 
                 <!-- Table Selection -->
@@ -111,22 +118,16 @@ export class Sidebar extends Component {
                     </button>
                 </section>
 
-                <!-- Columns -->
-                <section class="ts-section" id="ts-cols-section" style="display:none; padding: 0 4px;">
+                <!-- Data Control (Unified Categories & Columns) -->
+                <section class="ts-section" id="ts-control-section" style="display:none; padding: 0 4px;">
                     <div class="ts-section-header">
-                        <span class="ts-section-title">Columns</span>
-                        <button class="ts-section-action" id="ts-cols-toggle-all">Show All</button>
+                        <span class="ts-section-title">Data Control</span>
+                        <div class="ts-section-actions">
+                            <button class="ts-section-action" id="ts-control-expand-all">Expand All</button>
+                            <button class="ts-section-action" id="ts-control-show-all">Show All</button>
+                        </div>
                     </div>
-                    <div class="ts-col-list" id="ts-col-list"></div>
-                </section>
-
-                <!-- Categories -->
-                <section class="ts-section" id="ts-cat-section" style="display:none; padding: 0 4px;">
-                    <div class="ts-section-header">
-                        <span class="ts-section-title">Categories</span>
-                        <button class="ts-section-action" id="ts-cat-toggle-all">Show All</button>
-                    </div>
-                    <ul class="ts-toggle-list" id="ts-cat-list"></ul>
+                    <div class="ts-control-list" id="ts-control-list"></div>
                 </section>
 
                 <!-- Active Filters -->
@@ -137,53 +138,61 @@ export class Sidebar extends Component {
                     </div>
                     <div class="ts-filter-chips" id="ts-filter-chips"></div>
                 </section>
-
-                <!-- Actions -->
-                <section class="ts-section" style="padding: 0 4px; margin-top: auto;">
-                    <div class="ts-btn-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                        <button class="ts-btn-secondary" id="ts-export">
-                            <i class="bi bi-download"></i> Export
-                        </button>
-                        <button class="ts-btn-secondary" id="ts-reset">
-                            <i class="bi bi-arrow-counterclockwise"></i> Reset
-                        </button>
-                    </div>
-                </section>
             </div>
+
+            <footer class="ts-sidebar-footer">
+                <div class="ts-btn-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                    <button class="ts-btn-secondary" id="ts-export">
+                        <i class="bi bi-download"></i> Export
+                    </button>
+                    <button class="ts-btn-secondary" id="ts-reset">
+                        <i class="bi bi-arrow-counterclockwise"></i> Reset
+                    </button>
+                </div>
+            </footer>
         `;
         this.cacheDom({
-            // apiField: '#ts-api-field', // Removed
-            // apiSelect: '#ts-api-select', // Removed
             token: '#ts-token',
             berdl: '#ts-berdl',
             loadBtn: '#ts-load',
+            sourceHead: '#ts-source-head',
+            sourceBody: '#ts-source-body',
+            sourceArrow: '#ts-source-arrow',
             navSection: '#ts-nav-section',
             tableSelect: '#ts-table-select',
-            viewSchema: '#ts-view-schema', // New ID
-            colsSection: '#ts-cols-section',
-            colList: '#ts-col-list',
-            colsToggleAll: '#ts-cols-toggle-all',
-            catSection: '#ts-cat-section',
-            catList: '#ts-cat-list',
-            catToggleAll: '#ts-cat-toggle-all',
+            viewSchema: '#ts-view-schema',
+            controlSection: '#ts-control-section',
+            controlList: '#ts-control-list',
+            controlExpandAll: '#ts-control-expand-all',
+            controlShowAll: '#ts-control-show-all',
             filtersSection: '#ts-filters-section',
             filterChips: '#ts-filter-chips',
             clearFilters: '#ts-clear-filters',
             export: '#ts-export',
             reset: '#ts-reset'
         });
-
-        // this.initApiSelector(); // Removed
     }
 
     protected bindEvents() {
         // Load
-        this.dom.loadBtn?.addEventListener('click', () => this.options.onLoadData());
-        this.dom.berdl?.addEventListener('keypress', (e: KeyboardEvent) => {
-            if (e.key === 'Enter') this.options.onLoadData();
+        this.dom.loadBtn?.addEventListener('click', () => {
+            this.options.onLoadData();
+            // Collapse source on load to save space
+            if (this.dom.sourceBody) {
+                this.dom.sourceBody.style.display = 'none';
+                this.dom.sourceArrow.classList.add('collapsed');
+            }
         });
 
-        // API Select logic removed
+        this.dom.sourceHead?.addEventListener('click', () => {
+            const isHidden = this.dom.sourceBody.style.display === 'none';
+            this.dom.sourceBody.style.display = isHidden ? 'block' : 'none';
+            this.dom.sourceArrow.classList.toggle('collapsed', !isHidden);
+        });
+
+        this.dom.berdl?.addEventListener('keypress', (e: KeyboardEvent) => {
+            if (e.key === 'Enter') this.dom.loadBtn.click();
+        });
 
         // Table Select
         this.dom.tableSelect?.addEventListener('change', (e: Event) => {
@@ -194,72 +203,74 @@ export class Sidebar extends Component {
         this.dom.export?.addEventListener('click', () => this.options.onExport());
         this.dom.reset?.addEventListener('click', () => this.options.onReset());
 
-        // Column Toggles
-        this.dom.colsToggleAll?.addEventListener('click', () => {
-            // Logic relating to state updates for columns should ideally be in App or delegated
-            // For now, we'll manipulate state directly via manager if possible or emit event
-            // To keep it simple, we'll update state directly since we have the manager
-            this.toggleAllColumns();
-        });
+        // Control list delegation
+        this.dom.controlList?.addEventListener('click', (e: Event) => {
+            const target = e.target as HTMLElement;
 
-        // Category toggle all
-        this.dom.catToggleAll?.addEventListener('click', () => {
-            if (this.categoryManager) {
-                const allVisible = this.categoryManager.getAllCategories().every(c => c.visible);
-                this.categoryManager.getAllCategories().forEach(c => {
-                    if (allVisible !== c.visible) return;
-                    this.categoryManager!.toggleCategory(c.id);
-                });
-                this.stateManager.update({ visibleColumns: this.categoryManager.getVisibleColumns() });
-                this.renderCategories();
-                this.renderColumnList();
-                // We need to trigger a grid refresh - using state update usually does it if subscribed
-            }
-        });
-
-        // Categories list click
-        this.dom.catList?.addEventListener('click', (e: Event) => {
-            const item = (e.target as HTMLElement).closest('.ts-toggle-item') as HTMLElement;
-            if (item && this.categoryManager) {
-                const catId = item.dataset.cat;
-                if (catId) {
+            // Category Toggle Switch
+            if (target.closest('.ts-switch')) {
+                const item = target.closest('.ts-cat-group') as HTMLElement;
+                const catId = item?.dataset.cat;
+                if (catId && this.categoryManager) {
                     this.categoryManager.toggleCategory(catId);
                     this.stateManager.update({ visibleColumns: this.categoryManager.getVisibleColumns() });
-                    this.renderCategories();
-                    this.renderColumnList();
+                    this.renderControlList();
                 }
+                return;
             }
-        });
 
-        // Column list click delegation
-        this.dom.colList?.addEventListener('change', (e: Event) => {
-            const target = e.target as HTMLInputElement;
+            // Category Expand/Collapse
+            if (target.closest('.ts-cat-head')) {
+                const item = target.closest('.ts-cat-group') as HTMLElement;
+                const catId = item?.dataset.cat;
+                if (catId) {
+                    if (this.expandedCategories.has(catId)) this.expandedCategories.delete(catId);
+                    else this.expandedCategories.add(catId);
+                    item?.classList.toggle('expanded');
+                }
+                return;
+            }
+
+            // Column Checkbox
             if (target.matches('input[type="checkbox"]')) {
-                const col = target.dataset.col;
+                const col = (target as HTMLInputElement).dataset.col;
                 if (col) {
                     const state = this.stateManager.getState();
-                    if (target.checked) state.visibleColumns.add(col);
+                    if ((target as HTMLInputElement).checked) state.visibleColumns.add(col);
                     else state.visibleColumns.delete(col);
                     this.stateManager.update({ visibleColumns: state.visibleColumns });
                 }
             }
         });
 
-        // Schema view click
-        // Note: we bind to document body delegation for safety or just re-bind on state change?
-        // Actually, just binding to this.dom.viewSchema is fine because it stays in DOM unless re-rendered.
-        // But if `updateTables` re-renders the parent section, we lose it?
-        // Wait, updateTables modifies dom.navSection children? No, it modifies tableSelect. 
-        // navSection is just shown/hidden.
-        // But let's make sure the button exists.
+        // Global Control Actions
+        this.dom.controlExpandAll?.addEventListener('click', () => {
+            const groups = this.dom.controlList.querySelectorAll('.ts-cat-group');
+            const anyCollapsed = Array.from(groups).some((g: Element) => !g.classList.contains('expanded'));
+            groups.forEach((g: Element) => {
+                const catId = (g as HTMLElement).dataset.cat;
+                if (anyCollapsed) {
+                    g.classList.add('expanded');
+                    if (catId) this.expandedCategories.add(catId);
+                } else {
+                    g.classList.remove('expanded');
+                    if (catId) this.expandedCategories.delete(catId);
+                }
+            });
+            this.dom.controlExpandAll.textContent = anyCollapsed ? 'Collapse All' : 'Expand All';
+        });
 
+        this.dom.controlShowAll?.addEventListener('click', () => {
+            this.toggleAllColumns();
+        });
+
+        // Schema view click
         if (this.dom.viewSchema) {
             this.dom.viewSchema.addEventListener('click', () => {
                 const state = this.stateManager.getState();
                 if (state.activeTableName) {
                     this.options.onShowSchema(state.activeTableName);
                 } else {
-                    // Fallback if no table is explicitly active but we have tables?
                     const select = this.dom.tableSelect as HTMLSelectElement;
                     if (select && select.value) {
                         this.options.onShowSchema(select.value);
@@ -269,12 +280,11 @@ export class Sidebar extends Component {
                 }
             });
         }
-    }
 
-    // Public API for App to drive UI updates
-
-    public initApiSelector() {
-        // Selector removed
+        // Clear filters
+        this.dom.clearFilters?.addEventListener('click', () => {
+            this.stateManager.update({ columnFilters: {}, currentPage: 0 });
+        });
     }
 
     public updateTables(tables: any[]) {
@@ -297,58 +307,78 @@ export class Sidebar extends Component {
     }
 
     public updateTableInfo(name: string) {
-        // Just update select value if not matching
         if (this.dom.tableSelect && (this.dom.tableSelect as HTMLSelectElement).value !== name) {
             (this.dom.tableSelect as HTMLSelectElement).value = name;
         }
     }
 
+    public renderControlList() {
+        if (!this.dom.controlList) return;
+        this.dom.controlSection.style.display = 'block';
 
-    public renderColumnList() {
-        if (!this.dom.colList) return;
-        this.dom.colsSection.style.display = 'block'; // Ensure visible
         const state = this.stateManager.getState();
-        this.dom.colList.innerHTML = state.columns.map(c => `
-            <label class="ts-col-item">
-                <input type="checkbox" data-col="${c.column}" ${state.visibleColumns.has(c.column) ? 'checked' : ''}>
-                <span>${c.displayName || c.column}</span>
-            </label>
-        `).join('');
+        const cats = this.categoryManager ? this.categoryManager.getAllCategories() : [];
+        const colsByCat = this.categoryManager ? this.categoryManager.getColumnsByCategory() : new Map();
+        const uncategorized = this.categoryManager ? this.categoryManager.getUncategorizedColumns() : state.columns.map(c => c.column);
 
+        let html = '';
+
+        // Render Categorized Groups
+        cats.forEach(cat => {
+            const catCols = colsByCat.get(cat.id) || [];
+            if (catCols.length === 0) return;
+            html += this.renderCategoryGroup(cat, catCols, state);
+        });
+
+        // Render Uncategorized Group
+        if (uncategorized.length > 0) {
+            html += this.renderCategoryGroup({
+                id: 'other',
+                name: 'Other Attributes',
+                icon: 'bi-three-dots',
+                color: '#64748b',
+                visible: true
+            } as any, uncategorized, state, true);
+        }
+
+        this.dom.controlList.innerHTML = html;
+
+        // Update Show All text
         const allVisible = state.columns.every(c => state.visibleColumns.has(c.column));
-        if (this.dom.colsToggleAll) this.dom.colsToggleAll.textContent = allVisible ? 'Hide All' : 'Show All';
+        if (this.dom.controlShowAll) this.dom.controlShowAll.textContent = allVisible ? 'Hide All' : 'Show All';
     }
 
+    private renderCategoryGroup(cat: any, colNames: string[], state: AppState, isUncategorized = false) {
+        const stateCols = state.columns.reduce((acc: any, c: any) => { acc[c.column] = c; return acc; }, {});
+        const isExpanded = this.expandedCategories.has(cat.id);
 
-    public renderCategories() {
-        if (!this.categoryManager || !this.dom.catList) return;
-        const cats = this.categoryManager.getAllCategories();
-        this.dom.catList.innerHTML = '';
-
-        if (cats.length === 0) { this.dom.catSection.style.display = 'none'; return; }
-
-        this.dom.catSection.style.display = 'block';
-        const allVisible = cats.every(c => c.visible);
-        if (this.dom.catToggleAll) this.dom.catToggleAll.textContent = allVisible ? 'Hide All' : 'Show All';
-
-        cats.forEach(cat => {
-            const li = document.createElement('li');
-            li.className = `ts-toggle-item ${cat.visible ? 'active' : ''}`;
-            li.dataset.cat = cat.id;
-            li.innerHTML = `
-                <div class="ts-toggle-label">
-                    <i class="${cat.icon || 'bi bi-folder-fill'}" style="color:${cat.color || 'var(--accent)'}"></i>
-                    <span>${cat.name}</span>
+        return `
+            <div class="ts-cat-group ${isExpanded ? 'expanded' : ''}" data-cat="${cat.id}">
+                <div class="ts-cat-head">
+                    <div class="ts-cat-info">
+                        <i class="bi bi-chevron-down ts-cat-arrow"></i>
+                        <i class="${cat.icon || 'bi bi-folder-fill'}" style="color:${cat.color || 'var(--c-accent)'}"></i>
+                        <span class="ts-cat-name">${cat.name}</span>
+                        <span class="ts-cat-count">${colNames.length}</span>
+                    </div>
+                    ${!isUncategorized ? `<div class="ts-switch ${cat.visible ? 'on' : ''}"></div>` : ''}
                 </div>
-                <div class="ts-switch ${cat.visible ? 'on' : ''}"></div>
-            `;
-            this.dom.catList.appendChild(li);
-        });
+                <div class="ts-cat-cols">
+                    ${colNames.map(colName => {
+            const col = stateCols[colName] || { column: colName, displayName: colName };
+            return `
+                            <label class="ts-col-item">
+                                <input type="checkbox" data-col="${colName}" ${state.visibleColumns.has(colName) ? 'checked' : ''}>
+                                <span>${col.displayName || colName}</span>
+                            </label>
+                        `;
+        }).join('')}
+                </div>
+            </div>
+        `;
     }
 
     public renderFilterChips() {
-        // Re-implement filter chips logic here or keep in App?
-        // It's better here as it's part of the Sidebar "Active Filters" section
         const state = this.stateManager.getState();
         const filters = state.columnFilters;
         const hasFilters = Object.keys(filters).length > 0;
@@ -357,23 +387,20 @@ export class Sidebar extends Component {
         if (!this.dom.filterChips) return;
 
         this.dom.filterChips.innerHTML = Object.entries(filters).map(([col, val]) => `
-             <div class="ts-chip">
-                 <span>${col}: ${val}</span>
-                 <button class="ts-chip-clear" data-col="${col}"><i class="bi bi-x"></i></button>
-             </div>
-         `).join('');
+            <div class="ts-chip">
+                <span class="ts-chip-label">${col}:</span>
+                <span class="ts-chip-value">${val}</span>
+                <button class="ts-chip-clear" data-col="${col}"><i class="bi bi-x"></i></button>
+            </div>
+        `).join('');
 
-        // Bind chip clear events
         this.dom.filterChips.querySelectorAll('.ts-chip-clear').forEach(btn => {
-            btn.addEventListener('click', (e) => {
+            btn.addEventListener('click', (e: Event) => {
                 const col = (e.currentTarget as HTMLElement).dataset.col;
                 if (col) {
                     const newState = { ...this.stateManager.getState().columnFilters };
                     delete newState[col];
                     this.stateManager.update({ columnFilters: newState, currentPage: 0 });
-                    // This trigger update via subscription, but we might need to trigger data fetch
-                    // This is where "App" orchestrator pattern shines. 
-                    // Ideally we emit event, but for now StateManager subscription in App can handle fetch
                 }
             });
         });
@@ -382,16 +409,17 @@ export class Sidebar extends Component {
     private toggleAllColumns() {
         const state = this.stateManager.getState();
         const allVisible = state.columns.every(c => state.visibleColumns.has(c.column));
+        const newVisible = new Set<string>(state.visibleColumns);
+
         state.columns.forEach(c => {
-            if (allVisible) state.visibleColumns.delete(c.column);
-            else state.visibleColumns.add(c.column);
+            if (allVisible) newVisible.delete(c.column);
+            else newVisible.add(c.column);
         });
-        this.stateManager.update({ visibleColumns: state.visibleColumns });
-        this.renderColumnList();
-        // Render table triggers via state subscription in DataGrid
+
+        this.stateManager.update({ visibleColumns: newVisible });
+        this.renderControlList();
     }
 
-    // Accessors for values
     public getToken(): string {
         return (this.dom.token as HTMLInputElement)?.value || '';
     }
@@ -399,4 +427,8 @@ export class Sidebar extends Component {
     public getBerdlId(): string {
         return (this.dom.berdl as HTMLInputElement)?.value || '';
     }
+
+    // Compat methods for renderer subscription
+    public renderCategories() { this.renderControlList(); }
+    public renderColumnList() { this.renderControlList(); }
 }

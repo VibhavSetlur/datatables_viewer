@@ -94,8 +94,21 @@ export class CategoryManager {
         }));
     }
 
+    public getColumnsByCategory(): Map<string, string[]> {
+        const result = new Map<string, string[]>();
+        this.columnsByCategory.forEach((cols, catId) => {
+            result.set(catId, Array.from(cols));
+        });
+        return result;
+    }
+
+    public getUncategorizedColumns(): string[] {
+        return Array.from(this.uncategorizedColumns);
+    }
+
     public toggleCategory(catId: string): void {
-        if (this.visibleCategories.has(catId)) {
+        const isVisible = this.visibleCategories.has(catId);
+        if (isVisible) {
             this.visibleCategories.delete(catId);
         } else {
             this.visibleCategories.add(catId);

@@ -326,14 +326,39 @@ export class TableRenderer {
         const cols: TableColumnConfig[] = [];
         const seen = new Set<string>();
 
+        // Process explicitly configured columns
         configured.forEach(c => {
-            cols.push({ ...c, visible: c.visible !== false, sortable: c.sortable !== false, filterable: c.filterable !== false, width: c.width || 'auto' });
+            cols.push({
+                ...c,
+                visible: c.visible !== false,
+                sortable: c.sortable !== false,
+                filterable: c.filterable !== false,
+                width: c.width || 'auto'
+            });
             seen.add(c.column);
         });
 
+        // Helper to auto-pick category for unknown columns
+        const autoCategorize = (h: string): string[] => {
+            const lower = h.toLowerCase();
+            if (lower.match(/^(id|name|display_name|label)$/) || lower.endsWith('_id') || lower.endsWith('_name')) return ['core'];
+            if (lower.match(/^(deleted|row_hash|last_synced|created_at|updated_at|sync_.*)$/)) return ['metadata'];
+            if (lower.match(/^(error|status|report|message|valid|significance)$/)) return ['status'];
+            return [];
+        };
+
+        // Add mystery columns from API
         headers.forEach(h => {
             if (!seen.has(h)) {
-                cols.push({ column: h, displayName: h.replace(/_/g, ' '), visible: true, sortable: true, filterable: true, width: 'auto', categories: [] });
+                cols.push({
+                    column: h,
+                    displayName: h.replace(/_/g, ' '),
+                    visible: true,
+                    sortable: true,
+                    filterable: true,
+                    width: 'auto',
+                    categories: autoCategorize(h)
+                });
             }
         });
 

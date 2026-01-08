@@ -46,8 +46,26 @@
             "description": "DNA, RNA, and protein sequences",
             "icon": "bi-text-left",
             "color": "#f59e0b",
-            "defaultVisible": false,
+            "defaultVisible": true,
             "order": 4
+        },
+        {
+            "id": "metadata",
+            "name": "System Metadata",
+            "description": "System tags, hashes, and sync info",
+            "icon": "bi-info-circle",
+            "color": "#64748b",
+            "defaultVisible": false,
+            "order": 10
+        },
+        {
+            "id": "status",
+            "name": "Status & Reports",
+            "description": "Error reports and validity status",
+            "icon": "bi-activity",
+            "color": "#ef4444",
+            "defaultVisible": true,
+            "order": 9
         }
     ],
     "tables": {
@@ -394,7 +412,7 @@
                     "name": "Statistics",
                     "icon": "bi-calculator",
                     "color": "#8b5cf6",
-                    "defaultVisible": false
+                    "defaultVisible": true
                 }
             ],
             "columns": [
