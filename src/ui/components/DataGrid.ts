@@ -172,6 +172,13 @@ export class DataGrid extends Component {
         this.render();
     }
 
+    public selectAll() {
+        const state = this.stateManager.getState();
+        state.data.forEach((_, i) => this.selection.add(i));
+        this.render();
+        this.options.onRowSelect(-1, true, true);
+    }
+
     /** Clear filter focus state - useful when programmatically resetting filters */
     public clearFilterFocus() {
         this.focusedFilterCol = null;

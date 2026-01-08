@@ -12,6 +12,7 @@ import { Sidebar } from './components/Sidebar';
 import { Toolbar } from './components/Toolbar';
 import { DataGrid } from './components/DataGrid';
 import { exportManager } from '../core/ExportManager';
+import { registerDefaultShortcuts } from '../core/KeyboardManager';
 import '../style.css';
 
 export interface RendererOptions {
@@ -82,16 +83,12 @@ export class TableRenderer {
             this.renderLayout();
             this.initComponents();
 
-            // Initial API setup in Sidebar
-            // this.sidebar.initApiSelector(); // Removed
-
         } catch (e: any) {
             this.container.innerHTML = `<div class="ts-alert ts-alert-danger"><i class="bi bi-x-circle-fill"></i> ${e.message}</div>`;
         }
     }
 
     private renderLayout() {
-        // const appName = this.configManager.getAppName(); // Unused here as it's used in Sidebar
         this.container.innerHTML = `
             <div class="ts-app" data-theme="${this.theme}" data-density="${this.density}">
                 <aside class="ts-sidebar" id="ts-sidebar-container"></aside>
@@ -105,7 +102,6 @@ export class TableRenderer {
                     </footer>
                 </main>
                 
-                <!-- Settings Popup moved to absolute positioning managed by CSS relative to button or fixed top right -->
                 <div class="ts-settings-popup" id="ts-settings-popup" style="top: 70px; right: 24px; bottom: auto;">
                     <div class="ts-settings-header">Settings</div>
                      <div class="ts-settings-body">
@@ -116,9 +112,9 @@ export class TableRenderer {
                         <div class="ts-settings-row">
                             <div class="ts-settings-label"><i class="bi bi-arrows-angle-expand"></i> Density</div>
                             <div class="ts-density-options">
-                                <button class="ts-density-opt ${this.density === 'compact' ? 'active' : ''}" data-density="compact" title="Compact - More rows visible"><i class="bi bi-list"></i></button>
+                                <button class="ts-density-opt ${this.density === 'compact' ? 'active' : ''}" data-density="compact" title="Compact"><i class="bi bi-list"></i></button>
                                 <button class="ts-density-opt ${this.density === 'normal' ? 'active' : ''}" data-density="normal" title="Normal"><i class="bi bi-list-ul"></i></button>
-                                <button class="ts-density-opt ${this.density === 'comfortable' ? 'active' : ''}" data-density="comfortable" title="Comfortable - Easy reading"><i class="bi bi-card-heading"></i></button>
+                                <button class="ts-density-opt ${this.density === 'comfortable' ? 'active' : ''}" data-density="comfortable" title="Comfortable"><i class="bi bi-card-heading"></i></button>
                             </div>
                         </div>
                     </div>
@@ -126,7 +122,6 @@ export class TableRenderer {
             </div>
         `;
 
-        // Settings interactions - Delegated to initComponents()
         this.dom.status = this.container.querySelector('#ts-status') as HTMLElement;
         this.dom.pager = this.container.querySelector('#ts-pager') as HTMLElement;
         this.dom.alert = this.container.querySelector('#ts-alert') as HTMLElement;
@@ -143,7 +138,7 @@ export class TableRenderer {
             onTableChange: (name) => this.switchTable(name),
             onExport: () => this.exportCsv(),
             onReset: () => this.reset(),
-            onShowSchema: (name) => this.showDatabaseSchema(name)
+            onShowSchema: (table) => this.showDatabaseSchema(table)
         });
         this.sidebar.mount();
 
@@ -154,9 +149,12 @@ export class TableRenderer {
                 this.stateManager.update({ searchValue: term, currentPage: 0 });
                 this.fetchData();
             },
-            onRefresh: () => this.softRefresh() // Refresh data but keep filters/sort/selections
+            onRefresh: () => this.softRefresh()
         });
         this.toolbar.mount();
+
+        // Keyboard Shortcuts
+        this.initKeyboardShortcuts();
 
         // Bind Settings Button
         const settingsBtn = this.toolbar.getSettingsButton();
@@ -168,21 +166,14 @@ export class TableRenderer {
             });
         }
 
-        // Re-bind Toggle Events since we removed them from renderLayout (or they need to be re-bound if popup is inside container)
-        // Actually, popup IS inside container rendered in renderLayout.
-        // We need to re-attach listeners for Theme/Density because we might have lost them if we re-rendered or just to be safe.
-        // But wait, renderLayout is called ONCE. initComponents is called ONCE.
-        // So the elements exist. We just needed to defer binding until we have the button.
-        // Logic for toggles (Theme/Density):
+        // Settings Toggles
         const themeToggle = this.container.querySelector('#ts-theme-toggle');
         const densityOpts = this.container.querySelectorAll('.ts-density-opt');
-        const app = this.container.querySelector('.ts-app'); // Need to ensure app is available or use container
+        const app = this.container.querySelector('.ts-app');
 
         themeToggle?.addEventListener('click', () => {
-            this.theme = this.theme === 'light' ? 'dark' : 'light';
-            app?.setAttribute('data-theme', this.theme);
+            this.toggleTheme();
             themeToggle.classList.toggle('on', this.theme === 'dark');
-            localStorage.setItem('ts-theme', this.theme);
         });
 
         densityOpts.forEach((btn: any) => {
@@ -204,26 +195,45 @@ export class TableRenderer {
                 this.fetchData();
             },
             onFilter: (col, val) => {
-                const filters = { ...this.stateManager.getState().columnFilters };
+                const state = this.stateManager.getState();
+                const filters = { ...state.columnFilters };
                 if (val) filters[col] = val;
                 else delete filters[col];
                 this.stateManager.update({ columnFilters: filters, currentPage: 0 });
                 this.fetchData();
             },
-            onRowSelect: (_idx, _selected, _all) => {
-                // Update status bar with selection count
-                this.updateSelectionStatus();
-            }
+            onRowSelect: () => this.updateSelectionStatus()
         });
         this.grid.mount();
-
     }
 
-    // --- Logic Moved from Monolith ---
+    private initKeyboardShortcuts() {
+        registerDefaultShortcuts({
+            onSearch: () => this.toolbar.focusSearch(),
+            onExport: () => this.exportCsv(),
+            onRefresh: () => this.softRefresh(),
+            onReset: () => this.reset(),
+            onSelectAll: () => this.grid.selectAll(),
+            onClearSelection: () => this.grid.clearSelection(),
+            onToggleTheme: () => this.toggleTheme(),
+            onShowSchema: () => {
+                const state = this.stateManager.getState();
+                if (state.activeTableName) this.showDatabaseSchema(state.activeTableName);
+            },
+            onNextPage: () => this.nextPage(),
+            onPrevPage: () => this.prevPage(),
+            onFirstPage: () => this.goToPage(0),
+            onLastPage: () => {
+                const state = this.stateManager.getState();
+                const total = Math.ceil(state.totalCount / state.pageSize);
+                this.goToPage(total - 1);
+            }
+        });
+    }
 
     private async loadObject() {
         const token = this.sidebar.getToken();
-        const berdl = this.sidebar.getBerdlId(); // Should expose these
+        const berdl = this.sidebar.getBerdlId();
 
         if (berdl === 'test/test/test') {
             this.switchApi('test_data');
@@ -267,7 +277,6 @@ export class TableRenderer {
         const config = this.configManager.getTableConfig(name);
         this.categoryManager = new CategoryManager(config);
 
-        // Pass category manager to sidebar
         this.sidebar.setCategoryManager(this.categoryManager);
         this.sidebar.updateTableInfo(name);
 
@@ -277,7 +286,7 @@ export class TableRenderer {
         });
 
         this.toolbar.setSearch('');
-        this.grid.clearSelection(); // Grid method
+        this.grid.clearSelection();
 
         await this.fetchData();
     }
@@ -302,7 +311,6 @@ export class TableRenderer {
 
             this.processColumns(res.headers, state.activeTableName);
 
-            // Convert Array-of-Arrays to Array-of-Objects for Internal State
             const dataObjects = (res.data || []).map((row: any[]) => {
                 const obj: Record<string, any> = {};
                 res.headers.forEach((h, i) => { obj[h] = row[i]; });
@@ -312,7 +320,6 @@ export class TableRenderer {
             this.stateManager.update({
                 headers: res.headers, data: dataObjects, totalCount: res.total_count || 0
             });
-            // Grid automatically re-renders on state update
         } catch (e: any) {
             this.showAlert(e.message, 'danger');
         } finally {
@@ -326,7 +333,6 @@ export class TableRenderer {
         const cols: TableColumnConfig[] = [];
         const seen = new Set<string>();
 
-        // Process explicitly configured columns
         configured.forEach(c => {
             cols.push({
                 ...c,
@@ -338,7 +344,6 @@ export class TableRenderer {
             seen.add(c.column);
         });
 
-        // Helper to auto-pick category for unknown columns
         const autoCategorize = (h: string): string[] => {
             const lower = h.toLowerCase();
             if (lower.match(/^(id|name|display_name|label)$/) || lower.endsWith('_id') || lower.endsWith('_name')) return ['core'];
@@ -347,7 +352,6 @@ export class TableRenderer {
             return [];
         };
 
-        // Add mystery columns from API
         headers.forEach(h => {
             if (!seen.has(h)) {
                 cols.push({
@@ -378,36 +382,54 @@ export class TableRenderer {
         }
     }
 
-    /**
-     * Soft refresh - re-fetches data while preserving the current view state
-     * (filters, sort, page, selections). Use for "Refresh" button.
-     */
     private softRefresh() {
         this.fetchData();
     }
 
-    /**
-     * Full reset - clears all filters, sort, search, and goes back to page 1.
-     * Use for "Reset" button in sidebar.
-     */
     private reset() {
-        // Clear any pending filter debounce timers first
         this.grid.clearFilterFocus();
-
         this.stateManager.update({
             sortColumn: null, sortOrder: 'asc', searchValue: '', columnFilters: {}, currentPage: 0
         });
         this.toolbar.setSearch('');
         this.grid.clearSelection();
-        this.sidebar.renderFilterChips(); // Update filter chips display
+        this.sidebar.renderFilterChips();
         this.fetchData();
+    }
+
+    public nextPage() {
+        const state = this.stateManager.getState();
+        const total = Math.ceil(state.totalCount / state.pageSize);
+        if (state.currentPage < total - 1) {
+            this.goToPage(state.currentPage + 1);
+        }
+    }
+
+    public prevPage() {
+        const state = this.stateManager.getState();
+        if (state.currentPage > 0) {
+            this.goToPage(state.currentPage - 1);
+        }
+    }
+
+    public goToPage(page: number) {
+        if (page >= 0) {
+            this.stateManager.update({ currentPage: page });
+            this.fetchData();
+        }
+    }
+
+    public toggleTheme() {
+        this.theme = this.theme === 'light' ? 'dark' : 'light';
+        localStorage.setItem('ts-theme', this.theme);
+        const app = this.container.querySelector('.ts-app');
+        if (app) app.setAttribute('data-theme', this.theme);
     }
 
     private async exportCsv() {
         const state = this.stateManager.getState();
         if (state.data.length === 0) return;
 
-        // Check for selection
         const selection = this.grid.getSelection();
         const hasSelection = selection.size > 0;
         const dataToExport = hasSelection
@@ -425,7 +447,6 @@ export class TableRenderer {
     }
 
     private onStateChange(state: AppState) {
-        // Update footer stats
         this.updateStatusBar(state);
         this.updatePagination(state);
         this.syncStateToUrl();
@@ -436,13 +457,11 @@ export class TableRenderer {
         if (!this.dom.status) return;
 
         let statusHtml = '';
-
         if (state.totalCount > 0) {
             const start = state.currentPage * state.pageSize + 1;
             const end = Math.min((state.currentPage + 1) * state.pageSize, state.totalCount);
             statusHtml = `Showing <strong>${start.toLocaleString()}</strong> – <strong>${end.toLocaleString()}</strong> of <strong>${state.totalCount.toLocaleString()}</strong> rows`;
 
-            // Add selection count if any
             const selectionCount = this.grid?.getSelection()?.size || 0;
             if (selectionCount > 0) {
                 statusHtml += ` <span class="ts-selection-info">• ${selectionCount} selected</span>`;
@@ -450,7 +469,6 @@ export class TableRenderer {
         } else {
             statusHtml = 'Ready';
         }
-
         this.dom.status.innerHTML = statusHtml;
     }
 
@@ -470,13 +488,11 @@ export class TableRenderer {
             <button class="ts-page-btn" data-page="${curr + 1}" ${curr >= total - 1 ? 'disabled' : ''}><i class="bi bi-chevron-right"></i></button>
         `;
 
-        // Bind click events locally
         this.dom.pager.querySelectorAll('.ts-page-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 const page = parseInt((btn as HTMLElement).dataset.page || '0');
                 if (page >= 0 && page < total) {
-                    this.stateManager.update({ currentPage: page });
-                    this.fetchData();
+                    this.goToPage(page);
                 }
             });
         });
@@ -499,7 +515,6 @@ export class TableRenderer {
     }
 
     private async loadConfiguration() {
-        // Existing load logic (simplified for brevity, assume similar to before)
         const newConfigUrl = '/config/index.json';
         try {
             const res = await fetch(newConfigUrl);
@@ -528,12 +543,10 @@ export class TableRenderer {
         }
     }
 
-
     private showDatabaseSchema(initialTable?: string) {
         const state = this.stateManager.getState();
         const tables = state.availableTables || [];
 
-        // Define internal renderers using CSS variables from design system
         const renderSidebar = (active: string | null) => `
             <div class="glass-sidebar" style="width:260px;display:flex;flex-direction:column;">
                 <div style="padding:20px;border-bottom:1px solid var(--c-border-subtle)">
@@ -654,9 +667,7 @@ export class TableRenderer {
 
         const layout = `
             <div style="display:flex;height:100%;overflow:hidden">
-                <div id="ts-schema-sidebar">
-                    ${renderSidebar(initialTable || null)}
-                </div>
+                <div id="ts-schema-sidebar">${renderSidebar(initialTable || null)}</div>
                 <div id="ts-schema-main" style="flex:1;overflow-y:auto;background:var(--c-bg-app-solid);position:relative">
                     ${initialTable ? renderTableDetail(initialTable) : renderOverview()}
                 </div>
@@ -666,11 +677,8 @@ export class TableRenderer {
         const modal = this.createModal('Database Explorer', layout);
         const modalBody = modal.querySelector('.ts-modal-body') as HTMLElement;
         if (modalBody) {
-            // Override padding for full bleed
             modalBody.style.padding = '0';
             modalBody.style.height = 'calc(80vh - 60px)';
-            const inner = modalBody.querySelector('div');
-            if (inner) inner.style.padding = '0';
         }
 
         const updateView = (target: string) => {
@@ -685,9 +693,7 @@ export class TableRenderer {
         };
 
         const bindEvents = () => {
-            const navItems = modal.querySelectorAll('.ts-nav-item, .ts-card-nav');
-
-            navItems.forEach(el => {
+            modal.querySelectorAll('.ts-nav-item, .ts-card-nav').forEach(el => {
                 el.addEventListener('click', () => {
                     const target = (el as HTMLElement).dataset.target;
                     if (target) updateView(target);
@@ -699,8 +705,7 @@ export class TableRenderer {
             if (input && container) {
                 input.addEventListener('input', () => {
                     const term = input.value.toLowerCase();
-                    const items = container.querySelectorAll('.ts-schema-item');
-                    items.forEach(item => {
+                    container.querySelectorAll('.ts-schema-item').forEach(item => {
                         const text = (item.textContent || '').toLowerCase();
                         (item as HTMLElement).style.display = text.includes(term) ? 'flex' : 'none';
                     });
@@ -713,7 +718,6 @@ export class TableRenderer {
                 if (!table) return;
                 const config = this.configManager.getTableConfig(table);
                 const cols = (state.activeTableName === table) ? state.columns : (config.columns || []);
-
                 const schemaData = JSON.stringify(config || { tableName: table, columns: cols }, null, 2);
                 const blob = new Blob([schemaData], { type: 'application/json' });
                 const url = URL.createObjectURL(blob);
@@ -729,7 +733,6 @@ export class TableRenderer {
         bindEvents();
     }
 
-
     private renderSchemaItem(c: any) {
         const badges = [];
         if (c.sortable) badges.push({ l: 'Sortable', bg: '#dbeafe', fg: '#1d4ed8' });
@@ -743,9 +746,7 @@ export class TableRenderer {
 
         return `
             <div class="ts-schema-item">
-                <div style="padding-top:4px;flex-shrink:0">
-                    <i class="bi bi-hash" style="color:var(--c-accent);font-size:16px"></i>
-                </div>
+                <div style="padding-top:4px;flex-shrink:0"><i class="bi bi-hash" style="color:var(--c-accent);font-size:16px"></i></div>
                 <div style="flex:1;min-width:0">
                     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;gap:12px">
                         <span class="ts-schema-name">${c.displayName || c.column}</span>
@@ -762,42 +763,31 @@ export class TableRenderer {
     }
 
     private createModal(title: string, bodyHtml: string): HTMLElement {
-        // Remove existing
         const existing = document.querySelector('.ts-modal-overlay');
         if (existing) existing.remove();
 
         const overlay = document.createElement('div');
-        overlay.className = 'ts-modal-overlay'; // 'show' added after a tick for animation
+        overlay.className = 'ts-modal-overlay';
         overlay.innerHTML = `
             <div class="ts-modal">
                 <div class="ts-modal-header">
                     <span class="ts-modal-title">${title}</span>
                     <button class="ts-modal-close"><i class="bi bi-x-lg"></i></button>
                 </div>
-                <div class="ts-modal-body">
-                    <div style="padding:24px">
-                        ${bodyHtml}
-                    </div>
-                </div>
+                <div class="ts-modal-body">${bodyHtml}</div>
             </div>
         `;
 
         document.body.appendChild(overlay);
-
-        // Trigger animation
-        requestAnimationFrame(() => {
-            overlay.classList.add('show');
-        });
+        requestAnimationFrame(() => overlay.classList.add('show'));
 
         const close = () => {
             overlay.classList.remove('show');
-            setTimeout(() => overlay.remove(), 200); // Wait for transition
+            setTimeout(() => overlay.remove(), 200);
         };
 
         overlay.querySelector('.ts-modal-close')?.addEventListener('click', close);
-        overlay.addEventListener('click', (e) => {
-            if (e.target === overlay) close();
-        });
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
 
         return overlay;
     }

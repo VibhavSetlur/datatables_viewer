@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { StateManager } from '../../src/core/StateManager';
-import { createMockInitialState, createMockLoadedState } from '../fixtures/data-factory';
+// import { createMockInitialState, createMockLoadedState } from '../fixtures/data-factory';
 
 describe('StateManager', () => {
     let stateManager: StateManager;

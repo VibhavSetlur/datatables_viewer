@@ -76,4 +76,11 @@ export class Toolbar extends Component {
             (this.dom.search as HTMLInputElement).value = term;
         }
     }
+
+    public focusSearch() {
+        if (this.dom.search) {
+            (this.dom.search as HTMLInputElement).focus();
+            (this.dom.search as HTMLInputElement).select();
+        }
+    }
 }
