@@ -34,10 +34,25 @@ export class Sidebar extends Component {
                     ? '<span class="ts-spinner"></span> Loading...'
                     : '<i class="bi bi-lightning-charge-fill"></i> Load Data';
                 (this.dom.loadBtn as HTMLButtonElement).disabled = state.loading;
+            }
 
-                if (state.activeTableName && state.availableTables.length > 0) {
-                    this.updateTableInfo(state.activeTableName);
-                }
+            // Update loading indicator in data source section
+            this.updateLoadingState(state);
+
+            // Collapse data source section only after data has loaded and is visible
+            // Wait for both tables to be available and data to be loaded
+            if (!state.loading && state.availableTables.length > 0 && state.data.length > 0 && state.activeTableName) {
+                // Small delay to ensure data is visible before collapsing
+                setTimeout(() => {
+                    if (this.dom.sourceBody && this.dom.sourceBody.style.display !== 'none') {
+                        this.dom.sourceBody.style.display = 'none';
+                        this.dom.sourceArrow.classList.add('collapsed');
+                    }
+                }, 500); // Slightly longer delay to ensure data is rendered
+            }
+
+            if (state.activeTableName && state.availableTables.length > 0) {
+                this.updateTableInfo(state.activeTableName);
             }
 
             // Re-render control list when columns change
@@ -104,6 +119,12 @@ export class Sidebar extends Component {
                         <button class="ts-btn-primary" id="ts-load" style="height: 34px;">
                             <i class="bi bi-lightning-charge-fill"></i> Load Data
                         </button>
+                        <div id="ts-loading-indicator" style="display:none;margin-top:12px;padding:12px;background:var(--c-bg-surface);border-radius:var(--radius-sm);border:1px solid var(--c-border-subtle)">
+                            <div style="display:flex;align-items:center;gap:10px;color:var(--c-text-secondary);font-size:13px">
+                                <span class="ts-spinner" style="width:16px;height:16px"></span>
+                                <span id="ts-loading-text">Loading data...</span>
+                            </div>
+                        </div>
                     </div>
                 </section>
 
@@ -158,6 +179,8 @@ export class Sidebar extends Component {
             sourceHead: '#ts-source-head',
             sourceBody: '#ts-source-body',
             sourceArrow: '#ts-source-arrow',
+            loadingIndicator: '#ts-loading-indicator',
+            loadingText: '#ts-loading-text',
             navSection: '#ts-nav-section',
             tableSelect: '#ts-table-select',
             viewSchema: '#ts-view-schema',
@@ -176,12 +199,14 @@ export class Sidebar extends Component {
     protected bindEvents() {
         // Load
         this.dom.loadBtn?.addEventListener('click', () => {
-            this.options.onLoadData();
-            // Collapse source on load to save space
+            // Explicitly open data source section when user clicks Load Data
             if (this.dom.sourceBody) {
-                this.dom.sourceBody.style.display = 'none';
-                this.dom.sourceArrow.classList.add('collapsed');
+                this.dom.sourceBody.style.display = 'block';
+                this.dom.sourceArrow.classList.remove('collapsed');
             }
+            this.options.onLoadData();
+            // Keep source section open to show loading state
+            // It will collapse automatically when data loads (handled in state subscription)
         });
 
         this.dom.sourceHead?.addEventListener('click', () => {
@@ -431,4 +456,27 @@ export class Sidebar extends Component {
     // Compat methods for renderer subscription
     public renderCategories() { this.renderControlList(); }
     public renderColumnList() { this.renderControlList(); }
+
+    private updateLoadingState(state: AppState) {
+        if (!this.dom.loadingIndicator || !this.dom.loadingText) return;
+
+        // Only show loading in data source section for initial data load
+        // If tables are already loaded, it's not an initial load
+        const isInitialLoad = state.loading && state.availableTables.length === 0;
+
+        if (isInitialLoad) {
+            // Show loading indicator and keep section open only for initial load
+            this.dom.loadingIndicator.style.display = 'block';
+            if (this.dom.sourceBody) {
+                this.dom.sourceBody.style.display = 'block';
+                this.dom.sourceArrow.classList.remove('collapsed');
+            }
+
+            // Update loading text
+            (this.dom.loadingText as HTMLElement).textContent = 'Fetching tables...';
+        } else {
+            // Hide loading indicator for other operations (pagination, search, etc.)
+            this.dom.loadingIndicator.style.display = 'none';
+        }
+    }
 }

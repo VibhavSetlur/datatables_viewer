@@ -234,9 +234,35 @@ export class ApiClient {
             const headers = tableConfig.columns.map((c: any) => c.column);
             const count = Math.min(req.limit || 100, 500 - (req.offset || 0));
 
+            // Special case for Ontology Dictionary
+            if (req.table_name === 'Ontology_Dictionary') {
+                const dictData: any[][] = [];
+                for (let i = 0; i < count; i++) {
+                    const idx = (req.offset || 0) + i + 1;
+                    // Mock GO Terms
+                    dictData.push([`GO:${String(idx).padStart(7, '0')}`, `Gene Ontology Term ${idx}`]);
+                }
+                return {
+                    headers: ['Term_ID', 'Term_Name'], // Ensure these match test-data.json
+                    data: dictData,
+                    total_count: 500
+                };
+            }
+
             const data = Array.from({ length: count > 0 ? count : 0 }, (_, i) => {
                 const idx = (req.offset || 0) + i + 1;
                 return headers.map((h: string) => {
+                    if (h === 'GO_Terms') {
+                        // Generate random list of GO terms
+                        const numTerms = Math.floor(Math.random() * 3) + 1;
+                        const terms = [];
+                        for (let k = 0; k < numTerms; k++) {
+                            const termId = Math.floor(Math.random() * 50) + 1; // Use first 50 for lookup hits
+                            terms.push(`GO:${String(termId).padStart(7, '0')}`);
+                        }
+                        return terms.join('; ');
+                    }
+
                     if (h.includes('id') && h !== 'genome_id' && h !== 'contig_id') return `ID_${idx}`;
                     if (h === 'genome_id') return `Genome_${(idx % 5) + 1}`;
                     if (h.includes('function')) return `Mock Function ${idx}`;

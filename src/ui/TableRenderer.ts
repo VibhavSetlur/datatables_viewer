@@ -11,6 +11,7 @@ import { CategoryManager } from '../core/CategoryManager';
 import { Sidebar } from './components/Sidebar';
 import { Toolbar } from './components/Toolbar';
 import { DataGrid } from './components/DataGrid';
+import { Transformers } from '../utils/transformers';
 import { exportManager } from '../core/ExportManager';
 import { registerDefaultShortcuts } from '../core/KeyboardManager';
 import '../style.css';
@@ -95,9 +96,30 @@ export class TableRenderer {
                 <main class="ts-main">
                     <header class="ts-toolbar" id="ts-toolbar-container"></header>
                     <div id="ts-alert"></div>
-                    <div class="ts-grid" id="ts-grid-container"></div>
+                    <div class="ts-grid-header" id="ts-grid-header" style="display:none">
+                        <div class="ts-grid-header-content">
+                            <div class="ts-db-info">
+                                <i class="bi bi-database"></i>
+                                <span id="ts-db-name">Database</span>
+                            </div>
+                            <div class="ts-table-info">
+                                <i class="bi bi-table"></i>
+                                <span id="ts-active-table-name">Table</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="ts-grid-wrapper" style="position:relative">
+                        <div class="ts-loading-overlay" id="ts-loading-overlay" style="display:none">
+                            <div class="ts-loading-spinner-wrapper">
+                                <span class="ts-spinner" style="width:32px;height:32px"></span>
+                                <span class="ts-loading-text" style="margin-top:12px;font-size:13px;color:var(--c-text-secondary)">Loading...</span>
+                            </div>
+                        </div>
+                        <div class="ts-grid" id="ts-grid-container"></div>
+                    </div>
                     <footer class="ts-footer">
                         <div class="ts-status" id="ts-status">Ready</div>
+                        <div class="ts-table-name" id="ts-table-name"></div>
                         <div class="ts-pager" id="ts-pager"></div>
                     </footer>
                 </main>
@@ -125,6 +147,8 @@ export class TableRenderer {
         this.dom.status = this.container.querySelector('#ts-status') as HTMLElement;
         this.dom.pager = this.container.querySelector('#ts-pager') as HTMLElement;
         this.dom.alert = this.container.querySelector('#ts-alert') as HTMLElement;
+        this.dom.tableName = this.container.querySelector('#ts-table-name') as HTMLElement;
+        this.dom.loadingOverlay = this.container.querySelector('#ts-loading-overlay') as HTMLElement;
     }
 
     private initComponents() {
@@ -267,6 +291,14 @@ export class TableRenderer {
 
         } catch (e: any) {
             this.showAlert(e.message, 'danger');
+            this.stateManager.update({
+                availableTables: [],
+                activeTableName: null,
+                data: [],
+                columns: [],
+                visibleColumns: new Set()
+            });
+            this.sidebar.updateTables([]);
         } finally {
             this.stateManager.update({ loading: false });
         }
@@ -276,6 +308,9 @@ export class TableRenderer {
         this.stateManager.update({ activeTableName: name });
         const config = this.configManager.getTableConfig(name);
         this.categoryManager = new CategoryManager(config);
+
+        // Force all categories to be visible initially
+        this.categoryManager.showAllCategories();
 
         this.sidebar.setCategoryManager(this.categoryManager);
         this.sidebar.updateTableInfo(name);
@@ -288,7 +323,71 @@ export class TableRenderer {
         this.toolbar.setSearch('');
         this.grid.clearSelection();
 
+        // Pre-load dependencies (ontologies) without blocking
+        this.loadTableDependencies(name).then(() => {
+            const state = this.stateManager.getState();
+            if (state.activeTableName === name) {
+                // Force re-render of grid to show loaded names
+                this.stateManager.update({ data: [...state.data] });
+            }
+        });
+
         await this.fetchData();
+    }
+
+    private async loadTableDependencies(tableName: string) {
+        const config = this.configManager.getTableConfig(tableName);
+        const columns = config.columns || [];
+
+        for (const col of columns) {
+            if (!col.transform) continue;
+
+            // Handle both single object and array of transforms
+            const transforms = Array.isArray(col.transform) ? col.transform : [col.transform];
+
+            for (const transform of transforms) {
+                if (transform.type === 'ontology' && transform.options?.lookupTable) {
+                    const lookupTable = transform.options.lookupTable;
+                    const lookupKey = transform.options.lookupKey || 'id';
+                    const lookupValue = transform.options.lookupValue || 'name';
+
+                    try {
+                        const state = this.stateManager.getState();
+                        if (!state.berdlTableId) continue;
+
+                        // Check if we already have this loaded?
+
+                        // Fetch lookup table data
+                        const res = await this.client.getTableData({
+                            berdl_table_id: state.berdlTableId,
+                            table_name: lookupTable,
+                            limit: 10000,
+                            offset: 0
+                        });
+
+                        // Build map
+                        const map: Record<string, string> = {};
+                        const headers = res.headers;
+                        const keyIdx = headers.indexOf(lookupKey);
+                        const valIdx = headers.indexOf(lookupValue);
+
+                        if (keyIdx !== -1 && valIdx !== -1) {
+                            res.data.forEach((row: any[]) => {
+                                const key = String(row[keyIdx]);
+                                const val = String(row[valIdx]);
+                                map[key] = val;
+                            });
+
+                            // Pre-load into Transformers
+                            Transformers.preLoadOntology(map, transform.options.ontologyType || 'custom');
+                        }
+
+                    } catch (e) {
+                        console.warn(`Failed to load dependency table ${lookupTable}`, e);
+                    }
+                }
+            }
+        }
     }
 
     private async fetchData() {
@@ -311,11 +410,17 @@ export class TableRenderer {
 
             this.processColumns(res.headers, state.activeTableName);
 
-            const dataObjects = (res.data || []).map((row: any[]) => {
+            let dataObjects = (res.data || []).map((row: any[]) => {
                 const obj: Record<string, any> = {};
                 res.headers.forEach((h, i) => { obj[h] = row[i]; });
                 return obj;
             });
+
+            // Re-sort client-side to ensure empty/null values are always at the end
+            // This overrides server-side sorting to guarantee nulls are last
+            if (state.sortColumn && dataObjects.length > 0) {
+                dataObjects = this.sortWithNullsLast(dataObjects, state.sortColumn, state.sortOrder || 'asc');
+            }
 
             this.stateManager.update({
                 headers: res.headers, data: dataObjects, totalCount: res.total_count || 0
@@ -449,8 +554,23 @@ export class TableRenderer {
     private onStateChange(state: AppState) {
         this.updateStatusBar(state);
         this.updatePagination(state);
+        this.updateLoadingOverlay(state);
         this.syncStateToUrl();
         if (state.error) this.showAlert(state.error, 'danger');
+    }
+
+    private updateLoadingOverlay(state: AppState) {
+        if (!this.dom.loadingOverlay) return;
+
+        // Show overlay only for data operations (not initial load)
+        // Initial load is handled by the data source section
+        const isDataOperation = state.loading && state.availableTables.length > 0;
+
+        if (isDataOperation) {
+            this.dom.loadingOverlay.style.display = 'flex';
+        } else {
+            this.dom.loadingOverlay.style.display = 'none';
+        }
     }
 
     private updateStatusBar(state: AppState) {
@@ -460,16 +580,44 @@ export class TableRenderer {
         if (state.totalCount > 0) {
             const start = state.currentPage * state.pageSize + 1;
             const end = Math.min((state.currentPage + 1) * state.pageSize, state.totalCount);
-            statusHtml = `Showing <strong>${start.toLocaleString()}</strong> – <strong>${end.toLocaleString()}</strong> of <strong>${state.totalCount.toLocaleString()}</strong> rows`;
+            const totalPages = Math.ceil(state.totalCount / state.pageSize);
+            statusHtml = `<div style="display:flex;flex-direction:column;gap:2px">
+                <div style="font-size:13px;font-weight:600;color:var(--c-text-primary)">Rows: <strong>${start.toLocaleString()}</strong> – <strong>${end.toLocaleString()}</strong> of <strong>${state.totalCount.toLocaleString()}</strong></div>
+                <div style="font-size:11px;color:var(--c-text-muted)">Page ${state.currentPage + 1} of ${totalPages || 1}</div>
+            </div>`;
 
             const selectionCount = this.grid?.getSelection()?.size || 0;
             if (selectionCount > 0) {
-                statusHtml += ` <span class="ts-selection-info">• ${selectionCount} selected</span>`;
+                statusHtml += `<div style="margin-top:4px;font-size:11px"><span class="ts-selection-info">${selectionCount} row${selectionCount !== 1 ? 's' : ''} selected</span></div>`;
             }
         } else {
-            statusHtml = 'Ready';
+            statusHtml = '<div style="font-size:13px">Ready</div>';
         }
         this.dom.status.innerHTML = statusHtml;
+
+        // Update table name in footer
+        if (this.dom.tableName) {
+            if (state.activeTableName) {
+                this.dom.tableName.innerHTML = `<span style="color:var(--c-text-muted);font-size:13px;font-weight:500">${state.activeTableName}</span>`;
+            } else {
+                this.dom.tableName.innerHTML = '';
+            }
+        }
+
+        // Update grid header
+        const gridHeader = this.container.querySelector('#ts-grid-header') as HTMLElement;
+        const dbNameEl = this.container.querySelector('#ts-db-name') as HTMLElement;
+        const tableNameEl = this.container.querySelector('#ts-active-table-name') as HTMLElement;
+        
+        if (gridHeader && dbNameEl && tableNameEl) {
+            if (state.activeTableName && state.berdlTableId) {
+                gridHeader.style.display = 'block';
+                dbNameEl.textContent = state.berdlTableId;
+                tableNameEl.textContent = state.activeTableName;
+            } else {
+                gridHeader.style.display = 'none';
+            }
+        }
     }
 
     private updateSelectionStatus() {
@@ -546,35 +694,134 @@ export class TableRenderer {
     private showDatabaseSchema(initialTable?: string) {
         const state = this.stateManager.getState();
         const tables = state.availableTables || [];
+        let searchTerm = '';
+        let searchResults: Array<{ table: any; columns: any[]; hasDataMatches?: boolean }> = [];
+        let isSearchingData = false;
 
-        const renderSidebar = (active: string | null) => `
+        const renderSidebar = (active: string | null, searchQuery: string = '') => {
+            const hasSearch = searchQuery.trim().length > 0;
+            const filteredTables = hasSearch 
+                ? tables.filter((t: any) => t.name.toLowerCase().includes(searchQuery.toLowerCase()))
+                : tables;
+
+            return `
             <div class="glass-sidebar" style="width:260px;display:flex;flex-direction:column;">
-                <div style="padding:20px;border-bottom:1px solid var(--c-border-subtle)">
-                    <h3 style="font-size:11px;text-transform:uppercase;color:var(--c-text-muted);font-weight:700;letter-spacing:0.08em;display:flex;align-items:center;gap:8px">
+                <div style="padding:16px;border-bottom:1px solid var(--c-border-subtle)">
+                    <h3 style="font-size:11px;text-transform:uppercase;color:var(--c-text-muted);font-weight:700;letter-spacing:0.08em;display:flex;align-items:center;gap:8px;margin-bottom:12px">
                         <i class="bi bi-database" style="font-size:14px"></i> Database Schema
                     </h3>
+                    <div style="position:relative;margin-bottom:8px">
+                        <input type="text" id="ts-db-search" placeholder="Search tables, columns, data..." 
+                            value="${searchQuery}"
+                            style="background:var(--c-bg-input);border:1px solid var(--c-border-subtle);border-radius:var(--radius-sm);font-size:12px;padding:6px 12px 6px 32px;width:100%;outline:none;color:var(--c-text-primary);box-sizing:border-box">
+                        <i class="bi bi-search" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--c-text-muted);pointer-events:none"></i>
+                        ${hasSearch ? `<button id="ts-db-search-clear" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--c-text-muted);cursor:pointer;padding:2px;font-size:14px"><i class="bi bi-x"></i></button>` : ''}
+                    </div>
+                    ${hasSearch ? `
+                        <div style="display:flex;gap:4px;margin-top:4px">
+                            <button id="ts-search-data-btn" class="ts-btn-secondary" style="flex:1;height:28px;font-size:11px;padding:0 8px;${isSearchingData ? 'opacity:0.6' : ''}" ${isSearchingData ? 'disabled' : ''}>
+                                <i class="bi bi-${isSearchingData ? 'hourglass-split' : 'search'}"></i> ${isSearchingData ? 'Searching...' : 'Search Data'}
+                            </button>
+                        </div>
+                    ` : ''}
                 </div>
                 <div style="flex:1;overflow-y:auto;padding:12px">
-                    <div class="ts-nav-item ${!active ? 'active' : ''}" data-target="__overview__">
-                        <i class="bi bi-grid-1x2"></i> Overview
-                    </div>
-                    <div style="margin-top:12px;margin-bottom:8px;padding:0 14px">
-                        <span style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--c-text-muted);font-weight:600">Tables (${tables.length})</span>
-                    </div>
-                    ${tables.map((t: any) => `
-                        <div class="ts-nav-item ${active === t.name ? 'active' : ''}" data-target="${t.name}">
-                            <i class="bi bi-table"></i> 
-                            <span style="flex:1">${t.name}</span>
-                            <span style="font-size:11px;color:var(--c-text-muted)">${(t.row_count || 0).toLocaleString()}</span>
+                    ${!hasSearch ? `
+                        <div class="ts-nav-item ${!active ? 'active' : ''}" data-target="__overview__">
+                            <i class="bi bi-grid-1x2"></i> Overview
                         </div>
-                    `).join('')}
+                        <div style="margin-top:12px;margin-bottom:8px;padding:0 14px">
+                            <span style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--c-text-muted);font-weight:600">Tables (${tables.length})</span>
+                        </div>
+                        ${tables.map((t: any) => `
+                            <div class="ts-nav-item ${active === t.name ? 'active' : ''}" data-target="${t.name}">
+                                <i class="bi bi-table"></i> 
+                                <span style="flex:1">${t.name}</span>
+                                <span style="font-size:11px;color:var(--c-text-muted)">${(t.row_count || 0).toLocaleString()}</span>
+                            </div>
+                        `).join('')}
+                    ` : `
+                        <div style="margin-bottom:8px;padding:0 14px">
+                            <span style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--c-text-muted);font-weight:600">
+                                ${searchResults.length > 0 ? `Results (${searchResults.length})` : 'No Results'}
+                            </span>
+                        </div>
+                        ${searchResults.length > 0 ? searchResults.map((result: any) => {
+                            const matchCount = result.columns.length + (result.hasDataMatches ? 1 : 0);
+                            return `
+                                <div class="ts-nav-item ${active === result.table.name ? 'active' : ''}" 
+                                     data-target="${result.table.name}" 
+                                     data-search="${searchQuery}"
+                                     style="cursor:pointer">
+                                    <i class="bi bi-table"></i> 
+                                    <div style="flex:1;min-width:0">
+                                        <div style="font-weight:${active === result.table.name ? '600' : '500'}">${result.table.name}</div>
+                                        <div style="font-size:10px;color:var(--c-text-muted);margin-top:2px">
+                                            ${matchCount} match${matchCount !== 1 ? 'es' : ''}
+                                            ${result.hasDataMatches ? ' • Has data matches' : ''}
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('') : `
+                            <div style="padding:24px;text-align:center;color:var(--c-text-muted)">
+                                <i class="bi bi-search" style="font-size:24px;display:block;margin-bottom:8px;opacity:0.5"></i>
+                                <div style="font-size:12px">No matches found</div>
+                            </div>
+                        `}
+                    `}
                 </div>
             </div>
         `;
+        };
+
 
         const renderOverview = () => {
             const totalTables = tables.length;
             const totalRecords = tables.reduce((acc: number, t: any) => acc + (t.row_count || 0), 0);
+
+            if (searchTerm && searchResults.length > 0) {
+                return `
+                    <div style="padding:40px;max-width:960px;margin:0 auto">
+                        <div style="margin-bottom:32px">
+                            <h2 style="font-size:24px;font-weight:700;color:var(--c-text-primary);margin-bottom:8px">
+                                Search Results for "${searchTerm}"
+                            </h2>
+                            <p style="color:var(--c-text-secondary);font-size:14px">Found ${searchResults.length} table${searchResults.length !== 1 ? 's' : ''} with matches</p>
+                        </div>
+
+                        <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(300px, 1fr));gap:16px">
+                            ${searchResults.map((result: any) => {
+                                const matchCount = result.columns.length + (result.hasDataMatches ? 1 : 0);
+                                return `
+                                    <div class="ts-card-nav" data-target="${result.table.name}" data-search="${searchTerm}" style="cursor:pointer">
+                                        <div style="width:44px;height:44px;background:var(--c-accent-light);border-radius:10px;display:flex;align-items:center;justify-content:center;color:var(--c-accent);font-size:20px">
+                                            <i class="bi bi-table"></i>
+                                        </div>
+                                        <div style="flex:1">
+                                            <div style="font-weight:600;font-size:14px;color:var(--c-text-primary)">${result.table.name}</div>
+                                            <div style="font-size:12px;color:var(--c-text-muted);margin-top:4px">
+                                                ${matchCount} match${matchCount !== 1 ? 'es' : ''}
+                                                ${result.hasDataMatches ? ' • Data matches' : ''}
+                                                ${result.columns.length > 0 ? ` • ${result.columns.length} column${result.columns.length !== 1 ? 's' : ''}` : ''}
+                                            </div>
+                                            ${result.columns.length > 0 ? `
+                                                <div style="margin-top:8px;font-size:11px;color:var(--c-text-muted);max-height:60px;overflow-y:auto">
+                                                    ${result.columns.slice(0, 3).map((c: any) => `
+                                                        <div style="padding:2px 0">• ${c.displayName || c.column}</div>
+                                                    `).join('')}
+                                                    ${result.columns.length > 3 ? `<div style="padding:2px 0;font-style:italic">+ ${result.columns.length - 3} more</div>` : ''}
+                                                </div>
+                                            ` : ''}
+                                        </div>
+                                        <i class="bi bi-chevron-right" style="font-size:14px;color:var(--c-text-muted)"></i>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>
+                `;
+            }
 
             return `
                 <div style="padding:48px;max-width:900px;margin:0 auto">
@@ -681,10 +928,10 @@ export class TableRenderer {
             modalBody.style.height = 'calc(80vh - 60px)';
         }
 
-        const updateView = (target: string) => {
+        const updateView = (target: string, searchQuery: string = searchTerm) => {
             const sidebar = modal.querySelector('#ts-schema-sidebar');
             const main = modal.querySelector('#ts-schema-main');
-            if (sidebar) sidebar.innerHTML = renderSidebar(target === '__overview__' ? null : target);
+            if (sidebar) sidebar.innerHTML = renderSidebar(target === '__overview__' ? null : target, searchQuery);
             if (main) {
                 main.innerHTML = target === '__overview__' ? renderOverview() : renderTableDetail(target);
                 main.scrollTop = 0;
@@ -692,14 +939,149 @@ export class TableRenderer {
             bindEvents();
         };
 
+        const performSearch = async (query: string, searchData: boolean = false): Promise<void> => {
+            searchTerm = query.trim();
+            searchResults = [];
+
+            if (!searchTerm) {
+                updateView('__overview__');
+                return;
+            }
+
+            const queryLower = searchTerm.toLowerCase();
+
+            // Client-side search: tables and columns
+            for (const table of tables) {
+                const tableMatches = table.name.toLowerCase().includes(queryLower);
+                const config = this.configManager.getTableConfig(table.name);
+                const isLive = state.activeTableName === table.name;
+                const columns = isLive ? state.columns : (config.columns || []);
+                
+                const matchingColumns = columns.filter((c: any) => {
+                    const colName = (c.displayName || c.column || '').toLowerCase();
+                    const colKey = (c.column || '').toLowerCase();
+                    const desc = (c.description || '').toLowerCase();
+                    return colName.includes(queryLower) || colKey.includes(queryLower) || desc.includes(queryLower);
+                });
+
+                if (tableMatches || matchingColumns.length > 0) {
+                    searchResults.push({
+                        table,
+                        columns: matchingColumns,
+                        hasDataMatches: false
+                    });
+                }
+            }
+
+            // API-based search for cell values if requested
+            if (searchData && state.berdlTableId) {
+                isSearchingData = true;
+                const sidebar = modal.querySelector('#ts-schema-sidebar');
+                if (sidebar) sidebar.innerHTML = renderSidebar(null, searchTerm);
+                bindEvents();
+                
+                const dataSearchPromises = tables.map(async (table: any) => {
+                    try {
+                        const res = await this.client.getTableData({
+                            berdl_table_id: state.berdlTableId!,
+                            table_name: table.name,
+                            limit: 1,
+                            offset: 0,
+                            search_value: searchTerm
+                        });
+                        
+                        if (res.total_count > 0) {
+                            const existing = searchResults.find(r => r.table.name === table.name);
+                            if (existing) {
+                                existing.hasDataMatches = true;
+                            } else {
+                                searchResults.push({
+                                    table,
+                                    columns: [],
+                                    hasDataMatches: true
+                                });
+                            }
+                        }
+                    } catch (e) {
+                        console.warn(`Failed to search data in table ${table.name}`, e);
+                    }
+                });
+
+                await Promise.all(dataSearchPromises);
+                isSearchingData = false;
+            }
+
+            updateView('__overview__');
+        };
+
         const bindEvents = () => {
+            // Database search input
+            const dbSearchInput = modal.querySelector('#ts-db-search') as HTMLInputElement;
+            const dbSearchClear = modal.querySelector('#ts-db-search-clear');
+            const searchDataBtn = modal.querySelector('#ts-search-data-btn');
+
+            if (dbSearchInput) {
+                let searchDebounce: any = null;
+                dbSearchInput.addEventListener('input', () => {
+                    const query = dbSearchInput.value;
+                    searchTerm = query;
+                    
+                    if (searchDebounce) clearTimeout(searchDebounce);
+                    searchDebounce = setTimeout(() => {
+                        performSearch(query, false);
+                    }, 300);
+                });
+
+                dbSearchInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        if (searchDebounce) clearTimeout(searchDebounce);
+                        performSearch(dbSearchInput.value, false);
+                    }
+                });
+            }
+
+            if (dbSearchClear) {
+                dbSearchClear.addEventListener('click', () => {
+                    if (dbSearchInput) dbSearchInput.value = '';
+                    searchTerm = '';
+                    searchResults = [];
+                    isSearchingData = false;
+                    updateView('__overview__', '');
+                });
+            }
+
+            if (searchDataBtn) {
+                searchDataBtn.addEventListener('click', async () => {
+                    if (!searchTerm || isSearchingData) return;
+                    await performSearch(searchTerm, true);
+                });
+            }
+
+            // Navigation items and cards
             modal.querySelectorAll('.ts-nav-item, .ts-card-nav').forEach(el => {
                 el.addEventListener('click', () => {
                     const target = (el as HTMLElement).dataset.target;
-                    if (target) updateView(target);
+                    const searchQuery = (el as HTMLElement).dataset.search;
+                    if (target) {
+                        if (target !== '__overview__' && searchQuery) {
+                            // Close modal and load table with search
+                            const closeBtn = modal.querySelector('.ts-modal-close') as HTMLElement;
+                            if (closeBtn) closeBtn.click();
+                            
+                            // Switch to the table and apply search
+                            this.switchTable(target).then(() => {
+                                this.stateManager.update({ searchValue: searchQuery, currentPage: 0 });
+                                this.fetchData();
+                            });
+                        } else {
+                            updateView(target, searchQuery || searchTerm);
+                        }
+                    }
                 });
             });
 
+            // Column filter in table detail view
             const input = modal.querySelector('#ts-schema-filter') as HTMLInputElement;
             const container = modal.querySelector('#ts-schema-items-container');
             if (input && container) {
@@ -760,6 +1142,92 @@ export class TableRenderer {
                 </div>
             </div>
         `;
+    }
+
+    private isValueEmpty(value: any): boolean {
+        // Check for null or undefined
+        if (value === null || value === undefined) return true;
+        
+        // Check for empty string or whitespace-only string
+        if (typeof value === 'string') {
+            const trimmed = value.trim();
+            if (trimmed === '' || trimmed.length === 0) return true;
+            // Also treat common "empty" representations as empty
+            if (trimmed.toLowerCase() === 'null' || trimmed.toLowerCase() === 'undefined' || trimmed === '-') return true;
+        }
+        
+        // Check for empty array
+        if (Array.isArray(value) && value.length === 0) return true;
+        
+        // Check for NaN (which should be treated as empty for sorting)
+        if (typeof value === 'number' && isNaN(value)) return true;
+        
+        // Check for empty object (no keys)
+        if (typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0) return true;
+        
+        return false;
+    }
+
+    private sortWithNullsLast(data: Record<string, any>[], column: string, order: 'asc' | 'desc'): Record<string, any>[] {
+        if (!data || data.length === 0 || !column) return data;
+        
+        // Verify column exists in at least one row
+        const hasColumn = data.some(row => column in row);
+        if (!hasColumn) return data;
+        
+        return [...data].sort((a, b) => {
+            // Get values - handle missing column gracefully
+            const aValue = a?.[column];
+            const bValue = b?.[column];
+            
+            const aEmpty = this.isValueEmpty(aValue);
+            const bEmpty = this.isValueEmpty(bValue);
+
+            // CRITICAL: Empty values ALWAYS go to the end, regardless of sort order (asc or desc)
+            // This ensures empty/null values never appear at the top
+            
+            // If both are empty, maintain original order
+            if (aEmpty && bEmpty) return 0;
+
+            // If only a is empty, it goes to the end (return positive = a comes after b)
+            if (aEmpty) return 1;
+
+            // If only b is empty, it goes to the end (return negative = b comes after a)
+            if (bEmpty) return -1;
+
+            // Both have non-empty values, compare normally
+            let comparison = 0;
+            
+            // Handle different data types
+            const aType = typeof aValue;
+            const bType = typeof bValue;
+            
+            if (aType === 'number' && bType === 'number') {
+                // Both are numbers
+                if (isNaN(aValue) && isNaN(bValue)) return 0;
+                if (isNaN(aValue)) return 1; // NaN goes to end
+                if (isNaN(bValue)) return -1; // NaN goes to end
+                comparison = aValue - bValue;
+            } else if (aValue instanceof Date && bValue instanceof Date) {
+                comparison = aValue.getTime() - bValue.getTime();
+            } else {
+                // Convert to string for comparison (handles mixed types)
+                const aStr = String(aValue ?? '').trim().toLowerCase();
+                const bStr = String(bValue ?? '').trim().toLowerCase();
+                
+                if (aStr < bStr) {
+                    comparison = -1;
+                } else if (aStr > bStr) {
+                    comparison = 1;
+                } else {
+                    comparison = 0;
+                }
+            }
+
+            // Apply sort order (asc or desc)
+            // Note: Empty values are already handled above and will always be at the end
+            return order === 'desc' ? -comparison : comparison;
+        });
     }
 
     private createModal(title: string, bodyHtml: string): HTMLElement {

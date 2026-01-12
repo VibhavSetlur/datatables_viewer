@@ -86,7 +86,7 @@
     /* Dimensions */
     --sidebar-width: 280px;
     --header-height: 56px;
-    --footer-height: 44px;
+    --footer-height: 64px;
     --radius-sm: 6px;
     --radius-md: 10px;
     --radius-lg: 14px;
@@ -164,7 +164,7 @@
     --row-padding-x: 10px;
     --row-font-size: 12px;
     --header-height: 48px;
-    --footer-height: 38px;
+    --footer-height: 56px;
 }
 
 [data-density="comfortable"] {
@@ -172,7 +172,7 @@
     --row-padding-x: 18px;
     --row-font-size: 14px;
     --header-height: 64px;
-    --footer-height: 50px;
+    --footer-height: 72px;
 }
 
 /* ============================================
@@ -1047,20 +1047,35 @@ mark.highlight {
    ============================================ */
 .ts-footer {
     height: var(--footer-height);
-    padding: 0 20px;
+    padding: 0 24px;
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 24px;
     background: var(--c-bg-surface);
     border-top: 1px solid var(--c-border-subtle);
     font-size: 12px;
     color: var(--c-text-secondary);
+    min-height: 64px;
 }
 
 .ts-status {
     display: flex;
     align-items: center;
     gap: 16px;
+    flex: 1;
+    min-width: 0;
+}
+
+.ts-table-name {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    padding: 0 20px;
+    border-left: 1px solid var(--c-border-subtle);
+    border-right: 1px solid var(--c-border-subtle);
+    height: 100%;
 }
 
 .ts-status strong {
@@ -1077,6 +1092,86 @@ mark.highlight {
     display: flex;
     align-items: center;
     gap: 6px;
+    flex: 1;
+    justify-content: flex-end;
+}
+
+.ts-grid-header {
+    background: var(--c-bg-surface);
+    border-bottom: 1px solid var(--c-border-subtle);
+    padding: 12px 20px;
+}
+
+.ts-grid-header-content {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    max-width: 100%;
+}
+
+.ts-db-info,
+.ts-table-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--c-text-secondary);
+}
+
+.ts-db-info i,
+.ts-table-info i {
+    font-size: 14px;
+    color: var(--c-text-muted);
+}
+
+.ts-db-info {
+    font-weight: 500;
+    color: var(--c-text-primary);
+}
+
+.ts-table-info {
+    font-weight: 600;
+    color: var(--c-text-primary);
+}
+
+.ts-grid-wrapper {
+    position: relative;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+}
+
+.ts-grid-wrapper .ts-grid {
+    flex: 1;
+    min-height: 0;
+}
+
+.ts-loading-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(2px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+    pointer-events: none;
+}
+
+[data-theme="dark"] .ts-loading-overlay {
+    background: rgba(15, 23, 42, 0.85);
+}
+
+.ts-loading-spinner-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
 }
 
 .ts-page-info {
@@ -1730,7 +1825,7 @@ kbd {
     :root {
         --sidebar-width: 100%;
         --header-height: 48px;
-        --footer-height: 40px;
+        --footer-height: 56px;
     }
 
     .ts-density-options {

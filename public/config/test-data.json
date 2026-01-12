@@ -135,6 +135,27 @@
                     ]
                 },
                 {
+                    "column": "GO_Terms",
+                    "displayName": "GO Terms",
+                    "dataType": "ontology",
+                    "width": "200px",
+                    "categories": [
+                        "functional"
+                    ],
+                    "transform": {
+                        "type": "ontology",
+                        "options": {
+                            "delimiter": ";",
+                            "ontologyType": "custom",
+                            "lookupTable": "Ontology_Dictionary",
+                            "lookupKey": "Term_ID",
+                            "lookupValue": "Term_Name",
+                            "urlTemplate": "https://amigo.geneontology.org/amigo/term/{value}",
+                            "style": "badge"
+                        }
+                    }
+                },
+                {
                     "column": "gene_names",
                     "displayName": "Gene",
                     "description": "Common gene name or symbol",
@@ -219,31 +240,17 @@
                     "dataType": "string",
                     "sortable": true,
                     "filterable": true,
-                    "width": "60px",
                     "align": "center",
+                    "width": "80px",
+                    "visible": false,
                     "categories": [
                         "location"
-                    ],
-                    "transform": {
-                        "type": "badge",
-                        "options": {
-                            "mapping": {
-                                "+": {
-                                    "color": "#22c55e",
-                                    "bgColor": "#dcfce7"
-                                },
-                                "-": {
-                                    "color": "#ef4444",
-                                    "bgColor": "#fee2e2"
-                                }
-                            }
-                        }
-                    }
+                    ]
                 },
                 {
-                    "column": "sequence",
-                    "displayName": "Sequence",
-                    "description": "Full nucleotide or amino acid sequence",
+                    "column": "sequence_dna",
+                    "displayName": "DNA Sequence",
+                    "description": "Nucleotide sequence of the feature",
                     "dataType": "sequence",
                     "visible": false,
                     "copyable": true,
@@ -257,6 +264,25 @@
                             "truncate": 50
                         }
                     }
+                }
+            ]
+        },
+        "Ontology_Dictionary": {
+            "displayName": "Ontology Dictionary",
+            "description": "Lookup table for GO Terms",
+            "icon": "bi-book",
+            "columns": [
+                {
+                    "column": "Term_ID",
+                    "displayName": "Term ID",
+                    "dataType": "string",
+                    "width": "150px"
+                },
+                {
+                    "column": "Term_Name",
+                    "displayName": "Term Name",
+                    "dataType": "string",
+                    "width": "250px"
                 }
             ]
         },
@@ -444,7 +470,7 @@
                         "metrics"
                     ],
                     "transform": {
-                        "type": "percentage",
+                        "type": "heatmap",
                         "options": {
                             "decimals": 1
                         }

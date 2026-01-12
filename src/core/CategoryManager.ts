@@ -114,4 +114,10 @@ export class CategoryManager {
             this.visibleCategories.add(catId);
         }
     }
+
+    public showAllCategories(): void {
+        this.categories.forEach((_, catId) => {
+            this.visibleCategories.add(catId);
+        });
+    }
 }

@@ -440,29 +440,35 @@ export class Transformers {
         let textColor: string;
 
         if (colorScale === 'diverging') {
-            // Blue (-) → White (0) → Red (+)
-            if (num < 0) {
-                const intensity = Math.abs(num) / Math.abs(min);
-                const blue = Math.round(255 * (1 - intensity * 0.7));
-                background = `rgb(${blue}, ${blue}, 255)`;
-                textColor = intensity > 0.5 ? '#fff' : '#1e293b';
-            } else if (num > 0) {
-                const intensity = num / max;
-                const red = Math.round(255 * (1 - intensity * 0.3));
-                background = `rgb(255, ${red}, ${red})`;
-                textColor = intensity > 0.5 ? '#fff' : '#1e293b';
+            // Blue (0.0) -> White (0.5) -> Red (1.0)
+            let r, g, b;
+            if (clamped < 0.5) {
+                // Blue to White
+                const t = clamped * 2; // 0 to 1
+                // Blue: 59, 130, 246 (#3b82f6) -> White: 255, 255, 255
+                r = Math.round(59 + (255 - 59) * t);
+                g = Math.round(130 + (255 - 130) * t);
+                b = Math.round(246 + (255 - 246) * t);
+                textColor = t < 0.5 ? '#fff' : '#1e293b';
             } else {
-                background = '#f8fafc';
-                textColor = '#1e293b';
+                // White to Red
+                const t = (clamped - 0.5) * 2; // 0 to 1
+                // White: 255, 255, 255 -> Red: 239, 68, 68 (#ef4444)
+                r = Math.round(255 + (239 - 255) * t);
+                g = Math.round(255 + (68 - 255) * t);
+                b = Math.round(255 + (68 - 255) * t);
+                textColor = t > 0.5 ? '#fff' : '#1e293b';
             }
-        } else if (colorScale === 'sequential') {
-            // Light → Dark blue
-            const intensity = clamped;
-            const r = Math.round(248 - intensity * 180);
-            const g = Math.round(250 - intensity * 190);
-            const b = Math.round(252 - intensity * 100);
             background = `rgb(${r}, ${g}, ${b})`;
-            textColor = intensity > 0.5 ? '#fff' : '#1e293b';
+
+        } else if (colorScale === 'sequential') {
+            // Light Blue -> Dark Blue
+            // #ecfeff -> #0891b2
+            const r = Math.round(236 + (8 - 236) * clamped);
+            const g = Math.round(254 + (145 - 254) * clamped);
+            const b = Math.round(255 + (178 - 255) * clamped);
+            background = `rgb(${r}, ${g}, ${b})`;
+            textColor = clamped > 0.5 ? '#fff' : '#1e293b';
         } else {
             background = 'transparent';
             textColor = 'inherit';
@@ -586,7 +592,30 @@ export class Transformers {
 
         const stringValue = String(value);
         const colorMap = options.colorMap || {};
-        const color = colorMap[stringValue] || options.color || options.defaultColor || '#6366f1';
+        const validColor = colorMap[stringValue] || options.color || options.defaultColor;
+        let color = validColor;
+
+        if (!color) {
+            // Deterministic color generation for unmapped values (Research Grade Palette)
+            const palette = [
+                '#6366f1', // Indigo
+                '#ef4444', // Red
+                '#10b981', // Emerald
+                '#f59e0b', // Amber
+                '#3b82f6', // Blue
+                '#8b5cf6', // Violet
+                '#ec4899', // Pink
+                '#06b6d4', // Cyan
+                '#84cc16', // Lime
+                '#f97316'  // Orange
+            ];
+            let hash = 0;
+            for (let i = 0; i < stringValue.length; i++) {
+                hash = stringValue.charCodeAt(i) + ((hash << 5) - hash);
+            }
+            color = palette[Math.abs(hash) % palette.length];
+        }
+
         const variant = options.variant || 'default'; // default | subtle | outline
 
         let style: string;
@@ -680,15 +709,40 @@ export class Transformers {
     // =========================================================================
 
     /**
+     * Pre-load ontology terms into cache
+     */
+    public static preLoadOntology(map: Record<string, string>, type: string = 'custom'): void {
+        const now = Date.now();
+        Object.entries(map).forEach(([id, name]) => {
+            const cacheKey = `${type}:${id}`;
+            Transformers.ontologyCache.set(cacheKey, { name, timestamp: now });
+        });
+    }
+
+    /**
      * Ontology term display
      */
     public static ontology(value: any, options: TransformerOptions, _rowData: RowData): string {
         if (value === null || value === undefined || value === '') return '';
 
-        const termId = String(value).trim();
-        const cacheKey = `${options.ontologyType || 'custom'}:${termId}`;
+        const delimiter = options.delimiter;
+        if (delimiter && typeof value === 'string' && value.includes(delimiter)) {
+            const terms = value.split(delimiter).map(t => t.trim()).filter(Boolean);
+            if (terms.length === 0) return '';
 
+            // Render each term and join them
+            return `<div class="ts-ontology-list" style="display:flex;flex-wrap:wrap;gap:4px">
+                ${terms.map(term => Transformers.renderSingleOntologyTerm(term, options)).join('')}
+            </div>`;
+        }
+
+        return Transformers.renderSingleOntologyTerm(String(value).trim(), options);
+    }
+
+    private static renderSingleOntologyTerm(termId: string, options: TransformerOptions): string {
+        const cacheKey = `${options.ontologyType || 'custom'}:${termId}`;
         const cached = Transformers.ontologyCache.get(cacheKey);
+
         if (cached && (Date.now() - cached.timestamp < Transformers.cacheTimeout)) {
             return Transformers.formatOntologyTerm(termId, cached.name, options);
         }
@@ -732,42 +786,64 @@ export class Transformers {
         const escapedId = Transformers.escapeHtml(termId);
         const style = options.style || 'default';
 
+        // Base URL template replacement
+        let url = '#';
+        if (options.urlTemplate) {
+            url = options.urlTemplate.replace(/\{value\}/g, encodeURIComponent(termId));
+        }
+
+        // If name provided, use it for template replacement too if needed
+        if (termName && options.urlTemplate && options.urlTemplate.includes('{name}')) {
+            url = url.replace(/\{name\}/g, encodeURIComponent(termName));
+        }
+
+        const tag = options.urlTemplate ? 'a' : 'span';
+        const href = options.urlTemplate ? ` href="${url}" target="_blank" rel="noopener noreferrer"` : '';
+
         if (style === 'badge') {
             if (termName) {
-                return `<span class="ts-badge ts-ontology-badge" data-term="${escapedId}">${Transformers.escapeHtml(termName)}</span>`;
+                return `<${tag}${href} class="ts-badge ts-ontology-badge" data-term="${escapedId}" style="text-decoration:none">${Transformers.escapeHtml(termName)}</${tag}>`;
             }
-            return `<span class="ts-badge ts-ontology-badge ts-loading-term" data-term="${escapedId}">${escapedId}</span>`;
+            return `<${tag}${href} class="ts-badge ts-ontology-badge ts-loading-term" data-term="${escapedId}" style="text-decoration:none">${escapedId}</${tag}>`;
         }
 
         if (termName) {
             const escapedName = Transformers.escapeHtml(termName);
             if (showId) {
-                return `<span class="ts-ontology" data-term="${escapedId}">${escapedName} <span class="ts-ontology-id">(${escapedId})</span></span>`;
+                return `<${tag}${href} class="ts-ontology" data-term="${escapedId}">${escapedName} <span class="ts-ontology-id">(${escapedId})</span></${tag}>`;
             }
-            return `<span class="ts-ontology" data-term="${escapedId}">${escapedName}</span>`;
+            return `<${tag}${href} class="ts-ontology" data-term="${escapedId}">${escapedName}</${tag}>`;
         }
 
-        return `<span class="ts-ontology ts-loading-term" data-term="${escapedId}">${escapedId}</span>`;
+        return `<${tag}${href} class="ts-ontology ts-loading-term" data-term="${escapedId}">${escapedId}</${tag}>`;
     }
 
     private static async lookupOntologyTerm(termId: string, options: TransformerOptions, cacheKey: string) {
+        // Debounce or queue? For now just direct async
         try {
             let name: string | null = null;
-            switch (options.ontologyType) {
-                case 'GO':
-                    name = await Transformers.lookupGO(termId);
-                    break;
-                case 'KEGG':
-                    name = termId; // Placeholder
-                    break;
-                case 'EC':
-                    name = termId; // Placeholder
-                    break;
-                case 'custom':
-                    if (options.lookupEndpoint) {
-                        name = await Transformers.lookupCustom(termId, options.lookupEndpoint);
-                    }
-                    break;
+
+            // Check pre-loaded map first if provided in options (fallback if not in global cache)
+            if (options.map && options.map[termId]) {
+                name = options.map[termId];
+            } else {
+                switch (options.ontologyType) {
+                    case 'GO':
+                        name = await Transformers.lookupGO(termId);
+                        break;
+                    case 'KEGG':
+                        name = termId; // Placeholder
+                        break;
+                    case 'EC':
+                        name = termId; // Placeholder
+                        break;
+                    case 'custom':
+                        // If we have a lookup endpoint but NOT a table lookup (which should be pre-loaded)
+                        if (options.lookupEndpoint) {
+                            name = await Transformers.lookupCustom(termId, options.lookupEndpoint);
+                        }
+                        break;
+                }
             }
 
             if (name) {
@@ -780,10 +856,15 @@ export class Transformers {
     }
 
     private static updateOntologyElements(termId: string, name: string, options: TransformerOptions) {
+        // This is tricky because we might have split elements now.
+        // The data-term attribute is on the inner span/a, so this selector still works.
         const elements = document.querySelectorAll(`.ts-ontology[data-term="${termId}"], .ts-ontology-badge[data-term="${termId}"]`);
         elements.forEach(el => {
             el.classList.remove('ts-loading-term');
             const showId = options.showId !== false;
+
+            // Preserve href if it's an anchor
+
             if (el.classList.contains('ts-ontology-badge')) {
                 el.textContent = name;
             } else if (showId) {
