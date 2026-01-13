@@ -608,7 +608,7 @@ export class TableRenderer {
         const gridHeader = this.container.querySelector('#ts-grid-header') as HTMLElement;
         const dbNameEl = this.container.querySelector('#ts-db-name') as HTMLElement;
         const tableNameEl = this.container.querySelector('#ts-active-table-name') as HTMLElement;
-        
+
         if (gridHeader && dbNameEl && tableNameEl) {
             if (state.activeTableName && state.berdlTableId) {
                 gridHeader.style.display = 'block';
@@ -700,9 +700,6 @@ export class TableRenderer {
 
         const renderSidebar = (active: string | null, searchQuery: string = '') => {
             const hasSearch = searchQuery.trim().length > 0;
-            const filteredTables = hasSearch 
-                ? tables.filter((t: any) => t.name.toLowerCase().includes(searchQuery.toLowerCase()))
-                : tables;
 
             return `
             <div class="glass-sidebar" style="width:260px;display:flex;flex-direction:column;">
@@ -747,8 +744,8 @@ export class TableRenderer {
                             </span>
                         </div>
                         ${searchResults.length > 0 ? searchResults.map((result: any) => {
-                            const matchCount = result.columns.length + (result.hasDataMatches ? 1 : 0);
-                            return `
+                const matchCount = result.columns.length + (result.hasDataMatches ? 1 : 0);
+                return `
                                 <div class="ts-nav-item ${active === result.table.name ? 'active' : ''}" 
                                      data-target="${result.table.name}" 
                                      data-search="${searchQuery}"
@@ -763,7 +760,7 @@ export class TableRenderer {
                                     </div>
                                 </div>
                             `;
-                        }).join('') : `
+            }).join('') : `
                             <div style="padding:24px;text-align:center;color:var(--c-text-muted)">
                                 <i class="bi bi-search" style="font-size:24px;display:block;margin-bottom:8px;opacity:0.5"></i>
                                 <div style="font-size:12px">No matches found</div>
@@ -792,8 +789,8 @@ export class TableRenderer {
 
                         <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(300px, 1fr));gap:16px">
                             ${searchResults.map((result: any) => {
-                                const matchCount = result.columns.length + (result.hasDataMatches ? 1 : 0);
-                                return `
+                    const matchCount = result.columns.length + (result.hasDataMatches ? 1 : 0);
+                    return `
                                     <div class="ts-card-nav" data-target="${result.table.name}" data-search="${searchTerm}" style="cursor:pointer">
                                         <div style="width:44px;height:44px;background:var(--c-accent-light);border-radius:10px;display:flex;align-items:center;justify-content:center;color:var(--c-accent);font-size:20px">
                                             <i class="bi bi-table"></i>
@@ -817,7 +814,7 @@ export class TableRenderer {
                                         <i class="bi bi-chevron-right" style="font-size:14px;color:var(--c-text-muted)"></i>
                                     </div>
                                 `;
-                            }).join('')}
+                }).join('')}
                         </div>
                     </div>
                 `;
@@ -956,7 +953,7 @@ export class TableRenderer {
                 const config = this.configManager.getTableConfig(table.name);
                 const isLive = state.activeTableName === table.name;
                 const columns = isLive ? state.columns : (config.columns || []);
-                
+
                 const matchingColumns = columns.filter((c: any) => {
                     const colName = (c.displayName || c.column || '').toLowerCase();
                     const colKey = (c.column || '').toLowerCase();
@@ -979,7 +976,7 @@ export class TableRenderer {
                 const sidebar = modal.querySelector('#ts-schema-sidebar');
                 if (sidebar) sidebar.innerHTML = renderSidebar(null, searchTerm);
                 bindEvents();
-                
+
                 const dataSearchPromises = tables.map(async (table: any) => {
                     try {
                         const res = await this.client.getTableData({
@@ -989,7 +986,7 @@ export class TableRenderer {
                             offset: 0,
                             search_value: searchTerm
                         });
-                        
+
                         if (res.total_count > 0) {
                             const existing = searchResults.find(r => r.table.name === table.name);
                             if (existing) {
@@ -1025,7 +1022,7 @@ export class TableRenderer {
                 dbSearchInput.addEventListener('input', () => {
                     const query = dbSearchInput.value;
                     searchTerm = query;
-                    
+
                     if (searchDebounce) clearTimeout(searchDebounce);
                     searchDebounce = setTimeout(() => {
                         performSearch(query, false);
@@ -1068,7 +1065,7 @@ export class TableRenderer {
                             // Close modal and load table with search
                             const closeBtn = modal.querySelector('.ts-modal-close') as HTMLElement;
                             if (closeBtn) closeBtn.click();
-                            
+
                             // Switch to the table and apply search
                             this.switchTable(target).then(() => {
                                 this.stateManager.update({ searchValue: searchQuery, currentPage: 0 });
@@ -1147,7 +1144,7 @@ export class TableRenderer {
     private isValueEmpty(value: any): boolean {
         // Check for null or undefined
         if (value === null || value === undefined) return true;
-        
+
         // Check for empty string or whitespace-only string
         if (typeof value === 'string') {
             const trimmed = value.trim();
@@ -1155,37 +1152,37 @@ export class TableRenderer {
             // Also treat common "empty" representations as empty
             if (trimmed.toLowerCase() === 'null' || trimmed.toLowerCase() === 'undefined' || trimmed === '-') return true;
         }
-        
+
         // Check for empty array
         if (Array.isArray(value) && value.length === 0) return true;
-        
+
         // Check for NaN (which should be treated as empty for sorting)
         if (typeof value === 'number' && isNaN(value)) return true;
-        
+
         // Check for empty object (no keys)
         if (typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0) return true;
-        
+
         return false;
     }
 
     private sortWithNullsLast(data: Record<string, any>[], column: string, order: 'asc' | 'desc'): Record<string, any>[] {
         if (!data || data.length === 0 || !column) return data;
-        
+
         // Verify column exists in at least one row
         const hasColumn = data.some(row => column in row);
         if (!hasColumn) return data;
-        
+
         return [...data].sort((a, b) => {
             // Get values - handle missing column gracefully
             const aValue = a?.[column];
             const bValue = b?.[column];
-            
+
             const aEmpty = this.isValueEmpty(aValue);
             const bEmpty = this.isValueEmpty(bValue);
 
             // CRITICAL: Empty values ALWAYS go to the end, regardless of sort order (asc or desc)
             // This ensures empty/null values never appear at the top
-            
+
             // If both are empty, maintain original order
             if (aEmpty && bEmpty) return 0;
 
@@ -1197,11 +1194,11 @@ export class TableRenderer {
 
             // Both have non-empty values, compare normally
             let comparison = 0;
-            
+
             // Handle different data types
             const aType = typeof aValue;
             const bType = typeof bValue;
-            
+
             if (aType === 'number' && bType === 'number') {
                 // Both are numbers
                 if (isNaN(aValue) && isNaN(bValue)) return 0;
@@ -1214,7 +1211,7 @@ export class TableRenderer {
                 // Convert to string for comparison (handles mixed types)
                 const aStr = String(aValue ?? '').trim().toLowerCase();
                 const bStr = String(bValue ?? '').trim().toLowerCase();
-                
+
                 if (aStr < bStr) {
                     comparison = -1;
                 } else if (aStr > bStr) {

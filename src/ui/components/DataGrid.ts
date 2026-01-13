@@ -254,8 +254,8 @@ export class DataGrid extends Component {
                 return;
             }
 
-            // Row selection by clicking anywhere on the row (except checkboxes, buttons, inputs)
-            if (target.tagName !== 'BUTTON' && target.tagName !== 'INPUT' && !target.closest('.ts-copy-btn')) {
+            // Row selection by clicking anywhere on the row (except checkboxes, buttons, inputs, links)
+            if (target.tagName !== 'BUTTON' && target.tagName !== 'INPUT' && !target.closest('a') && !target.closest('.ts-copy-btn')) {
                 const tr = target.closest('tr');
                 if (tr && tr.parentElement?.tagName === 'TBODY') {
                     const idx = parseInt(tr.dataset.idx || '-1');

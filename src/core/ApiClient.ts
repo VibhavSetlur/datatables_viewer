@@ -5,6 +5,7 @@
  */
 
 import type { ApiConfig } from '../types/schema';
+import { LocalDbClient } from './LocalDbClient';
 
 interface ClientOptions {
     apiConfig?: ApiConfig;
@@ -46,6 +47,7 @@ export class ApiClient {
     private customHeaders: Record<string, string>;
     private cache: Map<string, CacheEntry<any>>;
     private cacheTTL: number;
+    private localDb: LocalDbClient;
 
     constructor(options: ClientOptions = {}) {
         this.environment = options.environment || 'appdev';
@@ -53,8 +55,6 @@ export class ApiClient {
         if (options.apiConfig) {
             this.baseUrl = options.apiConfig.url;
             this.customHeaders = options.apiConfig.headers || {};
-            // If environment is in options, it overrides; otherwise check apiConfig? 
-            // ApiConfig definitions don't currently have environment, keep defaulting to 'appdev' or options
         } else {
             this.baseUrl = options.baseUrl || this.getDefaultUrl(this.environment);
             this.customHeaders = options.headers || {};
@@ -63,6 +63,7 @@ export class ApiClient {
         this.token = options.token || null;
         this.cache = new Map();
         this.cacheTTL = 300000; // 5 minutes
+        this.localDb = LocalDbClient.getInstance();
     }
 
     private getDefaultUrl(env: string): string {
@@ -122,8 +123,6 @@ export class ApiClient {
 
     public setEnvironment(environment: 'appdev' | 'prod' | 'local'): void {
         this.environment = environment;
-        // Only reset baseUrl to default if NOT using explicit config?
-        // For backward compatibility, if this method is called, we assume we want to switch to default url for that env
         this.baseUrl = this.getDefaultUrl(environment);
         this.clearCache();
     }
@@ -135,7 +134,6 @@ export class ApiClient {
             const cached = this.getFromCache<T>(cacheKey);
             if (cached) return cached;
         }
-        // POST requests with useCache=true also supported in original
         if (useCache && method === 'POST') {
             const cached = this.getFromCache<T>(cacheKey);
             if (cached) return cached;
@@ -183,29 +181,29 @@ export class ApiClient {
     // Public Methods
 
     public async listTables(berdlTableId: string): Promise<any> {
-        // Mock Mode for local test data
-        if (berdlTableId === 'test/test/test') {
-            try {
-                const res = await fetch('/config/test-data.json');
-                const config = await res.json();
-                const tables = Object.entries(config.tables || {}).map(([name, conf]: [string, any]) => ({
-                    name,
-                    displayName: conf.displayName || name,
-                    row_count: 500, // Mock count
-                    column_count: conf.columns?.length || 0,
-                    description: conf.description
-                }));
-                return { tables, type: 'test_data' };
-            } catch (e) {
-                console.warn('Failed to load local test data config', e);
-                // Fallback to network request if local fetch fails
-            }
+        // Local SQLite database mode for test/test/0 and test/test/1
+        if (LocalDbClient.isLocalDb(berdlTableId)) {
+            return this.localDb.listTables(berdlTableId);
         }
 
         return this.request(`/object/${berdlTableId}/tables`, 'GET', undefined, true);
     }
 
     public async getTableData(req: TableDataRequest): Promise<TableDataResponse> {
+        // Local SQLite database mode
+        if (LocalDbClient.isLocalDb(req.berdl_table_id)) {
+            return this.localDb.getTableData(req.berdl_table_id, {
+                table_name: req.table_name,
+                limit: req.limit,
+                offset: req.offset,
+                columns: req.columns,
+                sort_column: req.sort_column,
+                sort_order: req.sort_order,
+                search_value: req.search_value,
+                col_filter: req.col_filter
+            });
+        }
+
         const body = {
             ...req,
             limit: req.limit || 100,
@@ -213,75 +211,7 @@ export class ApiClient {
             kb_env: this.environment
         };
 
-        if (req.berdl_table_id === 'test/test/test') {
-            return this.generateMockData(req);
-        }
-
-        // Use cache for data requests? Original used _post with useCache=false for getTableDataREST but implicit check.
-        // But getTableData used _post without useCache arg (defaults false).
-        // Let's keep it false for data to ensure freshness, or customizable.
         return this.request('/table-data', 'POST', body, false);
-    }
-
-    private async generateMockData(req: TableDataRequest): Promise<TableDataResponse> {
-        try {
-            const res = await fetch('/config/test-data.json');
-            const config = await res.json();
-            const tableConfig = config.tables?.[req.table_name];
-
-            if (!tableConfig) throw new Error(`Table ${req.table_name} not found in mock config`);
-
-            const headers = tableConfig.columns.map((c: any) => c.column);
-            const count = Math.min(req.limit || 100, 500 - (req.offset || 0));
-
-            // Special case for Ontology Dictionary
-            if (req.table_name === 'Ontology_Dictionary') {
-                const dictData: any[][] = [];
-                for (let i = 0; i < count; i++) {
-                    const idx = (req.offset || 0) + i + 1;
-                    // Mock GO Terms
-                    dictData.push([`GO:${String(idx).padStart(7, '0')}`, `Gene Ontology Term ${idx}`]);
-                }
-                return {
-                    headers: ['Term_ID', 'Term_Name'], // Ensure these match test-data.json
-                    data: dictData,
-                    total_count: 500
-                };
-            }
-
-            const data = Array.from({ length: count > 0 ? count : 0 }, (_, i) => {
-                const idx = (req.offset || 0) + i + 1;
-                return headers.map((h: string) => {
-                    if (h === 'GO_Terms') {
-                        // Generate random list of GO terms
-                        const numTerms = Math.floor(Math.random() * 3) + 1;
-                        const terms = [];
-                        for (let k = 0; k < numTerms; k++) {
-                            const termId = Math.floor(Math.random() * 50) + 1; // Use first 50 for lookup hits
-                            terms.push(`GO:${String(termId).padStart(7, '0')}`);
-                        }
-                        return terms.join('; ');
-                    }
-
-                    if (h.includes('id') && h !== 'genome_id' && h !== 'contig_id') return `ID_${idx}`;
-                    if (h === 'genome_id') return `Genome_${(idx % 5) + 1}`;
-                    if (h.includes('function')) return `Mock Function ${idx}`;
-                    if (h === 'length') return Math.floor(Math.random() * 5000) + 100;
-                    if (h === 'score' || h.includes('af')) return (Math.random() * 100).toFixed(2);
-                    if (h.includes('ani')) return (95 + Math.random() * 5).toFixed(2);
-                    return `Val ${idx}-${h}`;
-                });
-            });
-
-            return {
-                headers,
-                data,
-                total_count: 500
-            };
-        } catch (e) {
-            console.error('Mock data generation failed', e);
-            return { headers: [], data: [], total_count: 0 };
-        }
     }
 }
 

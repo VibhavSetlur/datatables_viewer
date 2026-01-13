@@ -1671,6 +1671,125 @@ mark.highlight {
 }
 
 /* ============================================
+   ONTOLOGY LOOKUP DISPLAY
+   ============================================ */
+.ts-ontology-lookup-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.ts-ontology-lookup {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.35em;
+    max-width: 100%;
+    padding: 2px 8px;
+    background: var(--c-bg-surface-alt);
+    border: 1px solid var(--c-border-subtle);
+    border-radius: var(--radius-sm);
+    text-decoration: none;
+    color: var(--c-text-primary);
+    transition: var(--transition-fast);
+    cursor: pointer;
+}
+
+.ts-ontology-lookup:hover {
+    border-color: var(--c-accent);
+    background: var(--c-accent-light);
+    color: var(--c-accent);
+}
+
+.ts-ontology-lookup .ts-ontology-id {
+    font-family: 'SF Mono', 'Monaco', 'Cascadia Code', monospace;
+    font-weight: 600;
+    font-size: 0.9em;
+    color: var(--c-accent);
+    white-space: nowrap;
+}
+
+.ts-ontology-lookup .ts-ontology-name {
+    font-size: 0.9em;
+    color: var(--c-text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 200px;
+}
+
+.ts-ontology-lookup:hover .ts-ontology-name {
+    color: var(--c-text-primary);
+}
+
+/* Badge style variant */
+.ts-ontology-lookup-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3em;
+    padding: 3px 10px;
+    background: var(--c-accent-light);
+    border: 1px solid var(--c-accent);
+    border-radius: 999px;
+    font-size: 12px;
+    color: var(--c-accent);
+}
+
+.ts-ontology-lookup-badge:hover {
+    background: var(--c-accent);
+    color: white;
+}
+
+.ts-ontology-lookup-badge .ts-ontology-id {
+    font-family: monospace;
+    font-weight: 600;
+}
+
+.ts-ontology-lookup-badge .ts-ontology-name {
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Loading state */
+.ts-ontology-lookup.ts-loading-term,
+.ts-ontology-lookup-badge.ts-loading-term {
+    opacity: 0.8;
+}
+
+.ts-loading-indicator {
+    color: var(--c-text-muted);
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+
+    0%,
+    100% {
+        opacity: 0.4;
+    }
+
+    50% {
+        opacity: 1;
+    }
+}
+
+/* More indicator */
+.ts-ontology-more {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px 8px;
+    background: var(--c-bg-app);
+    border: 1px solid var(--c-border-subtle);
+    border-radius: var(--radius-sm);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--c-text-muted);
+    cursor: help;
+}
+
+/* ============================================
    KEYBOARD HELP MODAL
    ============================================ */
 .keyboard-help {

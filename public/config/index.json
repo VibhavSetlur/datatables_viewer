@@ -45,9 +45,19 @@
             "configUrl": "/config/test-data.json",
             "matches": [
                 "test_data",
-                "test/*"
+                "test/test/test"
             ],
             "priority": 10,
+            "autoLoad": true
+        },
+        "berdl_tables": {
+            "configUrl": "/config/berdl-tables.json",
+            "matches": [
+                "berdl_tables",
+                "test/test/1",
+                "berdl/*"
+            ],
+            "priority": 5,
             "autoLoad": true
         },
         "metabolic_models": {

@@ -509,7 +509,7 @@ export class Transformers {
     /**
      * Link transformer
      */
-    public static link(value: any, options: TransformerOptions, rowData: RowData): string {
+    public static link(value: any, options: TransformerOptions, rowData: RowData = {}): string {
         if (value === null || value === undefined || value === '') return '';
 
         const stringValue = String(value);
@@ -517,7 +517,7 @@ export class Transformers {
 
         let url = options.urlTemplate.replace(/\{value\}/g, encodedValue);
 
-        if (rowData) {
+        if (rowData && Object.keys(rowData).length > 0) {
             Object.keys(rowData).forEach(key => {
                 const placeholder = `{${key}}`;
                 if (url.includes(placeholder)) {
@@ -532,7 +532,7 @@ export class Transformers {
         let label = stringValue;
         if (options.labelTemplate) {
             label = options.labelTemplate.replace(/\{value\}/g, stringValue);
-            if (rowData) {
+            if (rowData && Object.keys(rowData).length > 0) {
                 Object.keys(rowData).forEach(key => {
                     label = label.replace(
                         new RegExp(`\\{${key}\\}`, 'g'),
@@ -547,6 +547,32 @@ export class Transformers {
         const iconHtml = options.icon ? `<i class="${options.icon}"></i> ` : '';
 
         return `<a href="${url}" target="${target}"${rel} class="ts-cell-link">${iconHtml}${Transformers.escapeHtml(label)}</a>`;
+    }
+
+    /**
+     * Replace text using string or regex
+     */
+    public static replace(value: any, options: TransformerOptions): string {
+        if (value === null || value === undefined || value === '') return '';
+
+        const str = String(value);
+        const find = options.pattern || options.find;
+        const replaceWith = options.replaceWith || options.replace || '';
+
+        if (!find) return str;
+
+        if (options.isRegex) {
+            try {
+                const flags = options.flags || 'g';
+                const regex = new RegExp(find, flags);
+                return str.replace(regex, replaceWith);
+            } catch (e) {
+                console.error('Invalid regex in replace transformer', e);
+                return str;
+            }
+        }
+
+        return str.split(find).join(replaceWith);
     }
 
     /**
@@ -943,6 +969,250 @@ export class Transformers {
     }
 
     // =========================================================================
+    // ONTOLOGY LOOKUP TRANSFORMER
+    // =========================================================================
+
+    /**
+     * Ontology Lookup transformer
+     * 
+     * Displays ontology term IDs with their descriptions fetched from external sources.
+     * - Parses JSON arrays of IDs
+     * - Extracts base IDs from compartmentalized IDs (e.g., rxn09165_c0 → rxn09165)
+     * - Fetches descriptions from ModelSEED or other APIs
+     * - Renders with truncation and tooltip for long descriptions
+     * - Makes entire element a clickable link while preserving ID for copy-paste
+     * 
+     * Options:
+     * - ontologyType: 'modelseed_reactions' | 'modelseed_compounds' | 'custom'
+     * - urlTemplate: URL pattern with {id} placeholder (e.g., "https://modelseed.org/biochem/reactions/{id}")
+     * - idPattern: Regex string to extract base ID (default: "(rxn\\d+)" for reactions)
+     * - maxLength: Max characters for description before truncating (default: 50)
+     * - showId: Whether to show the ID (default: true)
+     * - style: 'inline' | 'badge' (default: 'inline')
+     */
+    public static ontologyLookup(value: any, options: TransformerOptions, _rowData: RowData): string {
+        if (value === null || value === undefined || value === '') return '';
+
+        // Parse JSON array if needed
+        let items: string[];
+        if (typeof value === 'string') {
+            const trimmed = value.trim();
+            if (trimmed.startsWith('[')) {
+                try {
+                    const parsed = JSON.parse(trimmed);
+                    items = Array.isArray(parsed) ? parsed.filter(Boolean).map(String) : [trimmed];
+                } catch {
+                    items = [trimmed];
+                }
+            } else {
+                // Split by comma or semicolon
+                items = trimmed.split(/[,;]/).map(s => s.trim()).filter(Boolean);
+            }
+        } else if (Array.isArray(value)) {
+            items = value.filter(Boolean).map(String);
+        } else {
+            items = [String(value)];
+        }
+
+        if (items.length === 0) return '';
+
+        // Render each item
+        const rendered = items.slice(0, options.limit || 5).map(item =>
+            Transformers.renderOntologyLookupTerm(item, options)
+        );
+
+        const remaining = items.length - (options.limit || 5);
+        const moreTag = remaining > 0
+            ? `<span class="ts-ontology-more" title="${items.slice(options.limit || 5).join(', ')}">+${remaining}</span>`
+            : '';
+
+        return `<div class="ts-ontology-lookup-list">${rendered.join('')}${moreTag}</div>`;
+    }
+
+    /**
+     * Render a single ontology lookup term
+     */
+    private static renderOntologyLookupTerm(rawId: string, options: TransformerOptions): string {
+        // Extract base ID using pattern (strip compartment suffixes like _c0)
+        const idPattern = options.idPattern || '(rxn\\d+|cpd\\d+)';
+        const match = rawId.match(new RegExp(idPattern, 'i'));
+        const baseId = match ? match[1] : rawId;
+
+        const cacheKey = `ontolookup:${options.ontologyType || 'custom'}:${baseId}`;
+        const cached = Transformers.ontologyCache.get(cacheKey);
+
+        const escapedRawId = Transformers.escapeHtml(rawId);
+        const showId = options.showId !== false;
+        const maxLength = options.maxLength || 50;
+        const style = options.style || 'inline';
+
+        // Build URL
+        let url = '#';
+        if (options.urlTemplate) {
+            url = options.urlTemplate.replace(/\{id\}/g, encodeURIComponent(baseId));
+        }
+
+        // If we have cached description
+        if (cached && (Date.now() - cached.timestamp < Transformers.cacheTimeout)) {
+            return Transformers.formatOntologyLookupTerm(baseId, escapedRawId, cached.name, url, showId, maxLength, style);
+        }
+
+        // Trigger async lookup
+        Transformers.lookupOntologyDescription(baseId, options, cacheKey);
+
+        // Return loading state - ID is shown, rest placeholder
+        return Transformers.formatOntologyLookupTerm(baseId, escapedRawId, null, url, showId, maxLength, style);
+    }
+
+    /**
+     * Format ontology lookup term HTML
+     */
+    private static formatOntologyLookupTerm(
+        baseId: string,
+        rawId: string,
+        description: string | null,
+        url: string,
+        showId: boolean,
+        maxLength: number,
+        style: string
+    ): string {
+        const escapedId = Transformers.escapeHtml(baseId);
+        const hasUrl = url !== '#';
+        const linkAttrs = hasUrl ? `href="${url}" target="_blank" rel="noopener noreferrer"` : '';
+        const tag = hasUrl ? 'a' : 'span';
+
+        if (style === 'badge') {
+            if (description) {
+                const truncated = description.length > maxLength
+                    ? description.substring(0, maxLength) + '…'
+                    : description;
+                const fullTitle = `${rawId}: ${description}`;
+
+                return `<${tag} ${linkAttrs} class="ts-badge ts-ontology-lookup-badge" data-term="${escapedId}" title="${Transformers.escapeHtml(fullTitle)}" style="text-decoration:none">
+                    ${showId ? `<span class="ts-ontology-id">${escapedId}</span>: ` : ''}
+                    <span class="ts-ontology-name">${Transformers.escapeHtml(truncated)}</span>
+                </${tag}>`;
+            }
+            return `<${tag} ${linkAttrs} class="ts-badge ts-ontology-lookup-badge ts-loading-term" data-term="${escapedId}" title="${rawId}" style="text-decoration:none">${escapedId}</${tag}>`;
+        }
+
+        // Inline style (default)
+        if (description) {
+            const truncated = description.length > maxLength
+                ? description.substring(0, maxLength) + '…'
+                : description;
+            const fullTitle = `${rawId}: ${description}`;
+
+            return `<${tag} ${linkAttrs} class="ts-ontology-lookup" data-term="${escapedId}" title="${Transformers.escapeHtml(fullTitle)}">
+                ${showId ? `<span class="ts-ontology-id">${escapedId}</span>: ` : ''}
+                <span class="ts-ontology-name">${Transformers.escapeHtml(truncated)}</span>
+            </${tag}>`;
+        }
+
+        // Loading state - just show ID
+        return `<${tag} ${linkAttrs} class="ts-ontology-lookup ts-loading-term" data-term="${escapedId}" title="${rawId}">
+            <span class="ts-ontology-id">${escapedId}</span>
+            <span class="ts-loading-indicator">…</span>
+        </${tag}>`;
+    }
+
+    /**
+     * Async lookup for ontology descriptions
+     */
+    private static async lookupOntologyDescription(termId: string, options: TransformerOptions, cacheKey: string): Promise<void> {
+        try {
+            let name: string | null = null;
+            const ontologyType = options.ontologyType || 'custom';
+
+            switch (ontologyType) {
+                case 'modelseed_reactions':
+                    name = await Transformers.lookupModelSeedReaction(termId);
+                    break;
+                case 'modelseed_compounds':
+                    name = await Transformers.lookupModelSeedCompound(termId);
+                    break;
+                case 'custom':
+                    if (options.apiUrl) {
+                        const url = options.apiUrl.replace(/\{id\}/g, encodeURIComponent(termId));
+                        const response = await fetch(url);
+                        if (response.ok) {
+                            const data = await response.json();
+                            name = data.name || data.definition || data.equation || null;
+                        }
+                    }
+                    break;
+            }
+
+            if (name) {
+                Transformers.ontologyCache.set(cacheKey, { name, timestamp: Date.now() });
+                Transformers.updateOntologyLookupElements(termId, name, options);
+            }
+        } catch (e) {
+            console.warn(`Ontology lookup failed for ${termId}`, e);
+        }
+    }
+
+    /**
+     * Lookup ModelSEED reaction
+     */
+    private static async lookupModelSeedReaction(reactionId: string): Promise<string | null> {
+        try {
+            // ModelSEED provides a Solr-based API
+            const response = await fetch(`https://modelseed.org/solr/reactions/select?q=id:${reactionId}&wt=json`);
+            if (!response.ok) return null;
+            const data = await response.json();
+            if (data.response?.docs?.length > 0) {
+                const doc = data.response.docs[0];
+                // Return equation or name
+                return doc.definition || doc.name || doc.equation || null;
+            }
+            return null;
+        } catch {
+            return null;
+        }
+    }
+
+    /**
+     * Lookup ModelSEED compound
+     */
+    private static async lookupModelSeedCompound(compoundId: string): Promise<string | null> {
+        try {
+            const response = await fetch(`https://modelseed.org/solr/compounds/select?q=id:${compoundId}&wt=json`);
+            if (!response.ok) return null;
+            const data = await response.json();
+            if (data.response?.docs?.length > 0) {
+                const doc = data.response.docs[0];
+                return doc.name || doc.formula || null;
+            }
+            return null;
+        } catch {
+            return null;
+        }
+    }
+
+    /**
+     * Update DOM elements after async lookup completes
+     */
+    private static updateOntologyLookupElements(termId: string, description: string, options: TransformerOptions): void {
+        const maxLength = options.maxLength || 50;
+        const showId = options.showId !== false;
+        const truncated = description.length > maxLength
+            ? description.substring(0, maxLength) + '…'
+            : description;
+
+        // Find and update elements
+        const elements = document.querySelectorAll(`.ts-ontology-lookup[data-term="${termId}"], .ts-ontology-lookup-badge[data-term="${termId}"]`);
+        elements.forEach(el => {
+            el.classList.remove('ts-loading-term');
+            el.setAttribute('title', `${termId}: ${description}`);
+
+            // Update content
+            const idSpan = showId ? `<span class="ts-ontology-id">${Transformers.escapeHtml(termId)}</span>: ` : '';
+            el.innerHTML = `${idSpan}<span class="ts-ontology-name">${Transformers.escapeHtml(truncated)}</span>`;
+        });
+    }
+
+    // =========================================================================
     // REGISTRATION
     // =========================================================================
 
@@ -969,8 +1239,8 @@ export class Transformers {
             'number', 'percentage', 'currency', 'filesize', 'duration',
             'date', 'datetime', 'boolean',
             'heatmap', 'progress',
-            'link', 'merge', 'badge', 'array', 'sequence', 'truncate',
-            'ontology', 'lookup',
+            'link', 'replace', 'merge', 'badge', 'array', 'sequence', 'truncate',
+            'ontology', 'ontologyLookup', 'lookup',
             'chain', 'conditional'
         ];
         const custom = Array.from(Transformers.customTransformers.keys());
