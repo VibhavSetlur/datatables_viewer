@@ -2,7 +2,9 @@
  * Local SQLite Database Client
  * 
  * Uses sql.js to directly query local SQLite database files in the browser.
- * This is used for test/test/0 and test/test/1 UPAs that map to local .db files.
+ * This enables offline/local testing with test/test/0 and test/test/1 UPAs.
+ * 
+ * @module LocalDbClient
  */
 
 import initSqlJs from 'sql.js';

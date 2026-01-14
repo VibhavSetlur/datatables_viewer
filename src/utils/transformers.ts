@@ -1125,12 +1125,50 @@ export class Transformers {
             const ontologyType = options.ontologyType || 'custom';
 
             switch (ontologyType) {
+                // ModelSEED metabolic data
                 case 'modelseed_reactions':
                     name = await Transformers.lookupModelSeedReaction(termId);
                     break;
                 case 'modelseed_compounds':
                     name = await Transformers.lookupModelSeedCompound(termId);
                     break;
+
+                // Gene Ontology (GO)
+                case 'go':
+                    name = await Transformers.lookupGOTerm(termId);
+                    break;
+
+                // KEGG Orthologs
+                case 'kegg':
+                    name = await Transformers.lookupKEGGOrtholog(termId);
+                    break;
+
+                // Pfam Domains
+                case 'pfam':
+                    name = await Transformers.lookupPfamDomain(termId);
+                    break;
+
+                // COG Categories
+                case 'cog':
+                    name = await Transformers.lookupCOG(termId);
+                    break;
+
+                // EC Numbers (Enzyme Commission)
+                case 'ec':
+                    name = await Transformers.lookupECNumber(termId);
+                    break;
+
+                // Sequence Ontology
+                case 'so':
+                    name = await Transformers.lookupSequenceOntology(termId);
+                    break;
+
+                // UniProt Reference Clusters
+                case 'uniref':
+                    name = await Transformers.lookupUniRef(termId);
+                    break;
+
+                // Custom API lookup
                 case 'custom':
                     if (options.apiUrl) {
                         const url = options.apiUrl.replace(/\{id\}/g, encodeURIComponent(termId));
@@ -1184,6 +1222,241 @@ export class Transformers {
                 const doc = data.response.docs[0];
                 return doc.name || doc.formula || null;
             }
+            return null;
+        } catch {
+            return null;
+        }
+    }
+
+    // =========================================================================
+    // ONTOLOGY API LOOKUP METHODS
+    // =========================================================================
+
+    /**
+     * Lookup Gene Ontology (GO) term name
+     * Uses QuickGO API from EBI
+     */
+    private static async lookupGOTerm(goId: string): Promise<string | null> {
+        try {
+            // Normalize GO ID format (GO:0033103 or just 0033103)
+            const normalizedId = goId.startsWith('GO:') ? goId : `GO:${goId}`;
+            const response = await fetch(
+                `https://www.ebi.ac.uk/QuickGO/services/ontology/go/terms/${encodeURIComponent(normalizedId)}`,
+                { headers: { 'Accept': 'application/json' } }
+            );
+            if (!response.ok) return null;
+            const data = await response.json();
+            if (data.results?.[0]?.name) {
+                return data.results[0].name;
+            }
+            return null;
+        } catch {
+            return null;
+        }
+    }
+
+    /**
+     * Lookup KEGG Ortholog name
+     * Uses KEGG REST API
+     */
+    private static async lookupKEGGOrtholog(koId: string): Promise<string | null> {
+        try {
+            // Normalize KO ID format (K11904 or KEGG:K11904)
+            const normalizedId = koId.replace(/^KEGG:/i, '').replace(/^ko:/i, '');
+            const response = await fetch(`https://rest.kegg.jp/get/${normalizedId}`);
+            if (!response.ok) return null;
+            const text = await response.text();
+            // Parse KEGG flat file format - extract NAME or DEFINITION
+            const nameMatch = text.match(/^DEFINITION\s+(.+?)(?:\n|$)/m);
+            if (nameMatch) return nameMatch[1].trim();
+            const defMatch = text.match(/^NAME\s+(.+?)(?:\n|$)/m);
+            if (defMatch) return defMatch[1].trim();
+            return null;
+        } catch {
+            return null;
+        }
+    }
+
+    /**
+     * Lookup Pfam domain name
+     * Uses InterPro API
+     */
+    private static async lookupPfamDomain(pfamId: string): Promise<string | null> {
+        try {
+            // Normalize Pfam ID (PF00001 or just 00001)
+            const normalizedId = pfamId.startsWith('PF') ? pfamId : `PF${pfamId}`;
+            const response = await fetch(
+                `https://www.ebi.ac.uk/interpro/api/entry/pfam/${normalizedId}`,
+                { headers: { 'Accept': 'application/json' } }
+            );
+            if (!response.ok) return null;
+            const data = await response.json();
+            return data.metadata?.name || null;
+        } catch {
+            return null;
+        }
+    }
+
+    /**
+     * COG category descriptions (static mapping for common categories)
+     * COG API is limited, so we use a static mapping for category letters
+     */
+    private static readonly COG_CATEGORIES: Record<string, string> = {
+        'J': 'Translation, ribosomal structure and biogenesis',
+        'A': 'RNA processing and modification',
+        'K': 'Transcription',
+        'L': 'Replication, recombination and repair',
+        'B': 'Chromatin structure and dynamics',
+        'D': 'Cell cycle control, cell division, chromosome partitioning',
+        'Y': 'Nuclear structure',
+        'V': 'Defense mechanisms',
+        'T': 'Signal transduction mechanisms',
+        'M': 'Cell wall/membrane/envelope biogenesis',
+        'N': 'Cell motility',
+        'Z': 'Cytoskeleton',
+        'W': 'Extracellular structures',
+        'U': 'Intracellular trafficking, secretion',
+        'O': 'Posttranslational modification, protein turnover, chaperones',
+        'X': 'Mobilome: prophages, transposons',
+        'C': 'Energy production and conversion',
+        'G': 'Carbohydrate transport and metabolism',
+        'E': 'Amino acid transport and metabolism',
+        'F': 'Nucleotide transport and metabolism',
+        'H': 'Coenzyme transport and metabolism',
+        'I': 'Lipid transport and metabolism',
+        'P': 'Inorganic ion transport and metabolism',
+        'Q': 'Secondary metabolites biosynthesis',
+        'R': 'General function prediction only',
+        'S': 'Function unknown'
+    };
+
+    /**
+     * Lookup COG category or ID description
+     */
+    private static async lookupCOG(cogId: string): Promise<string | null> {
+        try {
+            // Handle COG category letters (e.g., "U" or "COG:U")
+            const cleanId = cogId.replace(/^COG:/i, '').trim();
+
+            // If it's a single letter, return category description
+            if (cleanId.length === 1 && /^[A-Z]$/i.test(cleanId)) {
+                return Transformers.COG_CATEGORIES[cleanId.toUpperCase()] || null;
+            }
+
+            // For full COG IDs (e.g., COG3157), return descriptive name
+            if (/^COG\d+$/i.test(cleanId)) {
+                return `Cluster of Orthologous Genes: ${cleanId}`;
+            }
+
+            return null;
+        } catch {
+            return null;
+        }
+    }
+
+    /**
+     * Lookup EC number enzyme name
+     * Uses KEGG Enzyme database
+     */
+    private static async lookupECNumber(ecNumber: string): Promise<string | null> {
+        try {
+            // Normalize EC format (remove "EC:" prefix if present)
+            const cleanEc = ecNumber.replace(/^EC:/i, '').trim();
+            const response = await fetch(`https://rest.kegg.jp/get/ec:${cleanEc}`);
+            if (!response.ok) return null;
+            const text = await response.text();
+            // Parse KEGG flat file - extract NAME
+            const nameMatch = text.match(/^NAME\s+(.+?)(?:\n|$)/m);
+            if (nameMatch) {
+                // KEGG may have multiple names separated by semicolons
+                return nameMatch[1].split(';')[0].trim();
+            }
+            return null;
+        } catch {
+            return null;
+        }
+    }
+
+    /**
+     * Sequence Ontology term descriptions (common terms)
+     */
+    private static readonly SO_TERMS: Record<string, string> = {
+        'SO:0001217': 'protein_coding_gene',
+        'SO:0000316': 'CDS (coding sequence)',
+        'SO:0000704': 'gene',
+        'SO:0000234': 'mRNA',
+        'SO:0000252': 'rRNA',
+        'SO:0000253': 'tRNA',
+        'SO:0000673': 'transcript',
+        'SO:0001263': 'ncRNA_gene',
+        'SO:0000001': 'region',
+        'SO:0000110': 'sequence_feature',
+        'SO:0000188': 'intron',
+        'SO:0000147': 'exon',
+        'SO:0000167': 'promoter',
+        'SO:0000141': 'terminator'
+    };
+
+    /**
+     * Lookup Sequence Ontology term
+     */
+    private static async lookupSequenceOntology(soId: string): Promise<string | null> {
+        try {
+            // Normalize SO ID (SO:0001217 or just 0001217)
+            const normalizedId = soId.startsWith('SO:') ? soId : `SO:${soId}`;
+
+            // Check local cache first (common terms)
+            if (Transformers.SO_TERMS[normalizedId]) {
+                return Transformers.SO_TERMS[normalizedId];
+            }
+
+            // Try Ontology Lookup Service (OLS)
+            const response = await fetch(
+                `https://www.ebi.ac.uk/ols/api/ontologies/so/terms?iri=http://purl.obolibrary.org/obo/${normalizedId.replace(':', '_')}`,
+                { headers: { 'Accept': 'application/json' } }
+            );
+            if (!response.ok) return null;
+            const data = await response.json();
+            if (data._embedded?.terms?.[0]?.label) {
+                return data._embedded.terms[0].label;
+            }
+            return null;
+        } catch {
+            return null;
+        }
+    }
+
+    /**
+     * Lookup UniRef cluster representative protein name
+     * Uses UniProt REST API
+     */
+    private static async lookupUniRef(unirefId: string): Promise<string | null> {
+        try {
+            // Normalize UniRef ID (UniRef100_A0A093EEX8 or just A0A093EEX8)
+            let cleanId = unirefId;
+
+            // Extract the base accession from UniRef ID
+            const match = unirefId.match(/UniRef\d+_(\w+)/i);
+            if (match) {
+                cleanId = match[1]; // Get the accession part
+            }
+
+            // Query UniProt for the protein info
+            const response = await fetch(
+                `https://rest.uniprot.org/uniprotkb/${cleanId}.json`
+            );
+            if (!response.ok) return null;
+            const data = await response.json();
+
+            // Get recommended name or submitted name
+            const proteinDesc = data.proteinDescription;
+            if (proteinDesc?.recommendedName?.fullName?.value) {
+                return proteinDesc.recommendedName.fullName.value;
+            }
+            if (proteinDesc?.submissionNames?.[0]?.fullName?.value) {
+                return proteinDesc.submissionNames[0].fullName.value;
+            }
+
             return null;
         } catch {
             return null;

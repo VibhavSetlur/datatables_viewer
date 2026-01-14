@@ -1,15 +1,26 @@
+/**
+ * Vite Configuration
+ * 
+ * Configures the development server and build process for the DataTables Viewer.
+ * Includes special handling for sql.js (SQLite in browser) compatibility.
+ */
+
 import { defineConfig } from 'vite';
 import { resolve } from 'path';
 
 export default defineConfig({
-    // Serve the data directory for local SQLite files
+    // Serve the public directory for static assets
     publicDir: 'public',
+
+    // Development server configuration
     server: {
         fs: {
-            // Allow serving files from data directory
+            // Allow serving files from data directory for local SQLite files
             allow: ['.', 'data']
         }
     },
+
+    // Build configuration
     build: {
         rollupOptions: {
             input: {
@@ -17,10 +28,19 @@ export default defineConfig({
             }
         }
     },
-    // Optimizations for sql.js
+
+    // Dependency optimization
     optimizeDeps: {
-        exclude: ['sql.js']
+        // Include sql.js in optimization to fix ESM/CJS interop
+        include: ['sql.js']
     },
-    // Handle the data directory as static assets
-    assetsInclude: ['**/*.db']
+
+    // Handle .db files as static assets
+    assetsInclude: ['**/*.db'],
+
+    // ESBuild configuration for CommonJS compatibility
+    esbuild: {
+        // Ensure proper handling of CommonJS modules
+        format: 'esm'
+    }
 });
