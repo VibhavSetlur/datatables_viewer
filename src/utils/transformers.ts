@@ -1298,54 +1298,70 @@ export class Transformers {
     }
 
     /**
-     * COG category descriptions (static mapping for common categories)
-     * COG API is limited, so we use a static mapping for category letters
-     */
-    private static readonly COG_CATEGORIES: Record<string, string> = {
-        'J': 'Translation, ribosomal structure and biogenesis',
-        'A': 'RNA processing and modification',
-        'K': 'Transcription',
-        'L': 'Replication, recombination and repair',
-        'B': 'Chromatin structure and dynamics',
-        'D': 'Cell cycle control, cell division, chromosome partitioning',
-        'Y': 'Nuclear structure',
-        'V': 'Defense mechanisms',
-        'T': 'Signal transduction mechanisms',
-        'M': 'Cell wall/membrane/envelope biogenesis',
-        'N': 'Cell motility',
-        'Z': 'Cytoskeleton',
-        'W': 'Extracellular structures',
-        'U': 'Intracellular trafficking, secretion',
-        'O': 'Posttranslational modification, protein turnover, chaperones',
-        'X': 'Mobilome: prophages, transposons',
-        'C': 'Energy production and conversion',
-        'G': 'Carbohydrate transport and metabolism',
-        'E': 'Amino acid transport and metabolism',
-        'F': 'Nucleotide transport and metabolism',
-        'H': 'Coenzyme transport and metabolism',
-        'I': 'Lipid transport and metabolism',
-        'P': 'Inorganic ion transport and metabolism',
-        'Q': 'Secondary metabolites biosynthesis',
-        'R': 'General function prediction only',
-        'S': 'Function unknown'
-    };
-
-    /**
      * Lookup COG category or ID description
+     * Uses NCBI COG API for full COG IDs and EggNOG for categories
      */
     private static async lookupCOG(cogId: string): Promise<string | null> {
         try {
             // Handle COG category letters (e.g., "U" or "COG:U")
             const cleanId = cogId.replace(/^COG:/i, '').trim();
 
-            // If it's a single letter, return category description
+            // For single-letter COG categories, use EggNOG API
             if (cleanId.length === 1 && /^[A-Z]$/i.test(cleanId)) {
-                return Transformers.COG_CATEGORIES[cleanId.toUpperCase()] || null;
+                return await Transformers.lookupCOGCategory(cleanId.toUpperCase());
             }
 
-            // For full COG IDs (e.g., COG3157), return descriptive name
+            // For full COG IDs (e.g., COG3157), use NCBI COG API
             if (/^COG\d+$/i.test(cleanId)) {
-                return `Cluster of Orthologous Genes: ${cleanId}`;
+                return await Transformers.lookupCOGId(cleanId.toUpperCase());
+            }
+
+            return null;
+        } catch {
+            return null;
+        }
+    }
+
+    /**
+     * Lookup COG category description from NCBI COG API
+     */
+    private static async lookupCOGCategory(category: string): Promise<string | null> {
+        try {
+            // Use NCBI COG API for functional category descriptions
+            const response = await fetch(
+                `https://www.ncbi.nlm.nih.gov/research/cog/api/cog/?cat=${encodeURIComponent(category)}&format=json`
+            );
+
+            if (response.ok) {
+                const data = await response.json();
+                if (data.results?.[0]?.fun_cat_description) {
+                    return data.results[0].fun_cat_description;
+                }
+            }
+
+            return null;
+        } catch {
+            return null;
+        }
+    }
+
+    /**
+     * Lookup full COG ID description from NCBI COG database
+     */
+    private static async lookupCOGId(cogId: string): Promise<string | null> {
+        try {
+            const response = await fetch(
+                `https://www.ncbi.nlm.nih.gov/research/cog/api/cog/${encodeURIComponent(cogId)}/?format=json`
+            );
+
+            if (!response.ok) return null;
+
+            const data = await response.json();
+            if (data.cog_name) {
+                return data.cog_name;
+            }
+            if (data.fun_cat_description) {
+                return data.fun_cat_description;
             }
 
             return null;
@@ -1378,48 +1394,46 @@ export class Transformers {
     }
 
     /**
-     * Sequence Ontology term descriptions (common terms)
-     */
-    private static readonly SO_TERMS: Record<string, string> = {
-        'SO:0001217': 'protein_coding_gene',
-        'SO:0000316': 'CDS (coding sequence)',
-        'SO:0000704': 'gene',
-        'SO:0000234': 'mRNA',
-        'SO:0000252': 'rRNA',
-        'SO:0000253': 'tRNA',
-        'SO:0000673': 'transcript',
-        'SO:0001263': 'ncRNA_gene',
-        'SO:0000001': 'region',
-        'SO:0000110': 'sequence_feature',
-        'SO:0000188': 'intron',
-        'SO:0000147': 'exon',
-        'SO:0000167': 'promoter',
-        'SO:0000141': 'terminator'
-    };
-
-    /**
-     * Lookup Sequence Ontology term
+     * Lookup Sequence Ontology term from EBI OLS API
+     * Provides scalable access to all SO terms without hardcoded values
      */
     private static async lookupSequenceOntology(soId: string): Promise<string | null> {
         try {
             // Normalize SO ID (SO:0001217 or just 0001217)
             const normalizedId = soId.startsWith('SO:') ? soId : `SO:${soId}`;
 
-            // Check local cache first (common terms)
-            if (Transformers.SO_TERMS[normalizedId]) {
-                return Transformers.SO_TERMS[normalizedId];
-            }
-
-            // Try Ontology Lookup Service (OLS)
+            // Use EBI Ontology Lookup Service (OLS) API
+            // Format: http://purl.obolibrary.org/obo/SO_0001217
+            const oboId = normalizedId.replace(':', '_');
             const response = await fetch(
-                `https://www.ebi.ac.uk/ols/api/ontologies/so/terms?iri=http://purl.obolibrary.org/obo/${normalizedId.replace(':', '_')}`,
+                `https://www.ebi.ac.uk/ols4/api/ontologies/so/terms?iri=http://purl.obolibrary.org/obo/${oboId}`,
                 { headers: { 'Accept': 'application/json' } }
             );
-            if (!response.ok) return null;
+
+            if (!response.ok) {
+                // Fallback to OLS v3 API
+                const fallbackResponse = await fetch(
+                    `https://www.ebi.ac.uk/ols/api/ontologies/so/terms?iri=http://purl.obolibrary.org/obo/${oboId}`,
+                    { headers: { 'Accept': 'application/json' } }
+                );
+                if (!fallbackResponse.ok) return null;
+                const data = await fallbackResponse.json();
+                if (data._embedded?.terms?.[0]?.label) {
+                    return data._embedded.terms[0].label;
+                }
+                return null;
+            }
+
             const data = await response.json();
+            // OLS4 response format
             if (data._embedded?.terms?.[0]?.label) {
                 return data._embedded.terms[0].label;
             }
+            // Alternative OLS4 format
+            if (data.elements?.[0]?.label) {
+                return data.elements[0].label;
+            }
+
             return null;
         } catch {
             return null;
