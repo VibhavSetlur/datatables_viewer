@@ -72,8 +72,11 @@ export class DataGrid extends Component {
             const fixed = isFirst ? 'ts-col-fixed' : '';
             const sortable = c.sortable ? 'sortable' : '';
             let icon = state.sortColumn === c.column ? (state.sortOrder === 'asc' ? ' <i class="bi bi-sort-up"></i>' : ' <i class="bi bi-sort-down"></i>') : '';
-            const widthStyle = c.width && c.width !== 'auto' ? `width:${c.width}` : '';
-            html += `<th class="${fixed} ${sortable}" data-col="${c.column}" ${widthStyle ? `style="${widthStyle}"` : ''}>${c.displayName || c.column}${icon}</th>`;
+            // For auto width, add min-width to prevent columns from collapsing
+            const widthStyle = c.width && c.width !== 'auto' 
+                ? `width:${c.width}` 
+                : 'min-width:80px';  // Ensure auto columns have minimum width
+            html += `<th class="${fixed} ${sortable}" data-col="${c.column}" style="${widthStyle}">${c.displayName || c.column}${icon}</th>`;
         });
 
         // Filter row - directly aligned under headers
@@ -89,7 +92,10 @@ export class DataGrid extends Component {
             const isFirst = idx === 0 && !state.showRowNumbers;
             const fixed = isFirst ? 'ts-col-fixed' : '';
             const val = state.columnFilters[c.column] || '';
-            const widthStyle = c.width && c.width !== 'auto' ? `width:${c.width}` : '';
+            // For auto width, add min-width to prevent columns from collapsing
+            const widthStyle = c.width && c.width !== 'auto' 
+                ? `width:${c.width}` 
+                : 'min-width:80px';  // Ensure auto columns have minimum width
             
             // Get column type for smart filtering
             const columnType = this.options.getColumnType ? this.options.getColumnType(c.column) : 'TEXT';
@@ -99,7 +105,7 @@ export class DataGrid extends Component {
                 ? 'Supports: <, <=, >, >=, =, !=, between, or just number' 
                 : 'Text search, =value, !=value, in(list), between';
             
-            html += `<th class="${fixed}" ${widthStyle ? `style="${widthStyle}"` : ''}>`;
+            html += `<th class="${fixed}" style="${widthStyle}">`;
             if (c.filterable !== false) {
                 html += `<div class="ts-filter-wrap"><input class="ts-filter-input ${val ? 'has-value' : ''}" data-col="${c.column}" data-type="${columnType}" value="${Transformers.escapeHtml(val)}" placeholder="${placeholder}" title="${tooltip}"><button class="ts-filter-clear" data-col="${c.column}"><i class="bi bi-x"></i></button></div>`;
             } else {

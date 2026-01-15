@@ -70,7 +70,7 @@ const DEFAULT_COLUMN_CONFIG: Partial<ColumnSchema> = {
     resizable: true,
     dataType: 'string',
     align: 'left',
-    width: 'auto'
+    width: 'auto'  // Default to 'auto', but will have min-width in CSS
 };
 
 /**
@@ -369,7 +369,7 @@ export class DataTypeRegistry {
             filterable: col.filterable ?? DEFAULT_COLUMN_CONFIG.filterable!,
             searchable: col.searchable ?? DEFAULT_COLUMN_CONFIG.searchable!,
             copyable: col.copyable ?? (dataType === 'id'),
-            width: col.width || 'auto',
+            width: col.width || 'auto',  // Default to 'auto', but will have min-width in CSS
             align: col.align || defaultAlign,
             categories: col.categories || [],
             transform: col.transform

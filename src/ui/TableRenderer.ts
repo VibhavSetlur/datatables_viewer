@@ -320,44 +320,142 @@ export class TableRenderer {
         const token = this.sidebar.getToken();
         const berdl = this.sidebar.getBerdlId();
 
-        if (berdl === 'test/test/test') {
+        // Validate input
+        if (!berdl || berdl.trim() === '') {
+            this.showAlert('Object ID or database name is required', 'danger');
+            return;
+        }
+
+        const trimmedBerdl = berdl.trim();
+
+        if (trimmedBerdl === 'test/test/test') {
             this.switchApi('test_data');
         } else {
             this.switchApi('default');
-            if (!token) { this.showAlert('Auth token required', 'danger'); return; }
+            // Check if this is a local database (doesn't need token)
+            const { LocalDbClient } = await import('../core/api/LocalDbClient');
+            const isLocal = LocalDbClient.isLocalDb(trimmedBerdl);
+            
+            if (!isLocal && !token) {
+                this.showAlert('Auth token required for remote databases', 'danger');
+                return;
+            }
         }
 
-        if (!berdl) { this.showAlert('Object ID required', 'danger'); return; }
-
-        this.client.setToken(token);
-        this.stateManager.update({ berdlTableId: berdl, loading: true, error: null });
+        this.client.setToken(token || '');
+        this.stateManager.update({ berdlTableId: trimmedBerdl, loading: true, error: null });
 
         try {
-            const res = await this.client.listTables(berdl);
+            // Try to load tables
+            let res: any;
+            let errorMessage = '';
+            let triedFallback = false;
+
+            try {
+                res = await this.client.listTables(trimmedBerdl);
+            } catch (primaryError: any) {
+                errorMessage = primaryError.message || 'Failed to load database';
+                
+                // Check if this might be a local database and try fallback
+                const { LocalDbClient } = await import('../core/api/LocalDbClient');
+                const isLocal = LocalDbClient.isLocalDb(trimmedBerdl);
+                
+                if (!isLocal && trimmedBerdl.startsWith('local/')) {
+                    // Try as local database file
+                    const dbName = trimmedBerdl.replace('local/', '');
+                    try {
+                        await this.loadDatabaseFromFile(dbName);
+                        return; // Successfully loaded via file
+                    } catch (fileError: any) {
+                        triedFallback = true;
+                        errorMessage = `Remote API failed: ${primaryError.message}. Local file also failed: ${fileError.message}`;
+                    }
+                } else if (isLocal) {
+                    // Already a local database, try direct file load
+                    const dbName = trimmedBerdl.replace('local/', '');
+                    try {
+                        await this.loadDatabaseFromFile(dbName);
+                        return; // Successfully loaded via file
+                    } catch (fileError: any) {
+                        triedFallback = true;
+                        errorMessage = `Failed to load local database: ${fileError.message}`;
+                    }
+                }
+                
+                // If we get here, all attempts failed
+                throw new Error(errorMessage);
+            }
+
+            // Check if response is valid
+            if (!res) {
+                throw new Error('No response from server');
+            }
+
+            // Check if tables were found
+            const tables = res.tables || [];
+            
+            if (tables.length === 0) {
+                const message = `No tables found in database "${trimmedBerdl}". The database may be empty or inaccessible.`;
+                this.showAlert(message, 'warning');
+                this.stateManager.update({
+                    availableTables: [],
+                    activeTableName: null,
+                    data: [],
+                    columns: [],
+                    visibleColumns: new Set(),
+                    loading: false
+                });
+                this.sidebar.updateTables([]);
+                return;
+            }
+
+            // Success - process tables
             const detectedType = this.registry.detectDataType(res);
             if (detectedType) this.configManager.setCurrentDataType(detectedType);
 
-            const tables = res.tables || [];
             this.stateManager.update({ availableTables: tables });
-
-            if (tables.length === 0) { this.showAlert('No tables found', 'warning'); return; }
-
             this.sidebar.updateTables(tables);
 
             const initialTable = (this as any)._initialTable;
             const targetTable = initialTable && tables.find((t: any) => t.name === initialTable)
                 ? initialTable : tables[0].name;
 
-            this.switchTable(targetTable);
+            // Show success message
+            const successMsg = triedFallback 
+                ? `Loaded database "${trimmedBerdl}" (using fallback method)` 
+                : `Loaded database "${trimmedBerdl}" - ${tables.length} table${tables.length !== 1 ? 's' : ''} found`;
+            this.showAlert(successMsg, 'success');
+
+            await this.switchTable(targetTable);
 
         } catch (e: any) {
-            this.showAlert(e.message, 'danger');
+            // Provide detailed error message
+            let errorMsg = e.message || 'Failed to load database';
+            
+            // Enhance error messages based on error type
+            if (errorMsg.includes('404') || errorMsg.includes('Not Found')) {
+                errorMsg = `Database or object "${trimmedBerdl}" not found. Please check the ID and try again.`;
+            } else if (errorMsg.includes('401') || errorMsg.includes('Unauthorized')) {
+                errorMsg = `Authentication failed. Please check your token and try again.`;
+            } else if (errorMsg.includes('403') || errorMsg.includes('Forbidden')) {
+                errorMsg = `Access denied to database "${trimmedBerdl}". Please check your permissions.`;
+            } else if (errorMsg.includes('Network') || errorMsg.includes('fetch')) {
+                errorMsg = `Network error: Unable to connect to database service. Please check your connection and try again.`;
+            } else if (errorMsg.includes('Failed to load database')) {
+                // Already descriptive
+            } else {
+                errorMsg = `Failed to load database "${trimmedBerdl}": ${errorMsg}`;
+            }
+
+            this.showAlert(errorMsg, 'danger');
             this.stateManager.update({
                 availableTables: [],
                 activeTableName: null,
                 data: [],
                 columns: [],
-                visibleColumns: new Set()
+                visibleColumns: new Set(),
+                loading: false,
+                error: errorMsg
             });
             this.sidebar.updateTables([]);
         } finally {
@@ -533,17 +631,93 @@ export class TableRenderer {
                 visible: c.visible !== false,
                 sortable: c.sortable !== false,
                 filterable: c.filterable !== false,
-                width: c.width || 'auto'
+                width: c.width || 'auto',  // Default to 'auto', but will have min-width in CSS
+                categories: c.categories || []  // Preserve categories from config
             });
             seen.add(c.column);
         });
 
         const autoCategorize = (h: string): string[] => {
             const lower = h.toLowerCase();
-            if (lower.match(/^(id|name|display_name|label)$/) || lower.endsWith('_id') || lower.endsWith('_name')) return ['core'];
-            if (lower.match(/^(deleted|row_hash|last_synced|created_at|updated_at|sync_.*)$/)) return ['metadata'];
-            if (lower.match(/^(error|status|report|message|valid|significance)$/)) return ['status'];
-            return [];
+            const categories: string[] = [];
+            
+            // Core identifiers and names
+            if (lower.match(/^(id|name|display_name|label)$/) || 
+                lower.endsWith('_id') || 
+                lower.endsWith('_name') ||
+                lower.includes('locus') ||
+                lower.includes('symbol') ||
+                lower.includes('alias') ||
+                lower.includes('contig')) {
+                categories.push('core');
+            }
+            
+            // Functional annotation
+            if (lower.includes('function') ||
+                lower.includes('product') ||
+                lower.includes('annotation') ||
+                lower.includes('subsystem') ||
+                lower.includes('class') ||
+                lower.includes('reaction') ||
+                lower.includes('ec') ||
+                lower.includes('cog') ||
+                lower.includes('pfam') ||
+                lower.includes('tigrfam') ||
+                lower.includes('go') ||
+                lower.includes('kegg') ||
+                lower.includes('note') ||
+                lower.includes('inference') ||
+                lower.includes('type')) {
+                categories.push('functional');
+            }
+            
+            // External links and references
+            if (lower.includes('uniprot') ||
+                lower.includes('xref') ||
+                lower.includes('reference') ||
+                lower.includes('link') ||
+                lower.includes('url') ||
+                lower.includes('dbxref')) {
+                categories.push('external');
+            }
+            
+            // Sequence data
+            if (lower.includes('sequence') ||
+                lower.includes('start') ||
+                lower.includes('stop') ||
+                lower.includes('length') ||
+                lower.includes('strand') ||
+                lower.includes('protein_length') ||
+                lower.includes('molecular_weight') ||
+                lower.includes('isoelectric')) {
+                categories.push('sequence');
+            }
+            
+            // System metadata
+            if (lower.match(/^(deleted|row_hash|last_synced|created_at|updated_at|sync_.*)$/) ||
+                lower.includes('hash') ||
+                lower.includes('sync')) {
+                categories.push('metadata');
+            }
+            
+            // Status and reports
+            if (lower.match(/^(error|status|report|message|valid|significance)$/) ||
+                lower.includes('error') ||
+                lower.includes('valid')) {
+                categories.push('status');
+            }
+            
+            // If no categories matched, default to 'core' for IDs or 'functional' for others
+            if (categories.length === 0) {
+                if (lower.match(/^[a-z_]*id$/i) || lower.endsWith('_id')) {
+                    categories.push('core');
+                } else {
+                    // Default to functional for unknown columns (better than uncategorized)
+                    categories.push('functional');
+                }
+            }
+            
+            return categories;
         };
 
         headers.forEach(h => {
@@ -554,7 +728,7 @@ export class TableRenderer {
                     visible: true,
                     sortable: true,
                     filterable: true,
-                    width: 'auto',
+                    width: 'auto',  // Default to 'auto', but will have min-width in CSS
                     categories: autoCategorize(h)
                 });
             }
@@ -849,8 +1023,19 @@ export class TableRenderer {
 
     private showAlert(msg: string, type: string) {
         if (this.dom.alert) {
-            this.dom.alert.innerHTML = `<div class="ts-alert ts-alert-${type}">${msg}</div>`;
-            setTimeout(() => { if (this.dom.alert) this.dom.alert.innerHTML = ''; }, 4000);
+            // Escape HTML to prevent XSS
+            const escapedMsg = msg.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            // Allow line breaks for longer messages
+            const formattedMsg = escapedMsg.replace(/\n/g, '<br>');
+            
+            // Determine timeout based on message length and type
+            const isError = type === 'danger';
+            const timeout = isError ? 8000 : (msg.length > 100 ? 6000 : 4000);
+            
+            this.dom.alert.innerHTML = `<div class="ts-alert ts-alert-${type}">${formattedMsg}</div>`;
+            setTimeout(() => { 
+                if (this.dom.alert) this.dom.alert.innerHTML = ''; 
+            }, timeout);
         }
     }
 
@@ -1398,21 +1583,29 @@ export class TableRenderer {
         try {
             this.stateManager.update({ loading: true, error: null });
 
-            // Construct paths (client-side, relative to public/)
-            const dbPath = `/data/${dbFilename}.db`;
-            const configPath = `/config/${dbFilename}.json`;
+            // Validate filename
+            if (!dbFilename || dbFilename.trim() === '') {
+                throw new Error('Database filename is required');
+            }
 
-            // Try to load config if available
+            const cleanFilename = dbFilename.trim();
+            
+            // Construct paths (client-side, relative to public/)
+            const dbPath = `/data/${cleanFilename}.db`;
+            const configPath = `/config/${cleanFilename}.json`;
+
+            // Try to load config if available (optional)
             let config: any = null;
             try {
                 const configResponse = await fetch(configPath);
                 if (configResponse.ok) {
                     config = await configResponse.json();
                     this.registry.registerDataType(config);
-                    this.configManager.setCurrentDataType(config.id || dbFilename);
+                    this.configManager.setCurrentDataType(config.id || cleanFilename);
                 }
             } catch (error) {
-                console.warn('No config file found, using default:', error);
+                // Config is optional, just log a warning
+                console.warn(`No config file found at ${configPath}, using default settings`);
             }
 
             // Use LocalDbClient to load the database (client-side)
@@ -1420,17 +1613,31 @@ export class TableRenderer {
             const localDb = LocalDbClient.getInstance();
 
             // Create a temporary UPA for this database
-            const tempUpa = `local/${dbFilename}`;
+            const tempUpa = `local/${cleanFilename}`;
             
-            // Load the database
-            await localDb.loadDatabase(dbPath);
+            // Try to load the database file
+            try {
+                await localDb.loadDatabase(dbPath);
+            } catch (dbError: any) {
+                // Provide specific error message for file not found
+                if (dbError.message.includes('404') || dbError.message.includes('Failed to load database')) {
+                    throw new Error(`Database file not found: ${dbPath}. Please ensure the file exists in the /data/ directory.`);
+                }
+                throw new Error(`Failed to load database file: ${dbError.message}`);
+            }
 
             // Get table list
-            const tablesResult = await localDb.listTablesFromDb(dbPath, config);
+            let tablesResult: any;
+            try {
+                tablesResult = await localDb.listTablesFromDb(dbPath, config);
+            } catch (tableError: any) {
+                throw new Error(`Failed to read database structure: ${tableError.message}`);
+            }
+
             const tables = tablesResult.tables || [];
 
             if (tables.length === 0) {
-                throw new Error('No tables found in database');
+                throw new Error(`Database "${cleanFilename}" contains no tables. The database may be empty or corrupted.`);
             }
 
             this.stateManager.update({ 
@@ -1444,17 +1651,31 @@ export class TableRenderer {
             const targetTable = tables[0].name;
             await this.switchTable(targetTable);
 
-            this.showAlert(`Loaded database: ${dbFilename}`, 'success');
+            this.showAlert(`Successfully loaded database "${cleanFilename}" - ${tables.length} table${tables.length !== 1 ? 's' : ''} found`, 'success');
         } catch (error: any) {
-            this.showAlert(error.message || 'Failed to load database', 'danger');
+            // Provide detailed error message
+            let errorMsg = error.message || 'Failed to load database';
+            
+            // Enhance error messages
+            if (errorMsg.includes('not found') || errorMsg.includes('404')) {
+                errorMsg = `Database file not found: "${dbFilename}". Please check that the file exists at /data/${dbFilename}.db`;
+            } else if (errorMsg.includes('No tables found')) {
+                errorMsg = `Database "${dbFilename}" contains no tables. The database may be empty or corrupted.`;
+            } else if (!errorMsg.includes('Failed to load')) {
+                errorMsg = `Failed to load database "${dbFilename}": ${errorMsg}`;
+            }
+
+            this.showAlert(errorMsg, 'danger');
             this.stateManager.update({
                 availableTables: [],
                 activeTableName: null,
                 data: [],
                 columns: [],
                 visibleColumns: new Set(),
-                loading: false
+                loading: false,
+                error: errorMsg
             });
+            this.sidebar.updateTables([]);
             throw error;
         } finally {
             this.stateManager.update({ loading: false });

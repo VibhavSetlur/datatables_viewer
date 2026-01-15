@@ -10,7 +10,8 @@
         "density": "default",
         "showRowNumbers": true,
         "enableSelection": true,
-        "enableExport": true
+        "enableExport": true,
+        "defaultColumnWidth": "80px"
     },
     "sharedCategories": [
         {
@@ -187,6 +188,313 @@
                             "showCopyButton": true
                         }
                     }
+                },
+                {
+                    "column": "Old_loci",
+                    "displayName": "Old Loci",
+                    "dataType": "string",
+                    "categories": [
+                        "core"
+                    ],
+                    "sortable": true,
+                    "filterable": true,
+                    "width": "100px"
+                },
+                {
+                    "column": "Aliases",
+                    "displayName": "Aliases",
+                    "dataType": "string",
+                    "categories": [
+                        "core"
+                    ],
+                    "sortable": true,
+                    "filterable": true,
+                    "width": "120px"
+                },
+                {
+                    "column": "Subsystem_Class",
+                    "displayName": "Subsystem Class",
+                    "dataType": "string",
+                    "categories": [
+                        "functional"
+                    ],
+                    "sortable": true,
+                    "filterable": true,
+                    "width": "140px"
+                },
+                {
+                    "column": "Broad_Class",
+                    "displayName": "Broad Class",
+                    "dataType": "string",
+                    "categories": [
+                        "functional"
+                    ],
+                    "sortable": true,
+                    "filterable": true,
+                    "width": "120px"
+                },
+                {
+                    "column": "Reactions",
+                    "displayName": "Reactions",
+                    "dataType": "string",
+                    "categories": [
+                        "functional"
+                    ],
+                    "sortable": true,
+                    "filterable": true,
+                    "width": "120px"
+                },
+                {
+                    "column": "Start",
+                    "displayName": "Start",
+                    "dataType": "integer",
+                    "categories": [
+                        "sequence"
+                    ],
+                    "sortable": true,
+                    "filterable": true,
+                    "align": "right",
+                    "width": "90px"
+                },
+                {
+                    "column": "Stop",
+                    "displayName": "Stop",
+                    "dataType": "integer",
+                    "categories": [
+                        "sequence"
+                    ],
+                    "sortable": true,
+                    "filterable": true,
+                    "align": "right",
+                    "width": "90px"
+                },
+                {
+                    "column": "Length",
+                    "displayName": "Length",
+                    "dataType": "integer",
+                    "categories": [
+                        "sequence"
+                    ],
+                    "sortable": true,
+                    "filterable": true,
+                    "align": "right",
+                    "width": "90px"
+                },
+                {
+                    "column": "Strand",
+                    "displayName": "Strand",
+                    "dataType": "string",
+                    "categories": [
+                        "sequence"
+                    ],
+                    "sortable": true,
+                    "filterable": true,
+                    "align": "center",
+                    "width": "80px"
+                },
+                {
+                    "column": "Contig",
+                    "displayName": "Contig",
+                    "dataType": "string",
+                    "categories": [
+                        "core"
+                    ],
+                    "sortable": true,
+                    "filterable": true,
+                    "width": "100px"
+                },
+                {
+                    "column": "Contig_ID",
+                    "displayName": "Contig ID",
+                    "dataType": "id",
+                    "categories": [
+                        "core"
+                    ],
+                    "sortable": true,
+                    "filterable": true,
+                    "width": "100px"
+                },
+                {
+                    "column": "EC_Number",
+                    "displayName": "EC Number",
+                    "dataType": "id",
+                    "categories": [
+                        "functional"
+                    ],
+                    "sortable": true,
+                    "filterable": true,
+                    "width": "100px"
+                },
+                {
+                    "column": "COG",
+                    "displayName": "COG",
+                    "dataType": "id",
+                    "categories": [
+                        "functional"
+                    ],
+                    "sortable": true,
+                    "filterable": true,
+                    "width": "80px"
+                },
+                {
+                    "column": "Pfam",
+                    "displayName": "Pfam",
+                    "dataType": "id",
+                    "categories": [
+                        "functional"
+                    ],
+                    "sortable": true,
+                    "filterable": true,
+                    "width": "100px"
+                },
+                {
+                    "column": "TIGRFAM",
+                    "displayName": "TIGRFAM",
+                    "dataType": "id",
+                    "categories": [
+                        "functional"
+                    ],
+                    "sortable": true,
+                    "filterable": true,
+                    "width": "100px"
+                },
+                {
+                    "column": "Protein_ID",
+                    "displayName": "Protein ID",
+                    "dataType": "id",
+                    "categories": [
+                        "core"
+                    ],
+                    "sortable": true,
+                    "filterable": true,
+                    "width": "120px"
+                },
+                {
+                    "column": "Protein_Length",
+                    "displayName": "Protein Length",
+                    "dataType": "integer",
+                    "categories": [
+                        "sequence"
+                    ],
+                    "sortable": true,
+                    "filterable": true,
+                    "align": "right",
+                    "width": "120px"
+                },
+                {
+                    "column": "Molecular_Weight",
+                    "displayName": "Molecular Weight",
+                    "dataType": "float",
+                    "categories": [
+                        "sequence"
+                    ],
+                    "sortable": true,
+                    "filterable": true,
+                    "align": "right",
+                    "width": "130px"
+                },
+                {
+                    "column": "Isoelectric_Point",
+                    "displayName": "Isoelectric Point",
+                    "dataType": "float",
+                    "categories": [
+                        "sequence"
+                    ],
+                    "sortable": true,
+                    "filterable": true,
+                    "align": "right",
+                    "width": "130px"
+                },
+                {
+                    "column": "Gene_Symbol",
+                    "displayName": "Gene Symbol",
+                    "dataType": "string",
+                    "categories": [
+                        "core"
+                    ],
+                    "sortable": true,
+                    "filterable": true,
+                    "width": "110px"
+                },
+                {
+                    "column": "Locus_Tag",
+                    "displayName": "Locus Tag",
+                    "dataType": "id",
+                    "categories": [
+                        "core"
+                    ],
+                    "sortable": true,
+                    "filterable": true,
+                    "width": "110px"
+                },
+                {
+                    "column": "Gene_Type",
+                    "displayName": "Gene Type",
+                    "dataType": "string",
+                    "categories": [
+                        "functional"
+                    ],
+                    "sortable": true,
+                    "filterable": true,
+                    "width": "100px"
+                },
+                {
+                    "column": "Function",
+                    "displayName": "Function",
+                    "dataType": "string",
+                    "categories": [
+                        "functional"
+                    ],
+                    "sortable": true,
+                    "filterable": true,
+                    "searchable": true,
+                    "width": "250px"
+                },
+                {
+                    "column": "Product",
+                    "displayName": "Product",
+                    "dataType": "string",
+                    "categories": [
+                        "functional"
+                    ],
+                    "sortable": true,
+                    "filterable": true,
+                    "searchable": true,
+                    "width": "250px"
+                },
+                {
+                    "column": "Note",
+                    "displayName": "Note",
+                    "dataType": "string",
+                    "categories": [
+                        "functional"
+                    ],
+                    "sortable": false,
+                    "filterable": true,
+                    "searchable": true,
+                    "width": "200px"
+                },
+                {
+                    "column": "Inference",
+                    "displayName": "Inference",
+                    "dataType": "string",
+                    "categories": [
+                        "functional"
+                    ],
+                    "sortable": false,
+                    "filterable": true,
+                    "width": "150px"
+                },
+                {
+                    "column": "Dbxref",
+                    "displayName": "DB Xref",
+                    "dataType": "string",
+                    "categories": [
+                        "external"
+                    ],
+                    "sortable": false,
+                    "filterable": true,
+                    "width": "120px"
                 }
             ],
             "virtualColumns": [
@@ -302,7 +610,7 @@
                     ],
                     "sortable": true,
                     "filterable": true,
-                    "width": "120px"
+                    "width": "320px"
                 },
                 {
                     "column": "Carbon_Source",

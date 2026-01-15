@@ -733,6 +733,8 @@ button {
     white-space: nowrap;
     transition: var(--transition-fast);
     user-select: none;
+    /* Ensure minimum width to prevent truncation */
+    min-width: 80px;
 }
 
 .ts-table th:hover {
@@ -755,6 +757,11 @@ button {
     color: var(--c-text-primary);
     vertical-align: middle;
     transition: background var(--transition-fast), color var(--transition-fast);
+    /* Ensure minimum width to prevent truncation */
+    min-width: 80px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 /* Alternating Rows */
@@ -898,6 +905,30 @@ mark.highlight {
     table-layout: fixed;
 }
 
+/* Ensure auto-width columns have minimum width to prevent truncation */
+.ts-table th {
+    min-width: 80px;
+}
+
+/* For columns with explicit width, ensure they respect it but still have minimum */
+.ts-table th[style*="width:"] {
+    min-width: 80px;
+}
+
+/* Additional cell styling (consolidated with above, kept for specificity) */
+
+/* Allow text wrapping for cells that need it (optional, can be overridden per column) */
+.ts-table td.ts-cell-wrap {
+    white-space: normal;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+/* For auto-width columns, ensure they get reasonable space distribution */
+.ts-table th[style*="min-width:80px"]:not([style*="width:"]) {
+    /* Auto columns will distribute remaining space but respect min-width */
+}
+
 /* Ensure thead and filter row are in same table structure */
 .ts-table thead {
     /* Standard thead */
@@ -915,6 +946,8 @@ mark.highlight {
     /* Match padding exactly */
     padding-left: var(--row-padding-x);
     padding-right: var(--row-padding-x);
+    /* Ensure minimum width for all columns */
+    min-width: 80px;
 }
 
 /* Fixed columns maintain exact width */
