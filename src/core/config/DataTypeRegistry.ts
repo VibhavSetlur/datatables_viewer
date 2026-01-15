@@ -5,7 +5,10 @@
  * Implements the Singleton pattern to ensure a single source of truth
  * for all configuration data across the application.
  * 
- * @version 3.0.0
+ * Now includes support for remote config loading from the
+ * TableScanner Config Control Plane API.
+ * 
+ * @version 3.1.0
  */
 
 import type {
@@ -22,7 +25,10 @@ import type {
     TableSettings,
     ColumnDataType,
     TextAlign
-} from '../types/schema';
+} from '../../types/schema';
+import type { ConfigApiSettings, ResolveOptions, ResolveResult } from '../../types/config-api';
+import { getConfigResolver } from './ConfigResolver';
+import { initializeRemoteConfigProvider, getRemoteConfigProvider } from './RemoteConfigProvider';
 
 // =============================================================================
 // DEFAULTS
@@ -101,6 +107,8 @@ export class DataTypeRegistry {
     private defaultApiId: string | null = null;
     private matchMap: Map<string, string> = new Map(); // Maps object type strings to data type IDs
     private globalSettings: Required<GlobalSettings> = { ...DEFAULT_GLOBAL_SETTINGS };
+    private remoteConfigEnabled: boolean = false;
+    private configApiSettings: ConfigApiSettings | null = null;
 
     // ─── Singleton ─────────────────────────────────────────────────────────
 
@@ -501,6 +509,157 @@ export class DataTypeRegistry {
             },
             tables
         };
+    }
+
+    // ─── Remote Config Support ────────────────────────────────────────────
+
+    /**
+     * Initialize remote config support.
+     * Call this after loading app config to enable fetching configs
+     * from the TableScanner Config Control Plane.
+     */
+    public initializeRemoteConfig(settings?: Partial<ConfigApiSettings>): void {
+        // Check for configApi settings in app config
+        const appConfigSettings = (this.appConfig as any)?.configApi as ConfigApiSettings | undefined;
+
+        if (appConfigSettings?.enabled || settings?.enabled) {
+            const mergedSettings: Partial<ConfigApiSettings> = {
+                ...appConfigSettings,
+                ...settings,
+                enabled: true,
+            };
+
+            initializeRemoteConfigProvider(mergedSettings);
+            this.configApiSettings = mergedSettings as ConfigApiSettings;
+            this.remoteConfigEnabled = true;
+            console.log('[DataTypeRegistry] Remote config provider initialized');
+        }
+    }
+
+    /**
+     * Resolve and register a config for a source reference.
+     * This combines remote and static resolution.
+     * 
+     * @param sourceRef - Object reference (e.g., "76990/7/2")
+     * @param options - Resolution options
+     * @returns The resolved DataTypeConfig or null
+     */
+    public async resolveAndRegister(
+        sourceRef: string,
+        options?: ResolveOptions
+    ): Promise<DataTypeConfig | null> {
+        const resolver = getConfigResolver();
+        const result = await resolver.resolve(sourceRef, {
+            ...options,
+            preferRemote: this.remoteConfigEnabled,
+        });
+
+        if (result.config) {
+            // Ensure the config has an ID
+            if (!result.config.id) {
+                result.config.id = `auto_${sourceRef.replace(/[^a-zA-Z0-9]/g, '_')}`;
+            }
+
+            // Register the resolved config
+            this.registerDataType(result.config);
+
+            console.log(
+                `[DataTypeRegistry] Registered ${result.config.id} from ${result.source}`
+            );
+            return result.config;
+        }
+
+        return null;
+    }
+
+    /**
+     * Check if remote config is enabled.
+     */
+    public isRemoteConfigEnabled(): boolean {
+        return this.remoteConfigEnabled;
+    }
+
+    /**
+     * Get the remote config provider settings.
+     */
+    public getConfigApiSettings(): ConfigApiSettings | null {
+        return this.configApiSettings;
+    }
+
+    /**
+     * Set authentication token for remote config requests.
+     */
+    public setAuthToken(token: string): void {
+        if (this.remoteConfigEnabled) {
+            getRemoteConfigProvider().setToken(token);
+        }
+    }
+
+    /**
+     * Resolve config using the cascading resolver.
+     * Does not register the config - use resolveAndRegister for that.
+     * 
+     * @param sourceRef - Object reference
+     * @param options - Resolution options
+     * @returns Resolution result with config and metadata
+     */
+    public async resolveConfig(
+        sourceRef: string,
+        options?: ResolveOptions
+    ): Promise<ResolveResult> {
+        const resolver = getConfigResolver();
+        return resolver.resolve(sourceRef, {
+            ...options,
+            preferRemote: this.remoteConfigEnabled,
+        });
+    }
+
+    /**
+     * Check if there's a config available for a source reference.
+     * Checks both remote and static sources.
+     */
+    public async hasConfigFor(
+        sourceRef: string,
+        _options?: ResolveOptions
+    ): Promise<{ hasConfig: boolean; source: 'remote' | 'static' | 'none' }> {
+        // Check static first (fast)
+        const appConfig = this.getAppConfig();
+        if (appConfig?.dataTypes) {
+            for (const [_id, ref] of Object.entries(appConfig.dataTypes)) {
+                if (ref.matches?.some(pattern => this.matchPattern(sourceRef, pattern))) {
+                    return { hasConfig: true, source: 'static' };
+                }
+            }
+        }
+
+        // Check remote if enabled
+        if (this.remoteConfigEnabled) {
+            try {
+                const remote = getRemoteConfigProvider();
+                const tableList = await remote.getTableListWithConfig(sourceRef);
+                if (tableList?.has_cached_config || tableList?.has_builtin_config) {
+                    return { hasConfig: true, source: 'remote' };
+                }
+            } catch {
+                // Remote unavailable
+            }
+        }
+
+        return { hasConfig: false, source: 'none' };
+    }
+
+    /**
+     * Match a value against a pattern (supports wildcards).
+     */
+    private matchPattern(value: string, pattern: string): boolean {
+        if (pattern.includes('*')) {
+            const regexPattern = pattern
+                .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
+                .replace(/\*/g, '.*');
+            const regex = new RegExp(`^${regexPattern}$`);
+            return regex.test(value);
+        }
+        return value === pattern;
     }
 }
 

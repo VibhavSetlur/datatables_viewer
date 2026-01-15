@@ -3,17 +3,17 @@
  * Orchestrator (Controller)
  */
 
-import { ApiClient } from '../core/ApiClient';
-import { DataTypeRegistry } from '../core/data-type-registry';
+import { ApiClient } from '../core/api/ApiClient';
+import { DataTypeRegistry } from '../core/config/DataTypeRegistry';
 import { ConfigManager, type TableColumnConfig } from '../utils/config-manager';
-import { StateManager, type AppState } from '../core/StateManager';
-import { CategoryManager } from '../core/CategoryManager';
+import { StateManager, type AppState } from '../core/state/StateManager';
+import { CategoryManager } from '../core/managers/CategoryManager';
 import { Sidebar } from './components/Sidebar';
 import { Toolbar } from './components/Toolbar';
 import { DataGrid } from './components/DataGrid';
 import { Transformers } from '../utils/transformers';
-import { exportManager } from '../core/ExportManager';
-import { registerDefaultShortcuts } from '../core/KeyboardManager';
+import { exportManager } from '../core/managers/ExportManager';
+import { registerDefaultShortcuts } from '../core/managers/KeyboardManager';
 import '../style.css';
 
 export interface RendererOptions {

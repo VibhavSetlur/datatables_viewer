@@ -1,5 +1,5 @@
 import { Component, type ComponentOptions } from '../Component';
-import { StateManager } from '../../core/StateManager';
+import { StateManager } from '../../core/state/StateManager';
 import { Transformers } from '../../utils/transformers';
 
 export interface DataGridOptions extends ComponentOptions {

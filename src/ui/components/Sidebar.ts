@@ -1,7 +1,7 @@
 import { Component, type ComponentOptions } from '../Component';
 import { ConfigManager } from '../../utils/config-manager';
-import { StateManager, type AppState } from '../../core/StateManager';
-import { CategoryManager } from '../../core/CategoryManager';
+import { StateManager, type AppState } from '../../core/state/StateManager';
+import { CategoryManager } from '../../core/managers/CategoryManager';
 
 export interface SidebarOptions extends ComponentOptions {
     configManager: ConfigManager;

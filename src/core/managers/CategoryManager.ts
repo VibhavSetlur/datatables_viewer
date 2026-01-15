@@ -4,7 +4,7 @@
  * Manages column visibility based on category groupings.
  */
 
-import type { TableConfig, CategoryConfig } from '../utils/config-manager';
+import type { TableConfig, CategoryConfig } from '../../utils/config-manager';
 
 interface CategoryState extends CategoryConfig {
     visible: boolean;

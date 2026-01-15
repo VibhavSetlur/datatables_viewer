@@ -7,8 +7,8 @@
  * @version 1.0.0
  */
 
-import { EventBus, eventBus } from './EventBus';
-import type { StateManager, AppState } from './StateManager';
+import { EventBus, eventBus } from '../state/EventBus';
+import type { StateManager, AppState } from '../state/StateManager';
 
 // =============================================================================
 // PLUGIN INTERFACES

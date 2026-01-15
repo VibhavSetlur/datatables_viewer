@@ -4,16 +4,20 @@
  * Manages loading and serving configuration for different data types and tables.
  * Integrates with DataTypeRegistry for extensible type support.
  * 
- * @version 3.0.0
+ * Now supports remote config resolution via ConfigResolver.
+ * 
+ * @version 3.1.0
  */
 
-import { DataTypeRegistry } from '../core/data-type-registry';
+import { DataTypeRegistry } from '../core/config/DataTypeRegistry';
+import { getConfigResolver } from '../core/config/ConfigResolver';
 import type {
     AppConfig,
     DataTypeConfig,
     TableSchema,
     ResolvedTableConfig
 } from '../types/schema';
+import type { ResolveOptions, ResolveResult } from '../types/config-api';
 
 // =============================================================================
 // LEGACY INTERFACES (for backward compatibility)
@@ -411,5 +415,60 @@ export class ConfigManager {
      */
     public isLegacy(): boolean {
         return this.isLegacyMode;
+    }
+
+    // =========================================================================
+    // REMOTE CONFIG (Config Control Plane Integration)
+    // =========================================================================
+
+    /**
+     * Initialize remote config support.
+     * Enables fetching configs from TableScanner Config Control Plane.
+     */
+    public initializeRemoteConfig(): void {
+        this.registry.initializeRemoteConfig();
+    }
+
+    /**
+     * Resolve and load config for a source reference.
+     * Uses the cascading resolver (remote → static → generated → default).
+     * 
+     * @param sourceRef - Object reference (e.g., "76990/7/2")
+     * @param options - Resolution options
+     * @returns Resolution result with config and metadata
+     */
+    public async resolveConfig(
+        sourceRef: string,
+        options?: ResolveOptions
+    ): Promise<ResolveResult> {
+        const resolver = getConfigResolver();
+        const result = await resolver.resolve(sourceRef, {
+            ...options,
+            preferRemote: this.registry.isRemoteConfigEnabled(),
+        });
+
+        // Auto-register and set as current
+        if (result.config) {
+            if (!this.registry.hasDataType(result.config.id)) {
+                this.registry.registerDataType(result.config);
+            }
+            this.currentDataTypeId = result.config.id;
+        }
+
+        return result;
+    }
+
+    /**
+     * Check if remote config is enabled.
+     */
+    public isRemoteEnabled(): boolean {
+        return this.registry.isRemoteConfigEnabled();
+    }
+
+    /**
+     * Set auth token for remote config requests.
+     */
+    public setAuthToken(token: string): void {
+        this.registry.setAuthToken(token);
     }
 }

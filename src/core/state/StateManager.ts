@@ -7,7 +7,7 @@
  * @version 1.0.0
  */
 
-import type { TableColumnConfig } from '../utils/config-manager';
+import type { TableColumnConfig } from '../../utils/config-manager';
 
 export interface AppState {
     // Data Source

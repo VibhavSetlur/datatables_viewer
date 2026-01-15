@@ -7,7 +7,7 @@
  * @version 1.0.0
  */
 
-import { eventBus } from './EventBus';
+import { eventBus } from '../state/EventBus';
 
 // =============================================================================
 // TYPES

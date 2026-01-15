@@ -4,7 +4,7 @@
  * TypeScript implementation of the KBase Client.
  */
 
-import type { ApiConfig } from '../types/schema';
+import type { ApiConfig } from '../../types/schema';
 import { LocalDbClient } from './LocalDbClient';
 
 interface ClientOptions {
