@@ -28,7 +28,9 @@
         "lint:fix": "eslint src --ext .ts --fix",
         "format": "prettier --write src/**/*.ts",
         "clean": "rm -rf dist node_modules/.vite",
-        "prepare": "husky install || true"
+        "prepare": "husky install || true",
+        "validate-config": "tsx scripts/validate-config.ts",
+        "version-config": "./scripts/version-config.sh"
     },
     "devDependencies": {
         "@playwright/test": "^1.45.0",
@@ -42,6 +44,7 @@
         "jsdom": "^24.0.0",
         "lint-staged": "^15.0.0",
         "prettier": "^3.3.0",
+        "tsx": "^4.7.0",
         "typescript": "~5.9.3",
         "vite": "^6.0.0",
         "vitest": "^2.0.0"
@@ -57,6 +60,8 @@
         "npm": ">=9.0.0"
     },
     "dependencies": {
-        "sql.js": "^1.13.0"
+        "sql.js": "^1.13.0",
+        "ajv": "^8.12.0",
+        "ajv-formats": "^2.1.1"
     }
 }

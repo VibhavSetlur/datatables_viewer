@@ -12,6 +12,7 @@ export interface SidebarOptions extends ComponentOptions {
     onExport: () => void;
     onReset: () => void;
     onShowSchema: (tableName: string) => void;
+    onShowStats: (tableName: string) => void;
 }
 
 export class Sidebar extends Component {
@@ -134,9 +135,14 @@ export class Sidebar extends Component {
                         <span class="ts-section-title">Active Table</span>
                     </div>
                     <select class="ts-select" id="ts-table-select"></select>
-                    <button class="ts-btn-secondary" id="ts-view-schema" style="margin-top:8px;">
-                        <i class="bi bi-file-earmark-code"></i> View Schema
-                    </button>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
+                        <button class="ts-btn-secondary" id="ts-view-schema">
+                            <i class="bi bi-file-earmark-code"></i> Schema
+                        </button>
+                        <button class="ts-btn-secondary" id="ts-view-stats">
+                            <i class="bi bi-graph-up"></i> Stats
+                        </button>
+                    </div>
                 </section>
 
                 <!-- Data Control (Unified Categories & Columns) -->
@@ -184,6 +190,7 @@ export class Sidebar extends Component {
             navSection: '#ts-nav-section',
             tableSelect: '#ts-table-select',
             viewSchema: '#ts-view-schema',
+            viewStats: '#ts-view-stats',
             controlSection: '#ts-control-section',
             controlList: '#ts-control-list',
             controlExpandAll: '#ts-control-expand-all',
@@ -297,19 +304,34 @@ export class Sidebar extends Component {
                     this.options.onShowSchema(state.activeTableName);
                 } else {
                     const select = this.dom.tableSelect as HTMLSelectElement;
-                    if (select && select.value) {
+                    if (select?.value) {
                         this.options.onShowSchema(select.value);
-                    } else {
-                        alert("Please select a table to view its schema.");
+                    }
+                }
+            });
+        }
+
+        // Stats view click
+        if (this.dom.viewStats) {
+            this.dom.viewStats.addEventListener('click', () => {
+                const state = this.stateManager.getState();
+                if (state.activeTableName) {
+                    this.options.onShowStats(state.activeTableName);
+                } else {
+                    const select = this.dom.tableSelect as HTMLSelectElement;
+                    if (select?.value) {
+                        this.options.onShowStats(select.value);
                     }
                 }
             });
         }
 
         // Clear filters
-        this.dom.clearFilters?.addEventListener('click', () => {
-            this.stateManager.update({ columnFilters: {}, currentPage: 0 });
-        });
+        if (this.dom.clearFilters) {
+            this.dom.clearFilters.addEventListener('click', () => {
+                this.stateManager.update({ columnFilters: {}, currentPage: 0 });
+            });
+        }
     }
 
     public updateTables(tables: any[]) {

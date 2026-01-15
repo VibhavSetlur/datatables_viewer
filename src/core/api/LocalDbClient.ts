@@ -74,7 +74,7 @@ export class LocalDbClient {
      * Check if a UPA is a local database UPA
      */
     public static isLocalDb(upa: string): boolean {
-        return upa in LOCAL_DB_MAP;
+        return upa in LOCAL_DB_MAP || upa.startsWith('local/');
     }
 
     /**
@@ -142,8 +142,29 @@ export class LocalDbClient {
         }
 
         // Load the config for display names
-        const configResponse = await fetch(config.configPath);
-        const tableConfig = await configResponse.json();
+        let tableConfig: any = {};
+        try {
+            const configResponse = await fetch(config.configPath);
+            if (configResponse.ok) {
+                tableConfig = await configResponse.json();
+            }
+        } catch (error) {
+            console.warn('Failed to load config:', error);
+        }
+
+        return this.listTablesFromDb(config.dbPath, tableConfig);
+    }
+
+    /**
+     * List tables from a database file directly (for dynamic loading)
+     */
+    public async listTablesFromDb(dbPath: string, tableConfig: any = {}): Promise<{ tables: TableInfo[]; type: string; object_type: string }> {
+        // Load the database
+        await this.loadDatabase(dbPath);
+
+        if (!this.db) {
+            throw new Error('Database not loaded');
+        }
 
         // Get all tables from the database
         const tablesResult = this.db.exec(
@@ -188,13 +209,24 @@ export class LocalDbClient {
      * Get table data with pagination, sorting, and filtering
      */
     public async getTableData(upa: string, req: TableDataRequest): Promise<TableDataResponse> {
-        const config = LOCAL_DB_MAP[upa];
-        if (!config) {
-            throw new Error(`Unknown local database UPA: ${upa}`);
+        let dbPath: string;
+        
+        if (upa.startsWith('local/')) {
+            // Dynamic database loading - extract the database path from currentDbPath
+            if (!this.currentDbPath) {
+                throw new Error(`Database not loaded for UPA: ${upa}`);
+            }
+            dbPath = this.currentDbPath;
+        } else {
+            const config = LOCAL_DB_MAP[upa];
+            if (!config) {
+                throw new Error(`Unknown local database UPA: ${upa}`);
+            }
+            dbPath = config.dbPath;
         }
 
         // Load the database
-        await this.loadDatabase(config.dbPath);
+        await this.loadDatabase(dbPath);
 
         if (!this.db) {
             throw new Error('Database not loaded');

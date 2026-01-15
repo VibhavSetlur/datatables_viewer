@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { StateManager } from '../../src/core/StateManager';
+import { StateManager } from '../../src/core/state/StateManager';
 // import { createMockInitialState, createMockLoadedState } from '../fixtures/data-factory';
 
 describe('StateManager', () => {

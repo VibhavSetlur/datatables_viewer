@@ -48,6 +48,10 @@ export interface AppState {
     theme: 'light' | 'dark';
     density: 'compact' | 'normal' | 'comfortable';
     showRowNumbers: boolean;
+
+    // Performance
+    queryCached?: boolean;
+    queryTime?: number;
 }
 
 const INITIAL_STATE: AppState = {
@@ -80,7 +84,10 @@ const INITIAL_STATE: AppState = {
 
     theme: 'light',
     density: 'normal',
-    showRowNumbers: true
+    showRowNumbers: true,
+
+    queryCached: false,
+    queryTime: undefined
 };
 
 export class StateManager {

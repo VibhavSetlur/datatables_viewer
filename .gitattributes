@@ -1,0 +1,9 @@
+# Ensure dist/ is tracked
+dist/ linguist-generated=false
+dist/** linguist-generated=false
+
+# Data files should not be tracked
+*.db linguist-vendored
+*.db-journal linguist-vendored
+*.db-wal linguist-vendored
+*.db-shm linguist-vendored

@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { EventBus } from '../../src/core/EventBus';
+import { EventBus } from '../../src/core/state/EventBus';
 
 // Helper to cast bus to any for testing arbitrary events
 const asAny = (bus: EventBus) => bus as any;

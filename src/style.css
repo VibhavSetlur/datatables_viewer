@@ -1492,6 +1492,40 @@ mark.highlight {
 /* ============================================
    ALERTS
    ============================================ */
+/* ============================================
+   PERFORMANCE INDICATOR
+   ============================================ */
+.ts-performance-indicator {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 16px;
+    background: var(--c-bg-surface-alt);
+    border-bottom: 1px solid var(--c-border-subtle);
+    font-size: 12px;
+    color: var(--c-text-secondary);
+}
+
+.ts-perf-cached {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--success);
+    font-weight: 500;
+}
+
+.ts-perf-cached i {
+    font-size: 14px;
+}
+
+.ts-perf-time {
+    display: inline-flex;
+    align-items: center;
+    color: var(--c-text-muted);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+}
+
 .ts-alert {
     position: fixed;
     top: 20px;

@@ -96,6 +96,12 @@ export class TableRenderer {
                 <main class="ts-main">
                     <header class="ts-toolbar" id="ts-toolbar-container"></header>
                     <div id="ts-alert"></div>
+                    <div class="ts-performance-indicator" id="ts-performance" style="display:none">
+                        <span class="ts-perf-cached" id="ts-perf-cached" style="display:none">
+                            <i class="bi bi-lightning-charge-fill"></i> Cached
+                        </span>
+                        <span class="ts-perf-time" id="ts-perf-time" style="display:none"></span>
+                    </div>
                     <div class="ts-grid-header" id="ts-grid-header" style="display:none">
                         <div class="ts-grid-header-content">
                             <div class="ts-db-info">
@@ -149,6 +155,9 @@ export class TableRenderer {
         this.dom.alert = this.container.querySelector('#ts-alert') as HTMLElement;
         this.dom.tableName = this.container.querySelector('#ts-table-name') as HTMLElement;
         this.dom.loadingOverlay = this.container.querySelector('#ts-loading-overlay') as HTMLElement;
+        this.dom.performance = this.container.querySelector('#ts-performance') as HTMLElement;
+        this.dom.perfCached = this.container.querySelector('#ts-perf-cached') as HTMLElement;
+        this.dom.perfTime = this.container.querySelector('#ts-perf-time') as HTMLElement;
     }
 
     private initComponents() {
@@ -162,7 +171,8 @@ export class TableRenderer {
             onTableChange: (name) => this.switchTable(name),
             onExport: () => this.exportCsv(),
             onReset: () => this.reset(),
-            onShowSchema: (table) => this.showDatabaseSchema(table)
+            onShowSchema: (table) => this.showDatabaseSchema(table),
+            onShowStats: (table) => this.showColumnStatistics(table)
         });
         this.sidebar.mount();
 
@@ -422,8 +432,15 @@ export class TableRenderer {
                 dataObjects = this.sortWithNullsLast(dataObjects, state.sortColumn, state.sortOrder || 'asc');
             }
 
+            // Show performance info in UI
+            this.updatePerformanceIndicator(res.cached, res.execution_time_ms);
+
             this.stateManager.update({
-                headers: res.headers, data: dataObjects, totalCount: res.total_count || 0
+                headers: res.headers, 
+                data: dataObjects, 
+                totalCount: res.total_count || 0,
+                queryCached: res.cached || false,
+                queryTime: res.execution_time_ms
             });
         } catch (e: any) {
             this.showAlert(e.message, 'danger');
@@ -577,13 +594,20 @@ export class TableRenderer {
         if (!this.dom.status) return;
 
         let statusHtml = '';
+        const perfInfo = [];
+        if (state.queryCached) perfInfo.push('⚡ Cached');
+        if (state.queryTime !== undefined) perfInfo.push(`${state.queryTime}ms`);
+        
         if (state.totalCount > 0) {
             const start = state.currentPage * state.pageSize + 1;
             const end = Math.min((state.currentPage + 1) * state.pageSize, state.totalCount);
             const totalPages = Math.ceil(state.totalCount / state.pageSize);
             statusHtml = `<div style="display:flex;flex-direction:column;gap:2px">
                 <div style="font-size:13px;font-weight:600;color:var(--c-text-primary)">Rows: <strong>${start.toLocaleString()}</strong> – <strong>${end.toLocaleString()}</strong> of <strong>${state.totalCount.toLocaleString()}</strong></div>
-                <div style="font-size:11px;color:var(--c-text-muted)">Page ${state.currentPage + 1} of ${totalPages || 1}</div>
+                <div style="font-size:11px;color:var(--c-text-muted);display:flex;gap:8px;align-items:center">
+                    <span>Page ${state.currentPage + 1} of ${totalPages || 1}</span>
+                    ${perfInfo.length > 0 ? `<span style="display:flex;align-items:center;gap:4px">${perfInfo.join(' • ')}</span>` : ''}
+                </div>
             </div>`;
 
             const selectionCount = this.grid?.getSelection()?.size || 0;
@@ -1225,6 +1249,167 @@ export class TableRenderer {
             // Note: Empty values are already handled above and will always be at the end
             return order === 'desc' ? -comparison : comparison;
         });
+    }
+
+    /**
+     * Load database from a file (client-side only, for URL parameter support)
+     * @param dbFilename - Database filename without .db extension
+     */
+    public async loadDatabaseFromFile(dbFilename: string): Promise<void> {
+        try {
+            this.stateManager.update({ loading: true, error: null });
+
+            // Construct paths (client-side, relative to public/)
+            const dbPath = `/data/${dbFilename}.db`;
+            const configPath = `/config/${dbFilename}.json`;
+
+            // Try to load config if available
+            let config: any = null;
+            try {
+                const configResponse = await fetch(configPath);
+                if (configResponse.ok) {
+                    config = await configResponse.json();
+                    this.registry.registerDataType(config);
+                    this.configManager.setCurrentDataType(config.id || dbFilename);
+                }
+            } catch (error) {
+                console.warn('No config file found, using default:', error);
+            }
+
+            // Use LocalDbClient to load the database (client-side)
+            const { LocalDbClient } = await import('../core/api/LocalDbClient');
+            const localDb = LocalDbClient.getInstance();
+
+            // Create a temporary UPA for this database
+            const tempUpa = `local/${dbFilename}`;
+            
+            // Load the database
+            await localDb.loadDatabase(dbPath);
+
+            // Get table list
+            const tablesResult = await localDb.listTablesFromDb(dbPath, config);
+            const tables = tablesResult.tables || [];
+
+            if (tables.length === 0) {
+                throw new Error('No tables found in database');
+            }
+
+            this.stateManager.update({ 
+                availableTables: tables,
+                berdlTableId: tempUpa
+            });
+
+            this.sidebar.updateTables(tables);
+
+            // Load the first table
+            const targetTable = tables[0].name;
+            await this.switchTable(targetTable);
+
+            this.showAlert(`Loaded database: ${dbFilename}`, 'success');
+        } catch (error: any) {
+            this.showAlert(error.message || 'Failed to load database', 'danger');
+            this.stateManager.update({
+                availableTables: [],
+                activeTableName: null,
+                data: [],
+                columns: [],
+                visibleColumns: new Set(),
+                loading: false
+            });
+            throw error;
+        } finally {
+            this.stateManager.update({ loading: false });
+        }
+    }
+
+    private updatePerformanceIndicator(cached?: boolean, executionTime?: number) {
+        if (!this.dom.performance) return;
+
+        const show = cached !== undefined || executionTime !== undefined;
+        if (this.dom.performance) {
+            (this.dom.performance as HTMLElement).style.display = show ? 'flex' : 'none';
+        }
+
+        if (this.dom.perfCached) {
+            (this.dom.perfCached as HTMLElement).style.display = cached ? 'inline-flex' : 'none';
+        }
+
+        if (this.dom.perfTime && executionTime !== undefined) {
+            (this.dom.perfTime as HTMLElement).textContent = `${executionTime}ms`;
+            (this.dom.perfTime as HTMLElement).style.display = 'inline-flex';
+        } else if (this.dom.perfTime) {
+            (this.dom.perfTime as HTMLElement).style.display = 'none';
+        }
+    }
+
+    private async showColumnStatistics(tableName: string) {
+        const state = this.stateManager.getState();
+        if (!state.berdlTableId || !tableName) {
+            this.showAlert('No table selected', 'warning');
+            return;
+        }
+
+        try {
+            this.stateManager.update({ loading: true });
+            
+            // Get stats from server
+            const dbName = state.berdlTableId.replace('local/', '');
+            const serverPort = '3000';
+            const statsResponse = await fetch(`http://localhost:${serverPort}/object/${dbName}/tables/${tableName}/stats`);
+            
+            if (!statsResponse.ok) {
+                throw new Error('Failed to load statistics');
+            }
+
+            const stats = await statsResponse.json();
+            
+            // Format stats for display
+            const statsHtml = `
+                <div style="padding:24px;max-width:800px">
+                    <h2 style="margin-bottom:20px;font-size:18px;font-weight:600">
+                        <i class="bi bi-graph-up"></i> Column Statistics: ${tableName}
+                    </h2>
+                    <div style="margin-bottom:16px;padding:12px;background:var(--c-bg-surface-alt);border-radius:var(--radius-sm);font-size:13px">
+                        <strong>Total Rows:</strong> ${stats.row_count.toLocaleString()}
+                    </div>
+                    <div style="display:grid;gap:12px">
+                        ${stats.columns.map((col: any) => `
+                            <div style="padding:16px;background:var(--c-bg-surface);border:1px solid var(--c-border-subtle);border-radius:var(--radius-md)">
+                                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                                    <h3 style="font-size:14px;font-weight:600">${col.column}</h3>
+                                    <span style="font-size:11px;color:var(--c-text-muted);text-transform:uppercase">${col.type}</span>
+                                </div>
+                                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;font-size:12px">
+                                    <div><strong>Nulls:</strong> ${col.null_count.toLocaleString()}</div>
+                                    <div><strong>Distinct:</strong> ${col.distinct_count.toLocaleString()}</div>
+                                    ${col.min !== undefined ? `<div><strong>Min:</strong> ${col.min}</div>` : ''}
+                                    ${col.max !== undefined ? `<div><strong>Max:</strong> ${col.max}</div>` : ''}
+                                    ${col.mean !== undefined ? `<div><strong>Mean:</strong> ${col.mean.toFixed(2)}</div>` : ''}
+                                    ${col.median !== undefined ? `<div><strong>Median:</strong> ${col.median}</div>` : ''}
+                                    ${col.stddev !== undefined ? `<div><strong>StdDev:</strong> ${col.stddev.toFixed(2)}</div>` : ''}
+                                </div>
+                                ${col.sample_values && col.sample_values.length > 0 ? `
+                                    <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--c-border-subtle)">
+                                        <div style="font-size:11px;color:var(--c-text-muted);margin-bottom:6px">Sample Values:</div>
+                                        <div style="display:flex;flex-wrap:gap:4px">
+                                            ${col.sample_values.slice(0, 10).map((v: any) => `
+                                                <span style="padding:2px 8px;background:var(--c-bg-surface-alt);border-radius:4px;font-size:11px;font-family:monospace">${String(v).substring(0, 30)}</span>
+                                            `).join('')}
+                                        </div>
+                                    </div>
+                                ` : ''}
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+
+            this.createModal(`Column Statistics: ${tableName}`, statsHtml);
+        } catch (error: any) {
+            this.showAlert(`Failed to load statistics: ${error.message}`, 'danger');
+        } finally {
+            this.stateManager.update({ loading: false });
+        }
     }
 
     private createModal(title: string, bodyHtml: string): HTMLElement {

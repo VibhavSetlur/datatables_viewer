@@ -20,6 +20,19 @@ interface CacheEntry<T> {
     timestamp: number;
 }
 
+interface AdvancedFilter {
+    column: string;
+    operator: 'eq' | 'ne' | 'gt' | 'gte' | 'lt' | 'lte' | 'like' | 'ilike' | 'in' | 'not_in' | 'between' | 'is_null' | 'is_not_null' | 'regex';
+    value: any;
+    value2?: any;
+}
+
+interface Aggregation {
+    column: string;
+    function: 'count' | 'sum' | 'avg' | 'min' | 'max' | 'stddev' | 'variance' | 'distinct_count';
+    alias?: string;
+}
+
 interface TableDataRequest {
     berdl_table_id: string;
     table_name: string;
@@ -30,6 +43,9 @@ interface TableDataRequest {
     sort_order?: 'ASC' | 'DESC';
     search_value?: string;
     col_filter?: Record<string, any>;
+    filters?: AdvancedFilter[];
+    group_by?: string[];
+    aggregations?: Aggregation[];
     query_filters?: any;
     kb_env?: string;
 }
@@ -38,6 +54,8 @@ interface TableDataResponse {
     headers: string[];
     data: any[][];
     total_count: number;
+    cached?: boolean;
+    execution_time_ms?: number;
 }
 
 export class ApiClient {
@@ -67,13 +85,25 @@ export class ApiClient {
     }
 
     private getDefaultUrl(env: string): string {
+        // Check for environment variable first (for static deployment)
+        // Vite exposes env vars prefixed with VITE_
+        const envApiUrl = (import.meta.env?.VITE_API_URL as string) || 
+                         (typeof window !== 'undefined' && (window as any).__API_URL__);
+        
+        if (envApiUrl) {
+            return envApiUrl;
+        }
+
         const urls: Record<string, string> = {
             appdev: 'https://appdev.kbase.us/services/berdl_table_scanner',
             prod: 'https://kbase.us/services/berdl_table_scanner',
-            local: 'http://127.0.0.1:8000'
+            local: 'http://127.0.0.1:8000',
+            // Use local server if available (DataTables Viewer integrated server)
+            local_integrated: 'http://localhost:3000'
         };
         return urls[env] || urls.appdev;
     }
+
 
     private getHeaders(): HeadersInit {
         const headers: HeadersInit = {
@@ -181,17 +211,118 @@ export class ApiClient {
     // Public Methods
 
     public async listTables(berdlTableId: string): Promise<any> {
-        // Local SQLite database mode for test/test/0 and test/test/1
+        // Local SQLite database mode
         if (LocalDbClient.isLocalDb(berdlTableId)) {
+            // Check if we have a remote API configured (for separate deployment)
+            const hasRemoteApi = this.baseUrl && !this.baseUrl.includes('localhost') && !this.baseUrl.includes('127.0.0.1');
+            
+            if (hasRemoteApi && berdlTableId.startsWith('local/')) {
+                // Use remote API service (separate deployment)
+                try {
+                    const dbName = berdlTableId.replace('local/', '');
+                    return this.request(
+                        `${this.baseUrl}/object/${dbName}/tables`,
+                        'GET',
+                        undefined,
+                        true
+                    );
+                } catch (error) {
+                    console.warn('[ApiClient] Remote API query failed, trying local fallback:', error);
+                }
+            }
+            
+            // Check if local integrated server is available
+            const useLocalServer = await this.isLocalServerAvailable();
+            if (useLocalServer && berdlTableId.startsWith('local/')) {
+                try {
+                    const dbName = berdlTableId.replace('local/', '');
+                    const serverPort = '3000';
+                    return this.request(
+                        `http://localhost:${serverPort}/object/${dbName}/tables`,
+                        'GET',
+                        undefined,
+                        true
+                    );
+                } catch (error) {
+                    console.warn('[ApiClient] Local server query failed, using client-side:', error);
+                }
+            }
+            
+            // Fall back to client-side SQLite
             return this.localDb.listTables(berdlTableId);
         }
 
+        // Use remote TableScanner service for non-local databases
         return this.request(`/object/${berdlTableId}/tables`, 'GET', undefined, true);
     }
 
+    /**
+     * Check if local server is available
+     */
+    private async isLocalServerAvailable(): Promise<boolean> {
+        try {
+            const serverPort = '3000'; // Default server port
+            const response = await fetch(`http://localhost:${serverPort}/health`, {
+                method: 'GET',
+                signal: AbortSignal.timeout(1000) // 1 second timeout
+            });
+            return response.ok;
+        } catch {
+            return false;
+        }
+    }
+
     public async getTableData(req: TableDataRequest): Promise<TableDataResponse> {
+        // Check if local server is available for server-side querying
+        const useServer = await this.isLocalServerAvailable();
+        
         // Local SQLite database mode
         if (LocalDbClient.isLocalDb(req.berdl_table_id)) {
+            // Check if we have a remote API configured (for separate deployment)
+            const hasRemoteApi = this.baseUrl && !this.baseUrl.includes('localhost') && !this.baseUrl.includes('127.0.0.1');
+            
+            if (hasRemoteApi && req.berdl_table_id.startsWith('local/')) {
+                // Use remote API service (separate deployment)
+                try {
+                    const dbName = req.berdl_table_id.replace('local/', '');
+                    const body = {
+                        ...req,
+                        berdl_table_id: `local/${dbName}`,
+                        limit: req.limit || 100,
+                        offset: req.offset || 0,
+                    };
+                    return this.request(
+                        `${this.baseUrl}/table-data`,
+                        'POST',
+                        body,
+                        false
+                    );
+                } catch (error) {
+                    console.warn('[ApiClient] Remote API query failed, trying local fallback:', error);
+                }
+            }
+            
+            // Check if local integrated server is available
+            if (useServer && req.berdl_table_id.startsWith('local/')) {
+                try {
+                    const serverPort = '3000';
+                    const body = {
+                        ...req,
+                        limit: req.limit || 100,
+                        offset: req.offset || 0,
+                    };
+                    return this.request(
+                        `http://localhost:${serverPort}/table-data`,
+                        'POST',
+                        body,
+                        false
+                    );
+                } catch (error) {
+                    console.warn('[ApiClient] Local server query failed, using client-side:', error);
+                }
+            }
+            
+            // Fall back to client-side SQLite
             return this.localDb.getTableData(req.berdl_table_id, {
                 table_name: req.table_name,
                 limit: req.limit,
@@ -204,6 +335,7 @@ export class ApiClient {
             });
         }
 
+        // Use remote TableScanner service for non-local databases
         const body = {
             ...req,
             limit: req.limit || 100,

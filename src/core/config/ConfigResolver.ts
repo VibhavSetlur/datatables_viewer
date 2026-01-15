@@ -5,8 +5,8 @@
  * configuration for a data source.
  * 
  * Resolution Priority:
- * 1. Remote API (TableScanner Config Control Plane)
- * 2. Static configs (local JSON files via DataTypeRegistry)
+ * 1. Static configs (local JSON files via DataTypeRegistry)
+ * 2. Remote API (TableScanner Config Control Plane)
  * 3. AI-generated config (triggers generation if needed)
  * 4. Minimal default config
  * 
@@ -66,7 +66,18 @@ export class ConfigResolver {
     ): Promise<ResolveResult> {
         const preferRemote = options.preferRemote ?? this.remoteEnabled;
 
-        // 1. Try remote first (if enabled and preferred)
+        // 1. Try static configs from registry first
+        const staticConfig = this.findStaticConfig(sourceRef, options.objectType);
+        if (staticConfig) {
+            return {
+                config: staticConfig,
+                source: 'static',
+                sourceDetail: `static:${staticConfig.id}`,
+                fromCache: true, // Static is always "cached"
+            };
+        }
+
+        // 2. Try remote (TableScanner) if enabled and preferred
         if (preferRemote && this.isRemoteEnabled()) {
             try {
                 const remote = getRemoteConfigProvider();
@@ -88,17 +99,6 @@ export class ConfigResolver {
                 console.warn('[ConfigResolver] Remote resolution failed:', error);
                 // Continue to fallbacks
             }
-        }
-
-        // 2. Try static configs from registry
-        const staticConfig = this.findStaticConfig(sourceRef, options.objectType);
-        if (staticConfig) {
-            return {
-                config: staticConfig,
-                source: 'static',
-                sourceDetail: `static:${staticConfig.id}`,
-                fromCache: true, // Static is always "cached"
-            };
         }
 
         // 3. Try to generate via API (if remote is enabled)

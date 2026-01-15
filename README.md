@@ -1,6 +1,6 @@
 # DataTables Viewer
 
-Production-grade, configurable data table viewer for research applications.
+Production-grade, configurable data table viewer for research applications with integrated SQLite query optimization and caching.
 
 ![Version](https://img.shields.io/badge/version-3.0.0-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
@@ -8,22 +8,23 @@ Production-grade, configurable data table viewer for research applications.
 
 ## Overview
 
-DataTables Viewer is a high-performance, extensible table viewer designed for researchers working with large datasets. It features:
+DataTables Viewer is a high-performance table viewer designed for researchers working with SQLite databases (20-200MB). It features:
 
-- 🚀 **Configurable Rendering** - Define table layouts via JSON configuration
-- 🎨 **Rich Transformers** - Transform cells into links, badges, heatmaps, and more
-- 📊 **Category Management** - Group and toggle column visibility by category
-- ⌨️ **Keyboard Navigation** - Full keyboard support for power users
-- 🔌 **Plugin System** - Extend functionality with custom plugins
+- 🚀 **Fast Query Performance** - Server-side caching, FTS5 search, prepared statements
+- 📊 **Flexible Deployment** - Static frontend + optional separate API service
+- 🔍 **Advanced Filtering** - Multiple operators, aggregations, column statistics
+- 📁 **Local Database Support** - Client-side SQLite via `sql.js` for testing
+- 🎨 **Rich Transformers** - Links, badges, heatmaps, sequences, ontologies
+- ⌨️ **Keyboard Navigation** - Full keyboard support
 - 🌙 **Dark Mode** - Light, dark, and system themes
-- 📤 **Export** - CSV, JSON, TSV export with column selection
+- 📤 **Export** - CSV, JSON, TSV export
 
 ## Quick Start
 
+### Development
+
 ```bash
-# Clone and install
-git clone <repo-url>
-cd DataTables_Viewer
+# Install dependencies
 npm install
 
 # Start development server
@@ -33,175 +34,162 @@ npm run dev
 open http://localhost:5173
 ```
 
-### Test Mode
+### Load Database via URL
 
-Use these credentials to test with local mock data:
+Open a database directly via URL parameter:
 
-- **Token**: `test`
-- **Object ID**: `test/test/test`
+```
+http://localhost:5173/?db=filename
+```
 
-## Documentation
+This loads:
+- Database: `/data/filename.db`
+- Config: `/config/filename.json` (optional)
 
-| Document | Description |
-|----------|-------------|
-| [Developer Guide](docs/DEVELOPER_GUIDE.md) | Architecture, project structure, and extending the viewer |
-| [API Reference](docs/API.md) | Complete API documentation for all managers and utilities |
-| [Testing Guide](docs/TESTING.md) | Unit, integration, and E2E testing documentation |
-| [Changelog](CHANGELOG.md) | Version history and changes |
+### Production Build
+
+```bash
+# Build static files
+npm run build
+
+# Output: dist/ folder (ready to deploy)
+```
+
+## Architecture
+
+### Two Deployment Modes
+
+1. **Integrated**: Frontend + server together (development/local)
+2. **Separate**: Static frontend + remote API service (production)
+
+The frontend automatically detects and uses:
+- Remote API (if `VITE_API_URL` is set)
+- Local integrated server (if available on localhost:3000)
+- Client-side SQLite (fallback via `sql.js`)
+
+### Components
+
+- **Frontend**: TypeScript SPA (Vite) → builds to static HTML/JS/CSS
+- **Backend** (optional): Express.js server with SQLite caching
+- **LocalDbClient**: Client-side SQLite for testing (no server needed)
+
+## Features
+
+### Performance Optimizations
+
+- **Query Result Caching**: 5-minute TTL, smart invalidation
+- **FTS5 Full-Text Search**: Fast text search (100-1000x faster than LIKE)
+- **Prepared Statement Caching**: Reuses queries for 20-50% faster execution
+- **Connection Pooling**: 30-minute database connection lifespan
+- **Automatic Indexing**: Creates indices on-demand for better performance
+
+### Advanced Query Features
+
+- **Filtering**: `eq`, `ne`, `gt`, `gte`, `lt`, `lte`, `like`, `ilike`, `in`, `not_in`, `between`, `is_null`, `is_not_null`, `regex`
+- **Aggregations**: `COUNT`, `SUM`, `AVG`, `MIN`, `MAX`, `STDDEV`, `VARIANCE`, `DISTINCT_COUNT`
+- **Grouping**: `GROUP BY` support for statistical analysis
+- **Column Statistics**: Pre-computed stats (min, max, mean, median, stddev)
+
+### UI Features
+
+- **Performance Indicators**: Shows cached status and query execution time
+- **Column Statistics**: View detailed column stats via sidebar button
+- **Schema Explorer**: Browse database structure
+- **Category Management**: Group and toggle column visibility
+- **Cell Transformers**: Links, badges, heatmaps, sequences, ontologies
+
+## Deployment
+
+### Static Frontend Deployment
+
+The frontend builds to static files that can be deployed anywhere:
+
+```bash
+# Build with API URL (for separate deployment)
+VITE_API_URL=https://api.example.com npm run build
+
+# Deploy dist/ folder to:
+# - CDN (CloudFlare, AWS CloudFront)
+# - Static hosting (Netlify, Vercel, GitHub Pages)
+# - Web server (Nginx, Apache)
+# - Jupyter environment
+```
+
+### Server Deployment (Optional)
+
+```bash
+cd server
+npm install
+
+# Run with environment variables
+DATA_DIR=/path/to/databases \
+CONFIG_DIR=/path/to/configs \
+PORT=3000 \
+npm start
+```
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed deployment instructions.
+
+## Configuration
+
+### Database Files
+
+Place database files in `/data/` directory:
+```
+data/
+  ├── mydb.db
+  └── another.db
+```
+
+### Config Files (Optional)
+
+Place JSON config files in `/config/` directory:
+```
+config/
+  ├── mydb.json
+  └── another.json
+```
+
+Config files define table layouts, column transforms, and categories. See [docs/CONFIG_MANAGEMENT.md](docs/CONFIG_MANAGEMENT.md).
+
+### URL Parameters
+
+- `?db=filename` - Load database (without .db extension)
+- Example: `?db=mydb` loads `/data/mydb.db` and `/config/mydb.json`
+
+## API Endpoints
+
+The viewer is compatible with TableScanner API:
+
+- `GET /object/{db_name}/tables` - List tables
+- `GET /object/{db_name}/tables/{table}/data` - Get table data
+- `POST /table-data` - Query table data
+- `GET /schema/{db_name}/tables` - Get schema
+- `GET /object/{db_name}/tables/{table}/stats` - Column statistics
+- `POST /api/aggregate/{db_name}/tables/{table}` - Aggregations
 
 ## Project Structure
 
 ```
 DataTables_Viewer/
+├── dist/                      # Built static files (tracked in git)
 ├── public/
-│   └── config/                  # JSON configuration files
-│       ├── index.json           # Main app config
-│       ├── test-data.json       # Test data type
-│       ├── genome-data-tables.json  # Production config
-│       └── schemas/             # JSON Schema definitions
+│   ├── data/                  # Database files (NOT in git)
+│   └── config/                 # JSON configuration files
+├── server/                     # Optional Express.js server
+│   └── src/
+│       ├── routes/             # API routes
+│       └── services/           # SQLite service with caching
 ├── src/
-│   ├── main.ts                  # Entry point
-│   ├── style.css                # Global styles
-│   ├── core/                    # Core managers
-│   │   ├── ApiClient.ts         # HTTP client
-│   │   ├── EventBus.ts          # Pub/sub events
-│   │   ├── StateManager.ts      # State management
-│   │   ├── PluginManager.ts     # Plugin system
-│   │   ├── KeyboardManager.ts   # Keyboard shortcuts
-│   │   ├── PreferencesManager.ts # User settings
-│   │   ├── ExportManager.ts     # Data export
-│   │   └── NotificationManager.ts # Toast notifications
-│   ├── ui/                      # UI components
-│   │   ├── TableRenderer.ts     # Main orchestrator
-│   │   └── components/          # UI components
-│   ├── utils/                   # Utilities
-│   │   ├── config-manager.ts    # Configuration
-│   │   └── transformers.ts      # Cell transformers
-│   └── types/                   # TypeScript types
-├── docs/                        # Documentation
-└── tests/                       # Test suites
-```
-
-## Configuration
-
-### Main Config (index.json)
-
-```json
-{
-  "app": {
-    "name": "DataTables Viewer",
-    "version": "3.0.0"
-  },
-  "dataTypes": {
-    "my_data": {
-      "configUrl": "/config/my-config.json",
-      "matches": ["MyApp.DataType-*"],
-      "autoLoad": true
-    }
-  },
-  "defaults": {
-    "pageSize": 50,
-    "theme": "system"
-  },
-  "features": {
-    "schemaExplorer": true,
-    "exportFormats": ["csv", "json"]
-  }
-}
-```
-
-### Data Type Config
-
-```json
-{
-  "id": "my_data",
-  "name": "My Data Type",
-  "version": "1.0.0",
-  "sharedCategories": [
-    { "id": "core", "name": "Core Fields", "defaultVisible": true }
-  ],
-  "tables": {
-    "my_table": {
-      "displayName": "My Table",
-      "columns": [
-        {
-          "column": "gene_id",
-          "displayName": "Gene ID",
-          "dataType": "id",
-          "categories": ["core"],
-          "transform": {
-            "type": "link",
-            "options": { "urlTemplate": "https://ncbi.nlm.nih.gov/gene/{value}" }
-          }
-        }
-      ]
-    }
-  }
-}
-```
-
-## Features
-
-### Column Categories
-
-Group related columns and toggle visibility as a group:
-
-```json
-{
-  "sharedCategories": [
-    { "id": "core", "name": "Core", "defaultVisible": true },
-    { "id": "sequence", "name": "Sequence Data", "defaultVisible": false }
-  ],
-  "columns": [
-    { "column": "id", "categories": ["core"] },
-    { "column": "dna_seq", "categories": ["sequence"] }
-  ]
-}
-```
-
-### Cell Transformers
-
-Transform cell values for display:
-
-| Transformer | Description |
-|-------------|-------------|
-| `link` | Clickable hyperlinks |
-| `badge` | Colored badges |
-| `number` | Formatted numbers |
-| `heatmap` | Color gradients |
-| `boolean` | Icons for true/false |
-| `sequence` | DNA/protein sequences |
-| `ontology` | GO terms, etc. |
-
-### Keyboard Shortcuts
-
-| Shortcut | Action |
-|----------|--------|
-| `?` | Show keyboard help |
-| `Ctrl+A` | Select all rows |
-| `Ctrl+Shift+E` | Export to CSV |
-| `Esc` | Clear selection |
-| `R` | Refresh data |
-| `↑/↓` | Navigate rows |
-
-### Plugin System
-
-Extend functionality with plugins:
-
-```typescript
-const myPlugin = {
-  id: 'my-plugin',
-  name: 'My Plugin',
-  version: '1.0.0',
-  onInit(api) {
-    api.on('data:loaded', () => {
-      api.showNotification('Data loaded!', 'success');
-    });
-  }
-};
-
-pluginManager.register(myPlugin);
-pluginManager.activate('my-plugin');
+│   ├── main.ts                # Entry point
+│   ├── core/
+│   │   ├── api/               # API clients (ApiClient, LocalDbClient)
+│   │   ├── managers/          # Feature managers
+│   │   └── state/             # State management
+│   ├── ui/                    # UI components
+│   └── utils/                 # Utilities
+├── scripts/                    # Config management scripts
+└── docs/                       # Documentation
 ```
 
 ## Scripts
@@ -212,8 +200,22 @@ pluginManager.activate('my-plugin');
 | `npm run build` | Build for production |
 | `npm run preview` | Preview production build |
 | `npm test` | Run tests |
-| `npm run test:coverage` | Run tests with coverage |
+| `npm run validate-config` | Validate config JSON |
 | `npm run typecheck` | TypeScript type checking |
+
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [docs/QUICK_START.md](docs/QUICK_START.md) | Get started in 5 minutes |
+| [DEPLOYMENT.md](DEPLOYMENT.md) | Deployment guide (static frontend + separate API) |
+| [docs/FEATURES.md](docs/FEATURES.md) | Complete feature list |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System architecture overview |
+| [docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md) | Architecture and extending the viewer |
+| [docs/API.md](docs/API.md) | API reference |
+| [docs/CONFIG_MANAGEMENT.md](docs/CONFIG_MANAGEMENT.md) | Managing configurations |
+| [docs/TABLESCANNER_INTEGRATION.md](docs/TABLESCANNER_INTEGRATION.md) | TableScanner API compatibility |
+| [CHANGELOG.md](CHANGELOG.md) | Version history |
 
 ## Browser Support
 
@@ -230,14 +232,6 @@ pluginManager.activate('my-plugin');
 4. Push to branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
-See [DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md) for coding guidelines.
-
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.
-
-## Acknowledgments
-
-- [Bootstrap Icons](https://icons.getbootstrap.com/) - UI icons
-- [Vite](https://vitejs.dev/) - Build tool
-- [TypeScript](https://www.typescriptlang.org/) - Type safety
