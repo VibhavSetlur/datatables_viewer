@@ -39,6 +39,7 @@ export class TableRenderer {
     private theme: 'light' | 'dark' = 'light';
     private density: 'compact' | 'normal' | 'comfortable' = 'normal';
     private dom: Record<string, HTMLElement> = {};
+    private columnSchemas: Record<string, Record<string, { type: string; notnull: boolean; pk: boolean }>> = {}; // tableName -> columnName -> schema
 
     constructor(options: RendererOptions) {
         if (!options.container) throw new Error('Container required');
@@ -228,13 +229,63 @@ export class TableRenderer {
                 this.stateManager.update({ sortColumn: col, sortOrder: order, currentPage: 0 });
                 this.fetchData();
             },
-            onFilter: (col, val) => {
+            onFilter: async (col, val) => {
                 const state = this.stateManager.getState();
-                const filters = { ...state.columnFilters };
-                if (val) filters[col] = val;
-                else delete filters[col];
-                this.stateManager.update({ columnFilters: filters, currentPage: 0 });
+                if (!state.activeTableName) return;
+                
+                // Parse filter with smart operator detection
+                const { parseFilterInput, normalizeColumnType } = await import('../utils/filter-parser');
+                const columnType = normalizeColumnType(this.getColumnType(state.activeTableName, col));
+                const parsed = parseFilterInput(val, columnType);
+                
+                if (parsed && val.trim()) {
+                    // Convert to advanced filter
+                    const advancedFilters = state.advancedFilters || [];
+                    const existingIdx = advancedFilters.findIndex(f => f.column === col);
+                    
+                    if (existingIdx >= 0) {
+                        advancedFilters[existingIdx] = {
+                            column: col,
+                            operator: parsed.operator,
+                            value: parsed.value,
+                            value2: parsed.value2
+                        };
+                    } else {
+                        advancedFilters.push({
+                            column: col,
+                            operator: parsed.operator,
+                            value: parsed.value,
+                            value2: parsed.value2
+                        });
+                    }
+                    
+                    // Also keep simple filter for display
+                    const filters = { ...state.columnFilters };
+                    filters[col] = val;
+                    
+                    this.stateManager.update({ 
+                        columnFilters: filters,
+                        advancedFilters: advancedFilters.length > 0 ? advancedFilters : undefined,
+                        currentPage: 0 
+                    });
+                } else {
+                    // Clear filter
+                    const filters = { ...state.columnFilters };
+                    delete filters[col];
+                    const advancedFilters = (state.advancedFilters || []).filter(f => f.column !== col);
+                    
+                    this.stateManager.update({ 
+                        columnFilters: filters,
+                        advancedFilters: advancedFilters.length > 0 ? advancedFilters : undefined,
+                        currentPage: 0 
+                    });
+                }
+                
                 this.fetchData();
+            },
+            getColumnType: (col) => {
+                const state = this.stateManager.getState();
+                return state.activeTableName ? this.getColumnType(state.activeTableName, col) : 'TEXT';
             },
             onRowSelect: () => this.updateSelectionStatus()
         });
@@ -415,10 +466,31 @@ export class TableRenderer {
                 search_value: state.searchValue || undefined,
                 sort_column: state.sortColumn || undefined,
                 sort_order: state.sortOrder === 'asc' ? 'ASC' : 'DESC',
-                col_filter: Object.keys(state.columnFilters).length ? state.columnFilters : undefined
+                col_filter: Object.keys(state.columnFilters).length ? state.columnFilters : undefined,
+                filters: state.advancedFilters,
+                aggregations: state.aggregations,
+                group_by: state.groupBy
             });
 
             this.processColumns(res.headers, state.activeTableName);
+            
+            // Use schema from response if available, otherwise load
+            if (res.column_schema && res.column_schema.length > 0 && state.activeTableName) {
+                // Cache schema from response
+                if (!this.columnSchemas[state.activeTableName]) {
+                    this.columnSchemas[state.activeTableName] = {};
+                }
+                res.column_schema.forEach(col => {
+                    this.columnSchemas[state.activeTableName!][col.name] = {
+                        type: col.type,
+                        notnull: col.notnull,
+                        pk: col.pk
+                    };
+                });
+            } else if (state.activeTableName) {
+                // Fallback to loading schema
+                await this.loadTableSchema(state.activeTableName);
+            }
 
             let dataObjects = (res.data || []).map((row: any[]) => {
                 const obj: Record<string, any> = {};
@@ -494,6 +566,73 @@ export class TableRenderer {
             this.categoryManager.setColumns(cols);
             this.stateManager.update({ visibleColumns: this.categoryManager.getVisibleColumns() });
         }
+    }
+
+    /**
+     * Load table schema for type-aware filtering
+     */
+    private async loadTableSchema(tableName: string): Promise<void> {
+        if (!tableName || this.columnSchemas[tableName]) {
+            return; // Already loaded
+        }
+
+        try {
+            const state = this.stateManager.getState();
+            if (!state.berdlTableId) return;
+
+            let schema: Array<{ name: string; type: string; notnull: boolean; pk: boolean }> = [];
+
+            // Try server first (check if available)
+            try {
+                const serverPort = '3000';
+                const healthCheck = await fetch(`http://localhost:${serverPort}/health`, {
+                    signal: AbortSignal.timeout(500)
+                });
+                
+                if (healthCheck.ok) {
+                    const dbName = state.berdlTableId.replace('local/', '');
+                    const response = await fetch(`http://localhost:${serverPort}/schema/${dbName}/tables/${tableName}`);
+                    if (response.ok) {
+                        const data = await response.json();
+                        schema = data.columns || [];
+                    }
+                }
+            } catch (error) {
+                // Server not available, continue to fallback
+            }
+            
+            // Fallback to LocalDbClient if server didn't provide schema
+            if (schema.length === 0) {
+                try {
+                    const { LocalDbClient } = await import('../core/api/LocalDbClient');
+                    const localDb = LocalDbClient.getInstance();
+                    schema = await localDb.getTableSchema(tableName);
+                } catch (err) {
+                    console.warn('[TableRenderer] Failed to load schema:', err);
+                }
+            }
+
+            // Cache schema
+            if (schema.length > 0) {
+                this.columnSchemas[tableName] = {};
+                schema.forEach(col => {
+                    this.columnSchemas[tableName][col.name] = {
+                        type: col.type,
+                        notnull: col.notnull,
+                        pk: col.pk
+                    };
+                });
+            }
+        } catch (error) {
+            console.warn('[TableRenderer] Error loading schema:', error);
+        }
+    }
+
+    /**
+     * Get column type for a column
+     */
+    public getColumnType(tableName: string, columnName: string): string {
+        return this.columnSchemas[tableName]?.[columnName]?.type || 'TEXT';
     }
 
     private switchApi(apiId: string) {

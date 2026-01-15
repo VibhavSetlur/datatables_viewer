@@ -68,7 +68,8 @@ npm run config-api
 
 TableScanner can POST configs to:
 ```
-POST http://localhost:3000/api/configs
+# Configs are managed via static JSON files
+# See ADDING_DATABASES.md and DATABASE_MAPPING.md for details
 Content-Type: application/json
 
 {

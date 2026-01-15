@@ -4,29 +4,19 @@ Complete feature list for DataTables Viewer.
 
 ## Performance Features
 
-### Query Result Caching
-- **5-minute TTL**: Cached queries expire after 5 minutes
-- **Smart Invalidation**: Automatically invalidates on data changes
-- **LRU Eviction**: Removes oldest entries when cache is full (max 1000 queries)
-- **10-100x Faster**: Repeated queries return instantly
+### Client-Side SQLite (LocalDbClient)
+- **Direct File Access**: No network overhead for local databases
+- **In-Memory Processing**: Fast queries using sql.js
+- **Suitable for**: Small-medium databases (20-200MB)
+- **No Server Required**: Works entirely in browser
 
-### FTS5 Full-Text Search
-- **Automatic Setup**: Creates FTS5 tables for text columns automatically
-- **Fast Search**: 100-1000x faster than LIKE queries
-- **Fallback**: Uses LIKE search if FTS5 unavailable
-
-### Prepared Statement Caching
-- **Query Reuse**: Reuses prepared statements for identical queries
-- **20-50% Faster**: Reduces query compilation overhead
-
-### Connection Pooling
-- **30-minute Lifespan**: Database connections cached for 30 minutes
-- **Auto-cleanup**: Closes inactive connections automatically
-- **File Change Detection**: Reloads database if file modified
-
-### Automatic Indexing
-- **On-Demand**: Creates indices automatically when needed
-- **All Columns**: Indexes all columns for better query performance
+### TableScanner Service (External)
+- **Query Result Caching**: 5-minute TTL, smart invalidation
+- **FTS5 Full-Text Search**: 100-1000x faster than LIKE queries
+- **Prepared Statement Caching**: 20-50% faster query execution
+- **Connection Pooling**: 30-minute database connection lifespan
+- **Automatic Indexing**: Creates indices on-demand
+- **Server-Side Optimizations**: Full caching and performance features
 
 ## Query Features
 

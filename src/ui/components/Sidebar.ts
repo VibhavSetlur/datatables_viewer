@@ -63,7 +63,35 @@ export class Sidebar extends Component {
 
             // Update filter chips if they changed
             this.renderFilterChips();
+            
+            // Update aggregations display
+            this.updateAggregationsDisplay(state);
         });
+    }
+
+    public get onLoadData() {
+        return this.options.onLoadData;
+    }
+
+    private updateAggregationsDisplay(state: AppState) {
+        if (!this.dom.aggregationsSection || !this.dom.aggregationsInfo) return;
+
+        const hasAggregations = state.aggregations && state.aggregations.length > 0;
+        const hasGroupBy = state.groupBy && state.groupBy.length > 0;
+
+        if (hasAggregations || hasGroupBy) {
+            this.dom.aggregationsSection.style.display = 'block';
+            const aggText = state.aggregations?.map(agg => 
+                `${agg.function.toUpperCase()}(${agg.column})`
+            ).join(', ') || 'None';
+            const groupText = state.groupBy?.join(', ') || 'None';
+            this.dom.aggregationsInfo.innerHTML = `
+                <div style="margin-bottom:4px"><strong>Functions:</strong> ${aggText}</div>
+                <div><strong>Group By:</strong> ${groupText}</div>
+            `;
+        } else {
+            this.dom.aggregationsSection.style.display = 'none';
+        }
     }
 
     public setCategoryManager(manager: CategoryManager) {
@@ -161,9 +189,27 @@ export class Sidebar extends Component {
                 <section class="ts-section" id="ts-filters-section" style="display:none; padding: 0 4px;">
                     <div class="ts-section-header">
                         <span class="ts-section-title">Active Filters</span>
-                        <button class="ts-section-action" id="ts-clear-filters">Clear All</button>
+                        <div style="display:flex;gap:4px">
+                            <button class="ts-section-action" id="ts-advanced-filters" title="Advanced Filters">
+                                <i class="bi bi-funnel-fill"></i> Advanced
+                            </button>
+                            <button class="ts-section-action" id="ts-clear-filters">Clear All</button>
+                        </div>
                     </div>
                     <div class="ts-filter-chips" id="ts-filter-chips"></div>
+                </section>
+                
+                <!-- Aggregations -->
+                <section class="ts-section" id="ts-aggregations-section" style="display:none; padding: 0 4px;">
+                    <div class="ts-section-header">
+                        <span class="ts-section-title">Aggregations</span>
+                        <button class="ts-section-action" id="ts-aggregations-btn">
+                            <i class="bi bi-calculator"></i> Configure
+                        </button>
+                    </div>
+                    <div id="ts-aggregations-info" style="padding:8px;font-size:12px;color:var(--c-text-muted)">
+                        No aggregations configured
+                    </div>
                 </section>
             </div>
 
@@ -198,6 +244,10 @@ export class Sidebar extends Component {
             filtersSection: '#ts-filters-section',
             filterChips: '#ts-filter-chips',
             clearFilters: '#ts-clear-filters',
+            advancedFilters: '#ts-advanced-filters',
+            aggregationsSection: '#ts-aggregations-section',
+            aggregationsBtn: '#ts-aggregations-btn',
+            aggregationsInfo: '#ts-aggregations-info',
             export: '#ts-export',
             reset: '#ts-reset'
         });
@@ -329,7 +379,219 @@ export class Sidebar extends Component {
         // Clear filters
         if (this.dom.clearFilters) {
             this.dom.clearFilters.addEventListener('click', () => {
-                this.stateManager.update({ columnFilters: {}, currentPage: 0 });
+                this.stateManager.update({ 
+                    columnFilters: {}, 
+                    advancedFilters: undefined,
+                    currentPage: 0 
+                });
+            });
+        }
+
+        // Advanced filters button
+        if (this.dom.advancedFilters) {
+            this.dom.advancedFilters.addEventListener('click', () => {
+                this.showAdvancedFilterPanel();
+            });
+        }
+
+        // Aggregations button
+        if (this.dom.aggregationsBtn) {
+            this.dom.aggregationsBtn.addEventListener('click', () => {
+                this.showAggregationsPanel();
+            });
+        }
+    }
+
+    private showAdvancedFilterPanel() {
+        const state = this.stateManager.getState();
+        const columns = state.columns.map(c => ({
+            column: c.column,
+            displayName: c.displayName || c.column,
+            type: (c as any).dataType || 'TEXT'
+        }));
+
+        // Create modal for advanced filters
+        const modal = document.createElement('div');
+        modal.className = 'ts-modal-overlay show';
+        modal.innerHTML = `
+            <div class="ts-modal" style="max-width:600px">
+                <div class="ts-modal-header">
+                    <h3>Advanced Filters</h3>
+                    <button class="ts-modal-close"><i class="bi bi-x"></i></button>
+                </div>
+                <div class="ts-modal-body" id="ts-advanced-filter-container"></div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+
+        // Dynamic import to avoid circular dependencies
+        import('../components/AdvancedFilterPanel').then(({ AdvancedFilterPanel }) => {
+            const panel = new AdvancedFilterPanel({
+            container: modal.querySelector('#ts-advanced-filter-container')!,
+            columns,
+            onApply: (filters) => {
+                this.stateManager.update({ 
+                    advancedFilters: filters,
+                    currentPage: 0 
+                });
+                document.body.removeChild(modal);
+                this.options.onLoadData();
+            },
+            onCancel: () => {
+                document.body.removeChild(modal);
+            }
+        });
+
+        if (state.advancedFilters) {
+            panel.setFilters(state.advancedFilters);
+        }
+
+        modal.querySelector('.ts-modal-close')?.addEventListener('click', () => {
+            document.body.removeChild(modal);
+        });
+
+            panel.mount();
+        });
+    }
+
+    private showAggregationsPanel() {
+        const state = this.stateManager.getState();
+        const columns = state.columns.map(c => ({
+            column: c.column,
+            displayName: c.displayName || c.column,
+            type: (c as any).dataType || 'TEXT'
+        }));
+
+        // Create modal for aggregations
+        const modal = document.createElement('div');
+        modal.className = 'ts-modal-overlay show';
+        modal.innerHTML = `
+            <div class="ts-modal" style="max-width:600px">
+                <div class="ts-modal-header">
+                    <h3>Configure Aggregations</h3>
+                    <button class="ts-modal-close"><i class="bi bi-x"></i></button>
+                </div>
+                <div class="ts-modal-body">
+                    <div style="margin-bottom:16px">
+                        <label style="display:block;margin-bottom:8px;font-weight:500">Group By Columns</label>
+                        <select multiple class="ts-select" id="ts-group-by" style="min-height:100px">
+                            ${columns.map(col => 
+                                `<option value="${col.column}">${col.displayName || col.column}</option>`
+                            ).join('')}
+                        </select>
+                        <small style="color:var(--c-text-muted)">Hold Ctrl/Cmd to select multiple</small>
+                    </div>
+                    <div id="ts-aggregations-list"></div>
+                    <button class="ts-btn-secondary" id="ts-add-aggregation" style="margin-top:12px">
+                        <i class="bi bi-plus"></i> Add Aggregation
+                    </button>
+                </div>
+                <div class="ts-modal-footer">
+                    <button class="ts-btn-secondary" id="ts-agg-cancel">Cancel</button>
+                    <button class="ts-btn-primary" id="ts-agg-apply">Apply</button>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+
+        let aggregations = state.aggregations || [];
+        let groupBy = state.groupBy || [];
+
+        const renderAggregations = () => {
+            const list = modal.querySelector('#ts-aggregations-list');
+            if (!list) return;
+
+            if (aggregations.length === 0) {
+                list.innerHTML = '<p style="color:var(--c-text-muted);font-size:13px">No aggregations. Click "Add Aggregation" to create one.</p>';
+                return;
+            }
+
+            list.innerHTML = aggregations.map((agg, idx) => `
+                <div class="ts-agg-item" style="display:grid;grid-template-columns:1fr 1fr auto;gap:8px;margin-bottom:8px;padding:12px;background:var(--c-bg-surface-alt);border-radius:var(--radius-sm)">
+                    <select class="ts-select" data-agg-col="${idx}">
+                        ${columns.map(col => 
+                            `<option value="${col.column}" ${agg.column === col.column ? 'selected' : ''}>${col.displayName || col.column}</option>`
+                        ).join('')}
+                    </select>
+                    <select class="ts-select" data-agg-func="${idx}">
+                        <option value="count" ${agg.function === 'count' ? 'selected' : ''}>Count</option>
+                        <option value="sum" ${agg.function === 'sum' ? 'selected' : ''}>Sum</option>
+                        <option value="avg" ${agg.function === 'avg' ? 'selected' : ''}>Average</option>
+                        <option value="min" ${agg.function === 'min' ? 'selected' : ''}>Min</option>
+                        <option value="max" ${agg.function === 'max' ? 'selected' : ''}>Max</option>
+                        <option value="stddev" ${agg.function === 'stddev' ? 'selected' : ''}>StdDev</option>
+                        <option value="variance" ${agg.function === 'variance' ? 'selected' : ''}>Variance</option>
+                        <option value="distinct_count" ${agg.function === 'distinct_count' ? 'selected' : ''}>Distinct Count</option>
+                    </select>
+                    <button class="ts-btn-secondary" data-agg-remove="${idx}" style="padding:8px">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </div>
+            `).join('');
+
+            list.querySelectorAll('[data-agg-col]').forEach(select => {
+                select.addEventListener('change', (e) => {
+                    const idx = parseInt((e.target as HTMLElement).dataset.aggCol || '0');
+                    aggregations[idx].column = (e.target as HTMLSelectElement).value;
+                });
+            });
+
+            list.querySelectorAll('[data-agg-func]').forEach(select => {
+                select.addEventListener('change', (e) => {
+                    const idx = parseInt((e.target as HTMLElement).dataset.aggFunc || '0');
+                    aggregations[idx].function = (e.target as HTMLSelectElement).value as any;
+                });
+            });
+
+            list.querySelectorAll('[data-agg-remove]').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const idx = parseInt((e.target as HTMLElement).dataset.aggRemove || '0');
+                    aggregations.splice(idx, 1);
+                    renderAggregations();
+                });
+            });
+        };
+
+        modal.querySelector('#ts-add-aggregation')?.addEventListener('click', () => {
+            aggregations.push({
+                column: columns[0]?.column || '',
+                function: 'count'
+            });
+            renderAggregations();
+        });
+
+        modal.querySelector('#ts-agg-apply')?.addEventListener('click', () => {
+            const groupBySelect = modal.querySelector('#ts-group-by') as HTMLSelectElement;
+            const selectedGroupBy = Array.from(groupBySelect.selectedOptions).map(opt => opt.value);
+            
+            this.stateManager.update({
+                aggregations: aggregations.length > 0 ? aggregations : undefined,
+                groupBy: selectedGroupBy.length > 0 ? selectedGroupBy : undefined,
+                currentPage: 0
+            });
+            document.body.removeChild(modal);
+            if (this.options.onLoadData) {
+                this.options.onLoadData();
+            }
+        });
+
+        modal.querySelector('#ts-agg-cancel')?.addEventListener('click', () => {
+            document.body.removeChild(modal);
+        });
+
+        modal.querySelector('.ts-modal-close')?.addEventListener('click', () => {
+            document.body.removeChild(modal);
+        });
+
+        renderAggregations();
+        
+        // Set initial group by
+        const groupBySelect = modal.querySelector('#ts-group-by') as HTMLSelectElement;
+        if (groupBy) {
+            Array.from(groupBySelect.options).forEach(opt => {
+                opt.selected = groupBy.includes(opt.value);
             });
         }
     }
@@ -428,29 +690,89 @@ export class Sidebar extends Component {
     public renderFilterChips() {
         const state = this.stateManager.getState();
         const filters = state.columnFilters;
-        const hasFilters = Object.keys(filters).length > 0;
+        const advancedFilters = state.advancedFilters;
+        const hasFilters = Object.keys(filters).length > 0 || (advancedFilters && advancedFilters.length > 0);
 
         if (this.dom.filtersSection) this.dom.filtersSection.style.display = hasFilters ? 'block' : 'none';
         if (!this.dom.filterChips) return;
 
-        this.dom.filterChips.innerHTML = Object.entries(filters).map(([col, val]) => `
-            <div class="ts-chip">
-                <span class="ts-chip-label">${col}:</span>
-                <span class="ts-chip-value">${val}</span>
-                <button class="ts-chip-clear" data-col="${col}"><i class="bi bi-x"></i></button>
-            </div>
-        `).join('');
+        const chips: string[] = [];
+        
+        // Simple column filters
+        Object.entries(filters).forEach(([col, val]) => {
+            chips.push(`
+                <div class="ts-chip">
+                    <span class="ts-chip-label">${col}:</span>
+                    <span class="ts-chip-value">${val}</span>
+                    <button class="ts-chip-clear" data-col="${col}"><i class="bi bi-x"></i></button>
+                </div>
+            `);
+        });
+
+        // Advanced filters
+        if (advancedFilters && advancedFilters.length > 0) {
+            advancedFilters.forEach((filter, idx) => {
+                const opLabel = this.getOperatorLabel(filter.operator);
+                const valueDisplay = filter.operator === 'between' 
+                    ? `${filter.value} - ${filter.value2}`
+                    : filter.operator === 'in' || filter.operator === 'not_in'
+                    ? Array.isArray(filter.value) ? filter.value.join(', ') : String(filter.value)
+                    : filter.operator === 'is_null' || filter.operator === 'is_not_null'
+                    ? ''
+                    : String(filter.value);
+                
+                chips.push(`
+                    <div class="ts-chip ts-chip-advanced">
+                        <span class="ts-chip-label">${filter.column} ${opLabel}:</span>
+                        <span class="ts-chip-value">${valueDisplay}</span>
+                        <button class="ts-chip-clear" data-adv-filter="${idx}"><i class="bi bi-x"></i></button>
+                    </div>
+                `);
+            });
+        }
+
+        this.dom.filterChips.innerHTML = chips.join('');
 
         this.dom.filterChips.querySelectorAll('.ts-chip-clear').forEach(btn => {
             btn.addEventListener('click', (e: Event) => {
                 const col = (e.currentTarget as HTMLElement).dataset.col;
+                const advFilterIdx = (e.currentTarget as HTMLElement).dataset.advFilter;
+                
                 if (col) {
                     const newState = { ...this.stateManager.getState().columnFilters };
                     delete newState[col];
                     this.stateManager.update({ columnFilters: newState, currentPage: 0 });
+                } else if (advFilterIdx !== undefined) {
+                    const state = this.stateManager.getState();
+                    const newFilters = [...(state.advancedFilters || [])];
+                    newFilters.splice(parseInt(advFilterIdx), 1);
+                    this.stateManager.update({ 
+                        advancedFilters: newFilters.length > 0 ? newFilters : undefined,
+                        currentPage: 0 
+                    });
                 }
             });
         });
+    }
+
+    private getOperatorLabel(operator: string): string {
+        const labels: Record<string, string> = {
+            'eq': '=',
+            'ne': '!=',
+            'gt': '>',
+            'gte': '>=',
+            'lt': '<',
+            'lte': '<=',
+            'like': 'contains',
+            'ilike': 'contains (i)',
+            'in': 'in',
+            'not_in': 'not in',
+            'between': 'between',
+            'is_null': 'is null',
+            'is_not_null': 'is not null',
+            'regex': 'regex'
+        };
+        return labels[operator] || operator;
     }
 
     private toggleAllColumns() {

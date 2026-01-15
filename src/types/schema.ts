@@ -150,6 +150,18 @@ export interface ColumnSchema {
 
     /** Filter type override (inferred from dataType by default) */
     filterType?: FilterType;
+    
+    /** Query features configuration */
+    queryFeatures?: {
+        /** Enable advanced filtering */
+        advancedFilters?: boolean;
+        /** Enable aggregations */
+        aggregations?: boolean;
+        /** Enable grouping */
+        groupBy?: boolean;
+        /** Custom filter operators */
+        customOperators?: string[];
+    };
 
     /** Include in global search */
     searchable?: boolean;

@@ -50,12 +50,42 @@ interface TableDataRequest {
     kb_env?: string;
 }
 
+interface ColumnMetadata {
+    name: string;
+    type: string;
+    notnull: boolean;
+    pk: boolean;
+    dflt_value: any;
+}
+
+interface QueryMetadata {
+    query_type: 'select' | 'aggregate' | 'join';
+    sql: string;
+    filters_applied: number;
+    has_search: boolean;
+    has_sort: boolean;
+    has_group_by: boolean;
+    has_aggregations: boolean;
+}
+
 interface TableDataResponse {
     headers: string[];
     data: any[][];
     total_count: number;
+    // Column metadata
+    column_types?: ColumnMetadata[];
+    column_schema?: ColumnMetadata[];
+    // Query metadata
+    query_metadata?: QueryMetadata;
+    // Performance
     cached?: boolean;
     execution_time_ms?: number;
+    // Pagination
+    limit?: number;
+    offset?: number;
+    // Additional info
+    table_name?: string;
+    database_path?: string;
 }
 
 export class ApiClient {
@@ -94,12 +124,11 @@ export class ApiClient {
             return envApiUrl;
         }
 
+        // TableScanner service URLs (external service)
         const urls: Record<string, string> = {
             appdev: 'https://appdev.kbase.us/services/berdl_table_scanner',
             prod: 'https://kbase.us/services/berdl_table_scanner',
-            local: 'http://127.0.0.1:8000',
-            // Use local server if available (DataTables Viewer integrated server)
-            local_integrated: 'http://localhost:3000'
+            local: 'http://127.0.0.1:8000'  // Local TableScanner service
         };
         return urls[env] || urls.appdev;
     }
@@ -211,13 +240,13 @@ export class ApiClient {
     // Public Methods
 
     public async listTables(berdlTableId: string): Promise<any> {
-        // Local SQLite database mode
+        // Local SQLite database mode (client-side)
         if (LocalDbClient.isLocalDb(berdlTableId)) {
-            // Check if we have a remote API configured (for separate deployment)
+            // Check if we have a remote TableScanner API configured
             const hasRemoteApi = this.baseUrl && !this.baseUrl.includes('localhost') && !this.baseUrl.includes('127.0.0.1');
             
             if (hasRemoteApi && berdlTableId.startsWith('local/')) {
-                // Use remote API service (separate deployment)
+                // Use remote TableScanner service (separate deployment)
                 try {
                     const dbName = berdlTableId.replace('local/', '');
                     return this.request(
@@ -227,62 +256,29 @@ export class ApiClient {
                         true
                     );
                 } catch (error) {
-                    console.warn('[ApiClient] Remote API query failed, trying local fallback:', error);
+                    console.warn('[ApiClient] Remote TableScanner API failed, falling back to client-side:', error);
+                    // Fall back to client-side SQLite
+                    return this.localDb.listTables(berdlTableId);
                 }
             }
             
-            // Check if local integrated server is available
-            const useLocalServer = await this.isLocalServerAvailable();
-            if (useLocalServer && berdlTableId.startsWith('local/')) {
-                try {
-                    const dbName = berdlTableId.replace('local/', '');
-                    const serverPort = '3000';
-                    return this.request(
-                        `http://localhost:${serverPort}/object/${dbName}/tables`,
-                        'GET',
-                        undefined,
-                        true
-                    );
-                } catch (error) {
-                    console.warn('[ApiClient] Local server query failed, using client-side:', error);
-                }
-            }
-            
-            // Fall back to client-side SQLite
+            // Use LocalDbClient for client-side SQLite (no server needed)
             return this.localDb.listTables(berdlTableId);
         }
 
-        // Use remote TableScanner service for non-local databases
+        // Use remote TableScanner service for non-local databases (KBase objects)
         return this.request(`/object/${berdlTableId}/tables`, 'GET', undefined, true);
     }
 
-    /**
-     * Check if local server is available
-     */
-    private async isLocalServerAvailable(): Promise<boolean> {
-        try {
-            const serverPort = '3000'; // Default server port
-            const response = await fetch(`http://localhost:${serverPort}/health`, {
-                method: 'GET',
-                signal: AbortSignal.timeout(1000) // 1 second timeout
-            });
-            return response.ok;
-        } catch {
-            return false;
-        }
-    }
 
     public async getTableData(req: TableDataRequest): Promise<TableDataResponse> {
-        // Check if local server is available for server-side querying
-        const useServer = await this.isLocalServerAvailable();
-        
         // Local SQLite database mode
         if (LocalDbClient.isLocalDb(req.berdl_table_id)) {
-            // Check if we have a remote API configured (for separate deployment)
+            // Check if we have a remote TableScanner API configured
             const hasRemoteApi = this.baseUrl && !this.baseUrl.includes('localhost') && !this.baseUrl.includes('127.0.0.1');
             
             if (hasRemoteApi && req.berdl_table_id.startsWith('local/')) {
-                // Use remote API service (separate deployment)
+                // Use remote TableScanner service (separate deployment)
                 try {
                     const dbName = req.berdl_table_id.replace('local/', '');
                     const body = {
@@ -298,41 +294,14 @@ export class ApiClient {
                         false
                     );
                 } catch (error) {
-                    console.warn('[ApiClient] Remote API query failed, trying local fallback:', error);
+                    console.warn('[ApiClient] Remote TableScanner API failed, falling back to client-side:', error);
+                    // Fall back to client-side SQLite
+                    return this.localDb.getTableData(req.berdl_table_id, req);
                 }
             }
             
-            // Check if local integrated server is available
-            if (useServer && req.berdl_table_id.startsWith('local/')) {
-                try {
-                    const serverPort = '3000';
-                    const body = {
-                        ...req,
-                        limit: req.limit || 100,
-                        offset: req.offset || 0,
-                    };
-                    return this.request(
-                        `http://localhost:${serverPort}/table-data`,
-                        'POST',
-                        body,
-                        false
-                    );
-                } catch (error) {
-                    console.warn('[ApiClient] Local server query failed, using client-side:', error);
-                }
-            }
-            
-            // Fall back to client-side SQLite
-            return this.localDb.getTableData(req.berdl_table_id, {
-                table_name: req.table_name,
-                limit: req.limit,
-                offset: req.offset,
-                columns: req.columns,
-                sort_column: req.sort_column,
-                sort_order: req.sort_order,
-                search_value: req.search_value,
-                col_filter: req.col_filter
-            });
+            // Use LocalDbClient for client-side SQLite (no server needed)
+            return this.localDb.getTableData(req.berdl_table_id, req);
         }
 
         // Use remote TableScanner service for non-local databases

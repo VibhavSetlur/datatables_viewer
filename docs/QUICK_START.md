@@ -79,19 +79,19 @@ The viewer will load:
 - Database: `public/data/mydb.db`
 - Config: `public/config/mydb.json` (if exists)
 
-## Using the Integrated Server (Optional)
+## Using TableScanner Service (Optional)
 
-For better performance with caching:
+For production use with KBase objects or server-side optimizations:
 
 ```bash
-# Start the integrated server
-cd server
-npm install
-npm start
+# Deploy TableScanner service separately
+# See: https://github.com/kbase/tablescanner/tree/ai-integration
 
-# Server runs on http://localhost:3000
-# Frontend automatically uses it if available
+# Build frontend with TableScanner URL
+VITE_API_URL=https://appdev.kbase.us/services/berdl_table_scanner npm run build
 ```
+
+The frontend will automatically use the TableScanner service for remote databases and fall back to LocalDbClient for local databases.
 
 ## Production Build
 
@@ -145,11 +145,11 @@ VITE_API_URL=https://api.example.com npm run build
 - Check file exists: `public/config/filename.json`
 - Validate JSON syntax
 
-### Server Not Available
+### TableScanner Service Not Available
 
-- Frontend falls back to client-side SQLite automatically
-- Check server logs if using integrated server
-- Verify `DATA_DIR` and `CONFIG_DIR` environment variables
+- Frontend falls back to LocalDbClient (client-side SQLite) automatically for local databases
+- Check TableScanner service logs if using remote API
+- Verify `VITE_API_URL` is set correctly if using TableScanner service
 
 ## Next Steps
 

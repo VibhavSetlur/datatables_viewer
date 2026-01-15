@@ -7,6 +7,7 @@ export interface DataGridOptions extends ComponentOptions {
     onSort: (column: string, order: 'asc' | 'desc') => void;
     onFilter: (column: string, value: string) => void;
     onRowSelect: (index: number, selected: boolean, all?: boolean) => void;
+    getColumnType?: (columnName: string) => string;
 }
 
 export class DataGrid extends Component {
@@ -71,25 +72,38 @@ export class DataGrid extends Component {
             const fixed = isFirst ? 'ts-col-fixed' : '';
             const sortable = c.sortable ? 'sortable' : '';
             let icon = state.sortColumn === c.column ? (state.sortOrder === 'asc' ? ' <i class="bi bi-sort-up"></i>' : ' <i class="bi bi-sort-down"></i>') : '';
-            html += `<th class="${fixed} ${sortable}" data-col="${c.column}" style="width:${c.width}">${c.displayName || c.column}${icon}</th>`;
+            const widthStyle = c.width && c.width !== 'auto' ? `width:${c.width}` : '';
+            html += `<th class="${fixed} ${sortable}" data-col="${c.column}" ${widthStyle ? `style="${widthStyle}"` : ''}>${c.displayName || c.column}${icon}</th>`;
         });
 
-        // Filter row
+        // Filter row - directly aligned under headers
         html += '</tr><tr class="ts-filter-row">';
 
         // Empty cell for checkbox column in filter row
-        html += '<th class="ts-col-select ts-col-fixed"></th>';
+        html += '<th class="ts-col-select ts-col-fixed" style="width:48px"></th>';
 
         // Empty cell for row number column in filter row
-        if (state.showRowNumbers) html += '<th class="ts-col-num ts-col-fixed"></th>';
+        if (state.showRowNumbers) html += '<th class="ts-col-num ts-col-fixed" style="width:60px"></th>';
 
         cols.forEach((c, idx) => {
             const isFirst = idx === 0 && !state.showRowNumbers;
             const fixed = isFirst ? 'ts-col-fixed' : '';
             const val = state.columnFilters[c.column] || '';
-            html += `<th class="${fixed}">`;
+            const widthStyle = c.width && c.width !== 'auto' ? `width:${c.width}` : '';
+            
+            // Get column type for smart filtering
+            const columnType = this.options.getColumnType ? this.options.getColumnType(c.column) : 'TEXT';
+            const isNumeric = ['INTEGER', 'REAL', 'NUMERIC'].includes(columnType.toUpperCase());
+            const placeholder = isNumeric ? 'e.g., <500, >=100, =50' : 'Filter...';
+            const tooltip = isNumeric 
+                ? 'Supports: <, <=, >, >=, =, !=, between, or just number' 
+                : 'Text search, =value, !=value, in(list), between';
+            
+            html += `<th class="${fixed}" ${widthStyle ? `style="${widthStyle}"` : ''}>`;
             if (c.filterable !== false) {
-                html += `<div class="ts-filter-wrap"><input class="ts-filter-input ${val ? 'has-value' : ''}" data-col="${c.column}" value="${Transformers.escapeHtml(val)}" placeholder="Filter..."><button class="ts-filter-clear" data-col="${c.column}"><i class="bi bi-x"></i></button></div>`;
+                html += `<div class="ts-filter-wrap"><input class="ts-filter-input ${val ? 'has-value' : ''}" data-col="${c.column}" data-type="${columnType}" value="${Transformers.escapeHtml(val)}" placeholder="${placeholder}" title="${tooltip}"><button class="ts-filter-clear" data-col="${c.column}"><i class="bi bi-x"></i></button></div>`;
+            } else {
+                html += '<div style="height:28px"></div>'; // Spacer for alignment
             }
             html += '</th>';
         });

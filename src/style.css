@@ -704,9 +704,8 @@ button {
 }
 
 .ts-table {
-    table-layout: auto;
-    width: max-content;
-    min-width: 100%;
+    table-layout: fixed;
+    width: 100%;
     border-collapse: collapse;
     font-size: var(--row-font-size);
 }
@@ -851,11 +850,92 @@ mark.highlight {
     color: #fef08a;
 }
 
-/* Filter Row */
+/* Filter Row - Perfectly aligned under headers */
+.ts-filter-row {
+    /* Ensure filter row is part of thead for proper alignment */
+}
+
 .ts-filter-row th {
     padding: 4px var(--row-padding-x) 8px;
     background: var(--c-bg-surface);
     border-bottom: 1px solid var(--c-border-strong);
+    vertical-align: top;
+    box-sizing: border-box;
+    /* Match header cell exactly */
+    text-align: left;
+    font-weight: normal;
+    /* Ensure same padding as header */
+    padding-top: 4px;
+    padding-bottom: 8px;
+}
+
+/* Match fixed column widths exactly - must match header widths */
+.ts-filter-row th.ts-col-select {
+    width: 48px !important;
+    min-width: 48px !important;
+    max-width: 48px !important;
+    padding: 4px 8px 8px;
+}
+
+.ts-filter-row th.ts-col-num {
+    width: 60px !important;
+    min-width: 60px !important;
+    max-width: 60px !important;
+    padding: 4px 8px 8px;
+}
+
+/* Ensure filter row cells match header cell widths */
+.ts-table thead th,
+.ts-table .ts-filter-row th {
+    /* Use table-layout: fixed for consistent widths */
+}
+
+/* Table layout - ensure filters align perfectly with headers */
+.ts-table {
+    width: 100%;
+    border-collapse: collapse;
+    /* Use fixed layout for perfect alignment */
+    table-layout: fixed;
+}
+
+/* Ensure thead and filter row are in same table structure */
+.ts-table thead {
+    /* Standard thead */
+}
+
+.ts-table .ts-filter-row {
+    /* Filter row is part of thead, so it inherits column widths */
+    display: table-row;
+}
+
+.ts-table thead th,
+.ts-table .ts-filter-row th {
+    /* Ensure consistent widths and padding */
+    box-sizing: border-box;
+    /* Match padding exactly */
+    padding-left: var(--row-padding-x);
+    padding-right: var(--row-padding-x);
+}
+
+/* Fixed columns maintain exact width */
+.ts-table th.ts-col-fixed,
+.ts-table .ts-filter-row th.ts-col-fixed {
+    position: sticky;
+    z-index: 10;
+}
+
+.ts-table th.ts-col-select,
+.ts-table .ts-filter-row th.ts-col-select {
+    left: 0;
+    width: 48px !important;
+    min-width: 48px !important;
+}
+
+.ts-table th.ts-col-num,
+.ts-table .ts-filter-row th.ts-col-num {
+    left: 48px;
+    width: 60px !important;
+    min-width: 60px !important;
 }
 
 .ts-filter-wrap {
@@ -1524,6 +1604,151 @@ mark.highlight {
     color: var(--c-text-muted);
     font-family: 'JetBrains Mono', monospace;
     font-size: 11px;
+}
+
+/* ============================================
+   ADVANCED FILTER PANEL
+   ============================================ */
+.ts-advanced-filter-panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.ts-advanced-filter-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px;
+    border-bottom: 1px solid var(--c-border-subtle);
+}
+
+.ts-advanced-filter-header h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.ts-advanced-filter-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+}
+
+.ts-filter-empty {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--c-text-muted);
+}
+
+.ts-filter-empty i {
+    font-size: 32px;
+    display: block;
+    margin-bottom: 12px;
+    opacity: 0.5;
+}
+
+.ts-filter-item {
+    margin-bottom: 12px;
+}
+
+.ts-filter-row {
+    display: grid;
+    grid-template-columns: 2fr 1.5fr 2fr auto;
+    gap: 8px;
+    align-items: center;
+}
+
+.ts-filter-row .ts-filter-value2 {
+    grid-column: 3;
+}
+
+.ts-filter-remove {
+    padding: 8px;
+    background: var(--danger-light);
+    border: 1px solid var(--danger);
+    color: var(--danger);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: var(--transition-fast);
+}
+
+.ts-filter-remove:hover {
+    background: var(--danger);
+    color: white;
+}
+
+.ts-advanced-filter-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 16px;
+    border-top: 1px solid var(--c-border-subtle);
+}
+
+.ts-agg-item {
+    display: grid;
+    grid-template-columns: 2fr 1.5fr auto;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 8px;
+    padding: 12px;
+    background: var(--c-bg-surface-alt);
+    border-radius: var(--radius-sm);
+}
+
+/* ============================================
+   FILTER CHIPS
+   ============================================ */
+.ts-filter-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px;
+}
+
+.ts-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    background: var(--c-bg-surface);
+    border: 1px solid var(--c-border-subtle);
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+}
+
+.ts-chip-advanced {
+    background: var(--c-accent-light);
+    border-color: var(--c-accent);
+}
+
+.ts-chip-label {
+    font-weight: 500;
+    color: var(--c-text-secondary);
+}
+
+.ts-chip-value {
+    color: var(--c-text-primary);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+}
+
+.ts-chip-clear {
+    padding: 2px 4px;
+    background: none;
+    border: none;
+    color: var(--c-text-muted);
+    cursor: pointer;
+    border-radius: 4px;
+    transition: var(--transition-fast);
+    display: flex;
+    align-items: center;
+}
+
+.ts-chip-clear:hover {
+    background: var(--c-bg-hover);
+    color: var(--c-text-primary);
 }
 
 .ts-alert {

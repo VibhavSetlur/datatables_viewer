@@ -34,6 +34,18 @@ export interface AppState {
     sortDirection: 'asc' | 'desc'; // Mapped from 'sortOrder' for compatibility
     sortOrder: 'asc' | 'desc';     // Keeping original for backward compat if needed
     columnFilters: Record<string, any>;
+    advancedFilters?: Array<{
+        column: string;
+        operator: 'eq' | 'ne' | 'gt' | 'gte' | 'lt' | 'lte' | 'like' | 'ilike' | 'in' | 'not_in' | 'between' | 'is_null' | 'is_not_null' | 'regex';
+        value: any;
+        value2?: any;
+    }>;
+    aggregations?: Array<{
+        column: string;
+        function: 'count' | 'sum' | 'avg' | 'min' | 'max' | 'stddev' | 'variance' | 'distinct_count';
+        alias?: string;
+    }>;
+    groupBy?: string[];
     searchQuery: string;
     searchValue: string;           // Alias for searchQuery
 
@@ -74,6 +86,9 @@ const INITIAL_STATE: AppState = {
     sortDirection: 'asc',
     sortOrder: 'asc',
     columnFilters: {},
+    advancedFilters: undefined,
+    aggregations: undefined,
+    groupBy: undefined,
     searchQuery: '',
     searchValue: '',
 

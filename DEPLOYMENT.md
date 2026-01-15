@@ -4,17 +4,18 @@
 
 DataTables Viewer supports flexible deployment options:
 
-1. **Static Frontend Only**: Lightweight HTML/JS/CSS (no server needed)
-2. **Integrated Deployment**: Frontend + server together (development/local)
-3. **Separate Deployment**: Static frontend + remote API service (production)
+1. **Static Frontend Only**: Lightweight HTML/JS/CSS with client-side SQLite (no server needed)
+2. **Static Frontend + TableScanner Service**: Frontend on CDN + separate TableScanner API service
 
-## Separate Deployment (Recommended for Production)
+## Deployment Mode 1: Static Frontend Only (Client-Side)
 
-### Frontend (Static Site)
+### Use Case
+- Testing and development
+- Jupyter environment
+- Offline use
+- Local databases only
 
-The frontend is a **lightweight static site** (HTML/JS/CSS) that can be deployed anywhere:
-
-#### Build the Frontend
+### Build the Frontend
 
 ```bash
 # Build static files
@@ -25,67 +26,115 @@ npm run build
 # - assets/ (JS, CSS bundles)
 ```
 
-#### Deploy Static Files
+### Deploy Static Files
 
 Deploy the `dist/` folder to:
 - **CDN**: CloudFlare, AWS CloudFront, etc.
 - **Static Hosting**: Netlify, Vercel, GitHub Pages
 - **Web Server**: Nginx, Apache (just serve the `dist/` folder)
 - **S3**: AWS S3 + CloudFront
+- **Jupyter Environment**: Mount `dist/` folder
 
-#### Configure API URL
+### Add Database Files
 
-Set the API service URL using environment variable:
+Place database files in `public/data/` directory (or mount external directory):
+
+```
+public/data/
+  ├── mydb.db
+  └── another.db
+```
+
+### Access Databases
+
+Open databases via URL parameter:
+```
+http://your-domain/?db=mydb
+```
+
+The viewer uses **LocalDbClient** (client-side `sql.js`) to load and query databases directly in the browser - **no server required**.
+
+## Deployment Mode 2: Static Frontend + TableScanner Service
+
+### Use Case
+- Production deployment
+- KBase integration
+- Remote databases
+- Server-side caching and optimizations
+
+### Frontend (Static Site)
+
+#### Build the Frontend
 
 ```bash
-# During build
-VITE_API_URL=https://api.example.com npm run build
+# Build with TableScanner API URL
+VITE_API_URL=https://appdev.kbase.us/services/berdl_table_scanner npm run build
 
 # Or set in .env file
-echo "VITE_API_URL=https://api.example.com" > .env
+echo "VITE_API_URL=https://appdev.kbase.us/services/berdl_table_scanner" > .env
 npm run build
 ```
 
-The built files will have the API URL baked in.
+The built files will have the TableScanner API URL baked in.
 
-### Backend (API Service)
+#### Deploy Static Files
 
-Deploy the server separately (in `/server` directory):
+Deploy the `dist/` folder to:
+- **CDN**: CloudFlare, AWS CloudFront
+- **Static Hosting**: Netlify, Vercel, GitHub Pages
+- **Web Server**: Nginx, Apache
+
+### TableScanner Service (Backend)
+
+Deploy the [TableScanner service](https://github.com/kbase/tablescanner/tree/ai-integration) separately:
 
 ```bash
-cd server
-npm install
-npm run build
+# See TableScanner repository for deployment
+# https://github.com/kbase/tablescanner/tree/ai-integration
 
-# Run with environment variables
-DATA_DIR=/path/to/databases \
-CONFIG_DIR=/path/to/configs \
-PORT=3000 \
-npm start
+# TableScanner provides:
+# - Server-side SQLite querying
+# - Connection pooling and caching
+# - FTS5 full-text search
+# - Column statistics
+# - Aggregations
 ```
 
-Or use Docker, PM2, systemd, etc.
+The TableScanner service runs independently and provides the API endpoints that the frontend calls.
 
 ## Deployment Scenarios
 
-### Scenario 1: Static Frontend + Separate API
+### Scenario 1: Static Frontend Only (Client-Side)
 
 **Frontend:**
 - Build: `npm run build`
 - Deploy `dist/` to CDN/static host
-- Set `VITE_API_URL=https://your-api-service.com`
+- Databases in `public/data/` directory
+- Uses LocalDbClient (sql.js) - no server needed
+
+**Use Cases:**
+- Jupyter environment
+- Local testing
+- Offline use
+- Small-medium databases (20-200MB)
+
+### Scenario 2: Static Frontend + TableScanner Service
+
+**Frontend:**
+- Build: `VITE_API_URL=https://api.example.com npm run build`
+- Deploy `dist/` to CDN/static host
+- Set `VITE_API_URL` to TableScanner service URL
 
 **Backend:**
-- Deploy `/server` to your server/cloud
+- Deploy TableScanner service separately
 - Expose API endpoints
-- Frontend calls the remote API
+- Frontend calls the remote TableScanner API
 
-### Scenario 2: Integrated (Current)
-
-**Both together:**
-- Frontend serves from integrated server
-- Server handles both static files and API
-- Good for development/local use
+**Use Cases:**
+- Production deployment
+- KBase integration
+- Remote databases
+- Server-side optimizations
 
 ## API Endpoints Required
 
@@ -98,32 +147,31 @@ The frontend expects these endpoints (TableScanner-compatible):
 - `GET /object/{db_name}/tables/{table}/stats` - Column statistics
 - `POST /api/aggregate/{db_name}/tables/{table}` - Aggregations
 
+These are provided by the TableScanner service.
+
 ## Environment Variables
 
 ### Frontend Build
-- `VITE_API_URL` - API service URL (e.g., `https://api.example.com`)
+- `VITE_API_URL` - TableScanner service URL (e.g., `https://appdev.kbase.us/services/berdl_table_scanner`)
 
-### Backend Runtime
-- `DATA_DIR` - Path to database files
-- `CONFIG_DIR` - Path to config JSON files
-- `PORT` - Server port (default: 3000)
+### TableScanner Service
+See [TableScanner documentation](https://github.com/kbase/tablescanner/tree/ai-integration) for service configuration.
 
-## Example: Deploy to Netlify + Separate API
+## Example: Deploy to Netlify + TableScanner Service
 
 1. **Build frontend:**
    ```bash
-   VITE_API_URL=https://api.yourservice.com npm run build
+   VITE_API_URL=https://appdev.kbase.us/services/berdl_table_scanner npm run build
    ```
 
 2. **Deploy to Netlify:**
    - Connect GitHub repo
-   - Build command: `VITE_API_URL=https://api.yourservice.com npm run build`
+   - Build command: `VITE_API_URL=https://appdev.kbase.us/services/berdl_table_scanner npm run build`
    - Publish directory: `dist`
 
-3. **Deploy API separately:**
-   - Deploy `/server` to your cloud provider
-   - Set `DATA_DIR` and `CONFIG_DIR`
-   - Frontend automatically calls the API
+3. **Deploy TableScanner separately:**
+   - Deploy TableScanner service to your cloud provider
+   - Frontend automatically calls the TableScanner API
 
 ## Deployment to Jupyter Environment
 
@@ -158,13 +206,36 @@ http://jupyter-url/?db=mydb
 The viewer will:
 - Load database from `/data/mydb.db`
 - Load config from `/config/mydb.json` (if exists)
-- Work entirely client-side (no server needed)
+- Work entirely client-side using LocalDbClient (no server needed)
 
-## Benefits of Separate Deployment
+## Benefits of Each Deployment Mode
 
-✅ **Lightweight Frontend**: Just static files, no server needed  
-✅ **Scalable**: Frontend on CDN, API on dedicated servers  
-✅ **Flexible**: Update frontend/backend independently  
-✅ **Cost-Effective**: Static hosting is cheap/free  
-✅ **Fast**: CDN delivery for frontend assets  
-✅ **Jupyter Compatible**: Works in Jupyter environment without server  
+### Static Frontend Only
+
+✅ **No Server Required** - Works entirely client-side  
+✅ **Simple Deployment** - Just static files  
+✅ **Offline Capable** - No network needed after initial load  
+✅ **Jupyter Compatible** - Perfect for Jupyter environment  
+✅ **Fast for Local DBs** - Direct file access via sql.js  
+
+### Static Frontend + TableScanner Service
+
+✅ **Server-Side Optimizations** - Caching, connection pooling  
+✅ **KBase Integration** - Access KBase objects  
+✅ **Remote Databases** - Query databases on server  
+✅ **Scalable** - Frontend on CDN, API on dedicated servers  
+✅ **Production Ready** - Full feature set with server-side caching  
+
+## Routing Logic
+
+The frontend automatically routes requests:
+
+1. **Local Database** (UPA starts with `local/` or in `DATABASE_MAPPINGS`):
+   - If `VITE_API_URL` is set → Try TableScanner service first
+   - If TableScanner fails or not configured → Use LocalDbClient (sql.js)
+
+2. **Remote Database** (KBase object UPA):
+   - Always use TableScanner service (configured via `VITE_API_URL`)
+
+3. **Fallback**:
+   - If TableScanner fails → Fall back to LocalDbClient (if local database)

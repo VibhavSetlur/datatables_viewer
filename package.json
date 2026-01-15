@@ -30,7 +30,9 @@
         "clean": "rm -rf dist node_modules/.vite",
         "prepare": "husky install || true",
         "validate-config": "tsx scripts/validate-config.ts",
-        "version-config": "./scripts/version-config.sh"
+        "version-config": "./scripts/version-config.sh",
+        "extract-server-docs": "tsx scripts/extract-server-docs.ts",
+        "generate-config": "tsx scripts/generate-config.ts"
     },
     "devDependencies": {
         "@playwright/test": "^1.45.0",
