@@ -11,6 +11,8 @@
 // EVENT TYPES
 // =============================================================================
 
+import { logger } from '../../utils/logger';
+
 export interface DataTableEvents {
     // Data Events
     'data:loading': { tableId: string };
@@ -22,7 +24,7 @@ export interface DataTableEvents {
     'selection:changed': { indices: number[]; count: number };
     'selection:row': { index: number; selected: boolean; data: any };
     'selection:all': { selected: boolean; count: number };
-    'selection:cleared': {};
+    'selection:cleared': Record<string, never>;
 
     // Navigation Events
     'page:changed': { page: number; pageSize: number; total: number };
@@ -56,9 +58,9 @@ export interface DataTableEvents {
     'preferences:changed': { key: string; value: any; oldValue: any };
 
     // Lifecycle Events
-    'init:started': {};
+    'init:started': Record<string, never>;
     'init:completed': { config: any };
-    'destroy': {};
+    'destroy': Record<string, never>;
 
     // Plugin Events
     'plugin:registered': { name: string };
@@ -118,7 +120,7 @@ export class EventBus {
         }
 
         const listener: EventListener<T> = { callback, once: false };
-        this.listeners.get(event)!.add(listener);
+        this.listeners.get(event)?.add(listener);
 
         // Return unsubscribe function
         return () => {
@@ -138,7 +140,7 @@ export class EventBus {
         }
 
         const listener: EventListener<T> = { callback, once: true };
-        this.listeners.get(event)!.add(listener);
+        this.listeners.get(event)?.add(listener);
 
         return () => {
             this.listeners.get(event)?.delete(listener);
@@ -184,7 +186,7 @@ export class EventBus {
      */
     public emit<T extends EventName>(event: T, data: EventData<T>): void {
         if (this.debug) {
-            console.log(`[EventBus] ${event}`, data);
+            logger.debug(`[EventBus] ${event}`, data);
         }
 
         // Add to history
@@ -211,7 +213,7 @@ export class EventBus {
                         toRemove.push(listener);
                     }
                 } catch (error) {
-                    console.error(`[EventBus] Error in listener for ${event}:`, error);
+                    logger.error(`[EventBus] Error in listener for ${event}`, error);
                 }
             }
 
@@ -226,7 +228,7 @@ export class EventBus {
             try {
                 callback(event, data);
             } catch (error) {
-                console.error('[EventBus] Error in wildcard listener:', error);
+                logger.error('[EventBus] Error in wildcard listener', error);
             }
         }
 

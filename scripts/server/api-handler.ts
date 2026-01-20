@@ -19,7 +19,7 @@ import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const SAVE_SCRIPT = join(__dirname, 'save-config.ts');
+const SAVE_SCRIPT = join(__dirname, '../config/save-config.ts');
 
 /**
  * Handle config save request
@@ -27,35 +27,35 @@ const SAVE_SCRIPT = join(__dirname, 'save-config.ts');
 async function handleConfigSave(configData: any): Promise<void> {
     return new Promise((resolve, reject) => {
         // Use node with tsx loader from root node_modules
-        const rootDir = join(__dirname, '..');
+        const rootDir = join(__dirname, '../..');
         const tsxPath = join(rootDir, 'node_modules', '.bin', 'tsx');
         const nodePath = process.execPath;
-        
+
         // Try to use tsx from root, fallback to npx
         const command = require('fs').existsSync(tsxPath) ? nodePath : 'npx';
-        const args = require('fs').existsSync(tsxPath) 
+        const args = require('fs').existsSync(tsxPath)
             ? [tsxPath, SAVE_SCRIPT]
             : ['tsx', SAVE_SCRIPT];
-        
+
         const child = spawn(command, args, {
             stdio: ['pipe', 'pipe', 'pipe'],
             cwd: rootDir, // Run from root to access node_modules
         });
-        
+
         child.stdin.write(JSON.stringify(configData));
         child.stdin.end();
-        
+
         let stdout = '';
         let stderr = '';
-        
+
         child.stdout.on('data', (data) => {
             stdout += data.toString();
         });
-        
+
         child.stderr.on('data', (data) => {
             stderr += data.toString();
         });
-        
+
         child.on('close', (code) => {
             if (code === 0) {
                 console.log(stdout);
@@ -74,24 +74,24 @@ async function handleConfigSave(configData: any): Promise<void> {
 async function main() {
     // Check if running as server or script
     const isServer = process.argv.includes('--server');
-    
+
     if (isServer) {
         // Simple HTTP server mode
         const http = await import('http');
-        
+
         const server = http.createServer(async (req, res) => {
             if (req.method === 'POST' && req.url === '/api/configs') {
                 let body = '';
-                
+
                 req.on('data', (chunk) => {
                     body += chunk.toString();
                 });
-                
+
                 req.on('end', async () => {
                     try {
                         const configData = JSON.parse(body);
                         await handleConfigSave(configData);
-                        
+
                         res.writeHead(200, { 'Content-Type': 'application/json' });
                         res.end(JSON.stringify({
                             status: 'stored',
@@ -110,7 +110,7 @@ async function main() {
                 res.end(JSON.stringify({ error: 'Not found' }));
             }
         });
-        
+
         const PORT = process.env.PORT || 3000;
         server.listen(PORT, () => {
             console.log(`Config API handler listening on http://localhost:${PORT}`);

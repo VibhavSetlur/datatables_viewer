@@ -16,7 +16,7 @@ import Database from 'better-sqlite3';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const CONFIG_DIR = join(__dirname, '../public/config');
+const CONFIG_DIR = join(__dirname, '../../public/config');
 
 interface ColumnInfo {
     name: string;
@@ -39,7 +39,7 @@ function generateConfigName(dbPath: string, providedName?: string): string {
     if (providedName) {
         return providedName;
     }
-    
+
     const baseName = basename(dbPath, extname(dbPath));
     // Make it URL-safe and unique
     const sanitized = baseName
@@ -47,7 +47,7 @@ function generateConfigName(dbPath: string, providedName?: string): string {
         .replace(/[^a-z0-9-]/g, '-')
         .replace(/-+/g, '-')
         .replace(/^-|-$/g, '');
-    
+
     return sanitized || 'database-config';
 }
 
@@ -56,13 +56,13 @@ function generateConfigName(dbPath: string, providedName?: string): string {
  */
 function getConfigDataType(sqliteType: string): string {
     const upper = sqliteType.toUpperCase();
-    
+
     if (upper.includes('INT')) return 'integer';
     if (upper.includes('REAL') || upper.includes('FLOAT') || upper.includes('DOUBLE')) return 'float';
     if (upper.includes('TEXT') || upper.includes('VARCHAR') || upper.includes('CHAR')) return 'string';
     if (upper.includes('BLOB')) return 'string';
     if (upper.includes('NUMERIC')) return 'number';
-    
+
     return 'string';
 }
 
@@ -78,7 +78,7 @@ async function generateConfig(dbPath: string, configName: string): Promise<void>
     console.log(`📝 Generating config: ${configName}\n`);
 
     const db = new Database(dbPath, { readonly: true });
-    
+
     try {
         // Get all tables
         const tables = db.prepare(`
@@ -95,7 +95,7 @@ async function generateConfig(dbPath: string, configName: string): Promise<void>
 
         for (const table of tables) {
             const tableName = table.name;
-            
+
             // Get row count
             const rowCountResult = db.prepare(`SELECT COUNT(*) as count FROM "${tableName}"`).get() as any;
             const rowCount = rowCountResult?.count || 0;
@@ -135,10 +135,10 @@ async function generateConfig(dbPath: string, configName: string): Promise<void>
         // Generate table configs
         for (const tableInfo of tableInfos) {
             const columns = tableInfo.columns.map(col => {
-                const isNumeric = col.type.toUpperCase().includes('INT') || 
-                                 col.type.toUpperCase().includes('REAL') || 
-                                 col.type.toUpperCase().includes('NUMERIC');
-                
+                const isNumeric = col.type.toUpperCase().includes('INT') ||
+                    col.type.toUpperCase().includes('REAL') ||
+                    col.type.toUpperCase().includes('NUMERIC');
+
                 return {
                     column: col.name,
                     displayName: col.name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
@@ -269,7 +269,7 @@ Reference this config in your application:
 // Main execution
 async function main() {
     const args = process.argv.slice(2);
-    
+
     if (args.length === 0) {
         console.error('Usage: npm run generate-config <db-path> [config-name]');
         console.error('Example: npm run generate-config /data/mydb.db my-database-config');

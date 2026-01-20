@@ -2,6 +2,7 @@
  * DataTables Viewer - Entry Point
  */
 import { TableRenderer } from './ui/TableRenderer';
+import { logger } from './utils/logger';
 
 document.addEventListener('DOMContentLoaded', async () => {
     const appContainer = document.querySelector<HTMLDivElement>('#app');
@@ -23,7 +24,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             try {
                 await renderer.loadDatabaseFromFile(dbParam);
             } catch (error: any) {
-                console.error('Failed to load database from URL parameter:', error);
+                logger.error('Failed to load database from URL parameter', error);
                 appContainer.innerHTML = `
                     <div class="ts-alert ts-alert-danger">
                         <i class="bi bi-x-circle-fill"></i> 
@@ -37,9 +38,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }
 
-        // Expose for debugging
-        (window as any).tableRenderer = renderer;
+        // Expose for debugging (only in development)
+        if (import.meta.env.DEV) {
+            (window as any).tableRenderer = renderer;
+        }
     } else {
-        console.error('App container #app not found');
+        logger.error('App container #app not found');
     }
 });

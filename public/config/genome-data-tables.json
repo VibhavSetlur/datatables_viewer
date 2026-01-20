@@ -7,11 +7,10 @@
     "color": "#6366f1",
     "defaults": {
         "pageSize": 50,
-        "density": "default",
+        "density": "normal",
         "showRowNumbers": true,
         "enableSelection": true,
-        "enableExport": true,
-        "defaultColumnWidth": "80px"
+        "enableExport": true
     },
     "sharedCategories": [
         {
@@ -56,7 +55,7 @@
             "description": "System tags, hashes, and sync info",
             "icon": "bi-info-circle",
             "color": "#64748b",
-            "defaultVisible": false,
+            "defaultVisible": true,
             "order": 10
         },
         {

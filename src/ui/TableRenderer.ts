@@ -5,12 +5,15 @@
 
 import { ApiClient } from '../core/api/ApiClient';
 import { DataTypeRegistry } from '../core/config/DataTypeRegistry';
-import { ConfigManager, type TableColumnConfig } from '../utils/config-manager';
+import { ConfigManager, type TableColumnConfig } from '../core/config/ConfigManager';
 import { StateManager, type AppState } from '../core/state/StateManager';
+import { logger } from '../utils/logger';
 import { CategoryManager } from '../core/managers/CategoryManager';
 import { Sidebar } from './components/Sidebar';
 import { Toolbar } from './components/Toolbar';
 import { DataGrid } from './components/DataGrid';
+import { SchemaViewer } from './components/SchemaViewer';
+import { StatisticsViewer } from './components/StatisticsViewer';
 import { Transformers } from '../utils/transformers';
 import { exportManager } from '../core/managers/ExportManager';
 import { registerDefaultShortcuts } from '../core/managers/KeyboardManager';
@@ -35,6 +38,8 @@ export class TableRenderer {
     private sidebar!: Sidebar;
     private toolbar!: Toolbar;
     private grid!: DataGrid;
+    private schemaViewer!: SchemaViewer;
+    private statsViewer!: StatisticsViewer;
 
     private theme: 'light' | 'dark' = 'light';
     private density: 'compact' | 'normal' | 'comfortable' = 'normal';
@@ -64,7 +69,7 @@ export class TableRenderer {
             const apis = this.configManager.getApis();
             const defaultApiId = this.configManager.getDefaultApiId();
 
-            let currentApiId = defaultApiId || (apis.length > 0 ? apis[0].id : null);
+            const currentApiId = defaultApiId || (apis.length > 0 ? apis[0].id : null);
 
             if (currentApiId) {
                 const apiConfig = this.configManager.getApi(currentApiId);
@@ -97,12 +102,7 @@ export class TableRenderer {
                 <main class="ts-main">
                     <header class="ts-toolbar" id="ts-toolbar-container"></header>
                     <div id="ts-alert"></div>
-                    <div class="ts-performance-indicator" id="ts-performance" style="display:none">
-                        <span class="ts-perf-cached" id="ts-perf-cached" style="display:none">
-                            <i class="bi bi-lightning-charge-fill"></i> Cached
-                        </span>
-                        <span class="ts-perf-time" id="ts-perf-time" style="display:none"></span>
-                    </div>
+
                     <div class="ts-grid-header" id="ts-grid-header" style="display:none">
                         <div class="ts-grid-header-content">
                             <div class="ts-db-info">
@@ -156,9 +156,7 @@ export class TableRenderer {
         this.dom.alert = this.container.querySelector('#ts-alert') as HTMLElement;
         this.dom.tableName = this.container.querySelector('#ts-table-name') as HTMLElement;
         this.dom.loadingOverlay = this.container.querySelector('#ts-loading-overlay') as HTMLElement;
-        this.dom.performance = this.container.querySelector('#ts-performance') as HTMLElement;
-        this.dom.perfCached = this.container.querySelector('#ts-perf-cached') as HTMLElement;
-        this.dom.perfTime = this.container.querySelector('#ts-perf-time') as HTMLElement;
+
     }
 
     private initComponents() {
@@ -168,12 +166,13 @@ export class TableRenderer {
             configManager: this.configManager,
             stateManager: this.stateManager,
             onApiChange: (id) => this.switchApi(id),
-            onLoadData: () => this.loadObject(),
+            onLoadData: () => this.handleLoadData(),
             onTableChange: (name) => this.switchTable(name),
             onExport: () => this.exportCsv(),
             onReset: () => this.reset(),
             onShowSchema: (table) => this.showDatabaseSchema(table),
-            onShowStats: (table) => this.showColumnStatistics(table)
+            onShowStats: (table) => this.showColumnStatistics(table),
+            onLoadDbPath: (dbPath) => this.loadDatabaseFromPath(dbPath),
         });
         this.sidebar.mount();
 
@@ -181,10 +180,31 @@ export class TableRenderer {
         this.toolbar = new Toolbar({
             container: this.container.querySelector('#ts-toolbar-container') as HTMLElement,
             onSearch: (term) => {
-                this.stateManager.update({ searchValue: term, currentPage: 0 });
-                this.fetchData();
+                const trimmedTerm = term ? term.trim() : '';
+                // Global search only highlights - doesn't filter rows
+                // Update state to trigger re-render with highlighting
+                // Only refetch if we need to (e.g., if column filters changed)
+                // For now, just update state - DataGrid will re-render automatically
+                this.stateManager.update({ searchValue: trimmedTerm });
+                // Note: We don't call fetchData() here because global search doesn't filter
+                // The grid will re-render automatically via state subscription to apply highlighting
             },
-            onRefresh: () => this.softRefresh()
+            onRefresh: () => this.softRefresh(),
+            onSearchNext: () => {
+                if (this.grid) {
+                    this.grid.navigateToNextMatch();
+                    this.toolbar.updateSearchNav();
+                }
+            },
+            onSearchPrev: () => {
+                if (this.grid) {
+                    this.grid.navigateToPreviousMatch();
+                    this.toolbar.updateSearchNav();
+                }
+            },
+            getSearchMatchInfo: () => {
+                return this.grid ? this.grid.getSearchMatchInfo() : { current: 0, total: 0 };
+            }
         });
         this.toolbar.mount();
 
@@ -232,17 +252,17 @@ export class TableRenderer {
             onFilter: async (col, val) => {
                 const state = this.stateManager.getState();
                 if (!state.activeTableName) return;
-                
+
                 // Parse filter with smart operator detection
                 const { parseFilterInput, normalizeColumnType } = await import('../utils/filter-parser');
                 const columnType = normalizeColumnType(this.getColumnType(state.activeTableName, col));
                 const parsed = parseFilterInput(val, columnType);
-                
+
                 if (parsed && val.trim()) {
                     // Convert to advanced filter
                     const advancedFilters = state.advancedFilters || [];
                     const existingIdx = advancedFilters.findIndex(f => f.column === col);
-                    
+
                     if (existingIdx >= 0) {
                         advancedFilters[existingIdx] = {
                             column: col,
@@ -258,29 +278,35 @@ export class TableRenderer {
                             value2: parsed.value2
                         });
                     }
-                    
+
                     // Also keep simple filter for display
                     const filters = { ...state.columnFilters };
                     filters[col] = val;
-                    
-                    this.stateManager.update({ 
+
+                    this.stateManager.update({
                         columnFilters: filters,
                         advancedFilters: advancedFilters.length > 0 ? advancedFilters : undefined,
-                        currentPage: 0 
+                        currentPage: 0
                     });
+                    
+                    // Trigger re-render of filter chips
+                    this.sidebar.renderFilterChips();
                 } else {
                     // Clear filter
                     const filters = { ...state.columnFilters };
                     delete filters[col];
                     const advancedFilters = (state.advancedFilters || []).filter(f => f.column !== col);
-                    
-                    this.stateManager.update({ 
+
+                    this.stateManager.update({
                         columnFilters: filters,
                         advancedFilters: advancedFilters.length > 0 ? advancedFilters : undefined,
-                        currentPage: 0 
+                        currentPage: 0
                     });
+                    
+                    // Trigger re-render of filter chips
+                    this.sidebar.renderFilterChips();
                 }
-                
+
                 this.fetchData();
             },
             getColumnType: (col) => {
@@ -290,6 +316,46 @@ export class TableRenderer {
             onRowSelect: () => this.updateSelectionStatus()
         });
         this.grid.mount();
+
+        this.schemaViewer = new SchemaViewer({
+            configManager: this.configManager,
+            stateManager: this.stateManager,
+            client: this.client,
+            createModal: this.createModal.bind(this),
+            switchTable: this.switchTable.bind(this),
+            fetchData: this.fetchData.bind(this)
+        });
+
+        this.statsViewer = new StatisticsViewer({
+            stateManager: this.stateManager,
+            createModal: this.createModal.bind(this),
+            showAlert: this.showAlert.bind(this)
+        });
+    }
+
+    /**
+     * Handle "Load Data" actions from the sidebar.
+     *
+     * Behavior:
+     * - If no database is currently loaded (no berdlTableId or no available tables),
+     *   this will perform a full object load via `loadObject()`.
+     * - If a database is already loaded, this will only re-fetch table data
+     *   using the current filters/sort/search via `fetchData()`, so existing
+     *   column filters and advanced filters are preserved.
+     */
+    private handleLoadData() {
+        const state = this.stateManager.getState();
+
+        // If we don't have a loaded database yet (or the last load failed),
+        // perform a full load. This also covers error cases where berdlTableId
+        // is set but no tables were loaded.
+        if (!state.berdlTableId || state.availableTables.length === 0) {
+            this.loadObject();
+            return;
+        }
+
+        // Database is already loaded – just refresh data with current filters.
+        this.fetchData();
     }
 
     private initKeyboardShortcuts() {
@@ -335,7 +401,7 @@ export class TableRenderer {
             // Check if this is a local database (doesn't need token)
             const { LocalDbClient } = await import('../core/api/LocalDbClient');
             const isLocal = LocalDbClient.isLocalDb(trimmedBerdl);
-            
+
             if (!isLocal && !token) {
                 this.showAlert('Auth token required for remote databases', 'danger');
                 return;
@@ -355,11 +421,11 @@ export class TableRenderer {
                 res = await this.client.listTables(trimmedBerdl);
             } catch (primaryError: any) {
                 errorMessage = primaryError.message || 'Failed to load database';
-                
+
                 // Check if this might be a local database and try fallback
                 const { LocalDbClient } = await import('../core/api/LocalDbClient');
                 const isLocal = LocalDbClient.isLocalDb(trimmedBerdl);
-                
+
                 if (!isLocal && trimmedBerdl.startsWith('local/')) {
                     // Try as local database file
                     const dbName = trimmedBerdl.replace('local/', '');
@@ -381,7 +447,7 @@ export class TableRenderer {
                         errorMessage = `Failed to load local database: ${fileError.message}`;
                     }
                 }
-                
+
                 // If we get here, all attempts failed
                 throw new Error(errorMessage);
             }
@@ -393,7 +459,7 @@ export class TableRenderer {
 
             // Check if tables were found
             const tables = res.tables || [];
-            
+
             if (tables.length === 0) {
                 const message = `No tables found in database "${trimmedBerdl}". The database may be empty or inaccessible.`;
                 this.showAlert(message, 'warning');
@@ -409,9 +475,39 @@ export class TableRenderer {
                 return;
             }
 
-            // Success - process tables
-            const detectedType = this.registry.detectDataType(res);
-            if (detectedType) this.configManager.setCurrentDataType(detectedType);
+            // Extract schema info for config resolution
+            let schemaInfo = this.extractSchemaInfo(res, tables);
+            
+            // If schema not in response, try fetching it
+            if (Object.keys(schemaInfo.columns).length === 0) {
+                const fetchedSchema = await this.fetchSchemaInfo(trimmedBerdl);
+                if (fetchedSchema) {
+                    schemaInfo = fetchedSchema;
+                }
+            }
+            
+            // Resolve config with schema-based fallback
+            const { getConfigResolver } = await import('../core/config/ConfigResolver');
+            const resolver = getConfigResolver();
+            const resolveResult = await resolver.resolve(trimmedBerdl, {
+                objectType: res.object_type || res.type,
+                schema: schemaInfo.tables.length > 0 ? schemaInfo : undefined,
+            });
+
+            // Show warning if config not found
+            if (resolveResult.warning) {
+                this.showAlert(resolveResult.warning, 'warning');
+            }
+
+            // Register and set config
+            if (resolveResult.config) {
+                this.registry.registerDataType(resolveResult.config);
+                this.configManager.setCurrentDataType(resolveResult.config.id);
+            } else {
+                // Fallback to detection
+                const detectedType = this.registry.detectDataType(res);
+                if (detectedType) this.configManager.setCurrentDataType(detectedType);
+            }
 
             this.stateManager.update({ availableTables: tables });
             this.sidebar.updateTables(tables);
@@ -421,8 +517,8 @@ export class TableRenderer {
                 ? initialTable : tables[0].name;
 
             // Show success message
-            const successMsg = triedFallback 
-                ? `Loaded database "${trimmedBerdl}" (using fallback method)` 
+            const successMsg = triedFallback
+                ? `Loaded database "${trimmedBerdl}" (using fallback method)`
                 : `Loaded database "${trimmedBerdl}" - ${tables.length} table${tables.length !== 1 ? 's' : ''} found`;
             this.showAlert(successMsg, 'success');
 
@@ -431,7 +527,7 @@ export class TableRenderer {
         } catch (e: any) {
             // Provide detailed error message
             let errorMsg = e.message || 'Failed to load database';
-            
+
             // Enhance error messages based on error type
             if (errorMsg.includes('404') || errorMsg.includes('Not Found')) {
                 errorMsg = `Database or object "${trimmedBerdl}" not found. Please check the ID and try again.`;
@@ -469,7 +565,7 @@ export class TableRenderer {
         this.categoryManager = new CategoryManager(config);
 
         // Force all categories to be visible initially
-        this.categoryManager.showAllCategories();
+        // Initial visibility will be set when data is loaded
 
         this.sidebar.setCategoryManager(this.categoryManager);
         this.sidebar.updateTableInfo(name);
@@ -556,30 +652,48 @@ export class TableRenderer {
         this.stateManager.update({ loading: true });
 
         try {
+            // Only send col_filter for columns that don't have advanced filters
+            // Advanced filters take precedence and handle parsed operators correctly
+            const colFilter: Record<string, any> = {};
+            const advancedFilterColumns = new Set(state.advancedFilters?.map(f => f.column) || []);
+            
+            for (const [col, value] of Object.entries(state.columnFilters)) {
+                // Skip columns that have advanced filters (they're already handled)
+                if (!advancedFilterColumns.has(col) && value !== undefined && value !== null && value !== '') {
+                    colFilter[col] = value;
+                }
+            }
+
+            // Global search is now client-side only (highlighting only, no filtering)
+            // Column filters still filter rows server-side
             const res = await this.client.getTableData({
                 berdl_table_id: state.berdlTableId,
                 table_name: state.activeTableName,
                 limit: state.pageSize,
                 offset: state.currentPage * state.pageSize,
-                search_value: state.searchValue || undefined,
+                // NOTE: search_value is intentionally NOT sent - global search only highlights, doesn't filter
+                // Column filters (col_filter, filters) still filter rows as expected
                 sort_column: state.sortColumn || undefined,
                 sort_order: state.sortOrder === 'asc' ? 'ASC' : 'DESC',
-                col_filter: Object.keys(state.columnFilters).length ? state.columnFilters : undefined,
+                col_filter: Object.keys(colFilter).length > 0 ? colFilter : undefined,
                 filters: state.advancedFilters,
                 aggregations: state.aggregations,
                 group_by: state.groupBy
             });
 
             this.processColumns(res.headers, state.activeTableName);
-            
+
             // Use schema from response if available, otherwise load
-            if (res.column_schema && res.column_schema.length > 0 && state.activeTableName) {
+            // Use schema from response if available, otherwise load
+            const tableName = state.activeTableName;
+            if (res.column_schema && res.column_schema.length > 0 && tableName) {
                 // Cache schema from response
-                if (!this.columnSchemas[state.activeTableName]) {
-                    this.columnSchemas[state.activeTableName] = {};
+                if (!this.columnSchemas[tableName]) {
+                    this.columnSchemas[tableName] = {};
                 }
-                res.column_schema.forEach(col => {
-                    this.columnSchemas[state.activeTableName!][col.name] = {
+                const schema = res.column_schema || [];
+                schema.forEach(col => {
+                    this.columnSchemas[tableName][col.name] = {
                         type: col.type,
                         notnull: col.notnull,
                         pk: col.pk
@@ -602,22 +716,32 @@ export class TableRenderer {
                 dataObjects = this.sortWithNullsLast(dataObjects, state.sortColumn, state.sortOrder || 'asc');
             }
 
-            // Show performance info in UI
-            this.updatePerformanceIndicator(res.cached, res.execution_time_ms);
+
 
             this.stateManager.update({
-                headers: res.headers, 
-                data: dataObjects, 
+                headers: res.headers,
+                data: dataObjects,
                 totalCount: res.total_count || 0,
                 queryCached: res.cached || false,
                 queryTime: res.execution_time_ms
             });
-        } catch (e: any) {
-            this.showAlert(e.message, 'danger');
+
+            // Update search navigation after data loads
+            if (this.toolbar && this.grid) {
+                // Use requestAnimationFrame to ensure DOM is updated
+                requestAnimationFrame(() => {
+                    setTimeout(() => {
+                        this.toolbar.updateSearchNav();
+                    }, 50);
+                });
+            }
+        } catch {
+            this.showAlert('Failed to copy to clipboard', 'danger');
         } finally {
             this.stateManager.update({ loading: false });
         }
     }
+
 
     private processColumns(headers: string[], tableName: string) {
         const config = this.configManager.getTableConfig(tableName);
@@ -640,10 +764,10 @@ export class TableRenderer {
         const autoCategorize = (h: string): string[] => {
             const lower = h.toLowerCase();
             const categories: string[] = [];
-            
+
             // Core identifiers and names
-            if (lower.match(/^(id|name|display_name|label)$/) || 
-                lower.endsWith('_id') || 
+            if (lower.match(/^(id|name|display_name|label)$/) ||
+                lower.endsWith('_id') ||
                 lower.endsWith('_name') ||
                 lower.includes('locus') ||
                 lower.includes('symbol') ||
@@ -651,7 +775,7 @@ export class TableRenderer {
                 lower.includes('contig')) {
                 categories.push('core');
             }
-            
+
             // Functional annotation
             if (lower.includes('function') ||
                 lower.includes('product') ||
@@ -670,7 +794,7 @@ export class TableRenderer {
                 lower.includes('type')) {
                 categories.push('functional');
             }
-            
+
             // External links and references
             if (lower.includes('uniprot') ||
                 lower.includes('xref') ||
@@ -680,7 +804,7 @@ export class TableRenderer {
                 lower.includes('dbxref')) {
                 categories.push('external');
             }
-            
+
             // Sequence data
             if (lower.includes('sequence') ||
                 lower.includes('start') ||
@@ -692,21 +816,21 @@ export class TableRenderer {
                 lower.includes('isoelectric')) {
                 categories.push('sequence');
             }
-            
+
             // System metadata
             if (lower.match(/^(deleted|row_hash|last_synced|created_at|updated_at|sync_.*)$/) ||
                 lower.includes('hash') ||
                 lower.includes('sync')) {
                 categories.push('metadata');
             }
-            
+
             // Status and reports
             if (lower.match(/^(error|status|report|message|valid|significance)$/) ||
                 lower.includes('error') ||
                 lower.includes('valid')) {
                 categories.push('status');
             }
-            
+
             // If no categories matched, default to 'core' for IDs or 'functional' for others
             if (categories.length === 0) {
                 if (lower.match(/^[a-z_]*id$/i) || lower.endsWith('_id')) {
@@ -716,7 +840,7 @@ export class TableRenderer {
                     categories.push('functional');
                 }
             }
-            
+
             return categories;
         };
 
@@ -738,7 +862,29 @@ export class TableRenderer {
 
         if (this.categoryManager) {
             this.categoryManager.setColumns(cols);
-            this.stateManager.update({ visibleColumns: this.categoryManager.getVisibleColumns() });
+            
+            // Preserve existing visible columns - only initialize if empty
+            // This prevents resetting column selections when filters are applied
+            const currentState = this.stateManager.getState();
+            if (currentState.visibleColumns.size === 0) {
+                // First time loading columns - use initial visibility from config
+                this.stateManager.update({ visibleColumns: this.categoryManager.getInitialVisibleColumns() });
+            } else {
+                // Preserve existing selections - don't reset visible columns
+                // Only clean up columns that no longer exist in the current column list
+                const existingVisible = new Set(currentState.visibleColumns);
+                const newColumnNames = new Set(cols.map(c => c.column));
+                
+                // Remove columns that no longer exist (cleanup only)
+                existingVisible.forEach(col => {
+                    if (!newColumnNames.has(col)) {
+                        existingVisible.delete(col);
+                    }
+                });
+                
+                // Keep existing visible columns (don't reset them)
+                this.stateManager.update({ visibleColumns: existingVisible });
+            }
         }
     }
 
@@ -762,7 +908,7 @@ export class TableRenderer {
                 const healthCheck = await fetch(`http://localhost:${serverPort}/health`, {
                     signal: AbortSignal.timeout(500)
                 });
-                
+
                 if (healthCheck.ok) {
                     const dbName = state.berdlTableId.replace('local/', '');
                     const response = await fetch(`http://localhost:${serverPort}/schema/${dbName}/tables/${tableName}`);
@@ -771,10 +917,10 @@ export class TableRenderer {
                         schema = data.columns || [];
                     }
                 }
-            } catch (error) {
+            } catch {
                 // Server not available, continue to fallback
             }
-            
+
             // Fallback to LocalDbClient if server didn't provide schema
             if (schema.length === 0) {
                 try {
@@ -782,7 +928,7 @@ export class TableRenderer {
                     const localDb = LocalDbClient.getInstance();
                     schema = await localDb.getTableSchema(tableName);
                 } catch (err) {
-                    console.warn('[TableRenderer] Failed to load schema:', err);
+                    logger.warn('[TableRenderer] Failed to load schema', err);
                 }
             }
 
@@ -798,7 +944,7 @@ export class TableRenderer {
                 });
             }
         } catch (error) {
-            console.warn('[TableRenderer] Error loading schema:', error);
+            logger.warn('[TableRenderer] Error loading schema:', error);
         }
     }
 
@@ -887,6 +1033,14 @@ export class TableRenderer {
         this.updateLoadingOverlay(state);
         this.syncStateToUrl();
         if (state.error) this.showAlert(state.error, 'danger');
+        
+        // Update search navigation after data changes
+        if (this.toolbar && this.grid) {
+            // Small delay to ensure grid has finished rendering
+            setTimeout(() => {
+                this.toolbar.updateSearchNav();
+            }, 100);
+        }
     }
 
     private updateLoadingOverlay(state: AppState) {
@@ -910,7 +1064,7 @@ export class TableRenderer {
         const perfInfo = [];
         if (state.queryCached) perfInfo.push('⚡ Cached');
         if (state.queryTime !== undefined) perfInfo.push(`${state.queryTime}ms`);
-        
+
         if (state.totalCount > 0) {
             const start = state.currentPage * state.pageSize + 1;
             const end = Math.min((state.currentPage + 1) * state.pageSize, state.totalCount);
@@ -1011,11 +1165,11 @@ export class TableRenderer {
                     return;
                 }
             }
-        } catch { }
+        } catch { /* Config endpoint not available, try legacy */ }
 
         let config: any = {};
         if (this.configUrl) {
-            try { const res = await fetch(this.configUrl); if (res.ok) config = await res.json(); } catch { }
+            try { const res = await fetch(this.configUrl); if (res.ok) config = await res.json(); } catch { /* Legacy config fetch failed */ }
         }
         if (!Object.keys(config).length && (window as any).DEFAULT_CONFIG) config = (window as any).DEFAULT_CONFIG;
         this.configManager = new ConfigManager(config);
@@ -1027,467 +1181,22 @@ export class TableRenderer {
             const escapedMsg = msg.replace(/</g, '&lt;').replace(/>/g, '&gt;');
             // Allow line breaks for longer messages
             const formattedMsg = escapedMsg.replace(/\n/g, '<br>');
-            
+
             // Determine timeout based on message length and type
             const isError = type === 'danger';
             const timeout = isError ? 8000 : (msg.length > 100 ? 6000 : 4000);
-            
+
             this.dom.alert.innerHTML = `<div class="ts-alert ts-alert-${type}">${formattedMsg}</div>`;
-            setTimeout(() => { 
-                if (this.dom.alert) this.dom.alert.innerHTML = ''; 
+            setTimeout(() => {
+                if (this.dom.alert) this.dom.alert.innerHTML = '';
             }, timeout);
         }
     }
 
     private showDatabaseSchema(initialTable?: string) {
-        const state = this.stateManager.getState();
-        const tables = state.availableTables || [];
-        let searchTerm = '';
-        let searchResults: Array<{ table: any; columns: any[]; hasDataMatches?: boolean }> = [];
-        let isSearchingData = false;
-
-        const renderSidebar = (active: string | null, searchQuery: string = '') => {
-            const hasSearch = searchQuery.trim().length > 0;
-
-            return `
-            <div class="glass-sidebar" style="width:260px;display:flex;flex-direction:column;">
-                <div style="padding:16px;border-bottom:1px solid var(--c-border-subtle)">
-                    <h3 style="font-size:11px;text-transform:uppercase;color:var(--c-text-muted);font-weight:700;letter-spacing:0.08em;display:flex;align-items:center;gap:8px;margin-bottom:12px">
-                        <i class="bi bi-database" style="font-size:14px"></i> Database Schema
-                    </h3>
-                    <div style="position:relative;margin-bottom:8px">
-                        <input type="text" id="ts-db-search" placeholder="Search tables, columns, data..." 
-                            value="${searchQuery}"
-                            style="background:var(--c-bg-input);border:1px solid var(--c-border-subtle);border-radius:var(--radius-sm);font-size:12px;padding:6px 12px 6px 32px;width:100%;outline:none;color:var(--c-text-primary);box-sizing:border-box">
-                        <i class="bi bi-search" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--c-text-muted);pointer-events:none"></i>
-                        ${hasSearch ? `<button id="ts-db-search-clear" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--c-text-muted);cursor:pointer;padding:2px;font-size:14px"><i class="bi bi-x"></i></button>` : ''}
-                    </div>
-                    ${hasSearch ? `
-                        <div style="display:flex;gap:4px;margin-top:4px">
-                            <button id="ts-search-data-btn" class="ts-btn-secondary" style="flex:1;height:28px;font-size:11px;padding:0 8px;${isSearchingData ? 'opacity:0.6' : ''}" ${isSearchingData ? 'disabled' : ''}>
-                                <i class="bi bi-${isSearchingData ? 'hourglass-split' : 'search'}"></i> ${isSearchingData ? 'Searching...' : 'Search Data'}
-                            </button>
-                        </div>
-                    ` : ''}
-                </div>
-                <div style="flex:1;overflow-y:auto;padding:12px">
-                    ${!hasSearch ? `
-                        <div class="ts-nav-item ${!active ? 'active' : ''}" data-target="__overview__">
-                            <i class="bi bi-grid-1x2"></i> Overview
-                        </div>
-                        <div style="margin-top:12px;margin-bottom:8px;padding:0 14px">
-                            <span style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--c-text-muted);font-weight:600">Tables (${tables.length})</span>
-                        </div>
-                        ${tables.map((t: any) => `
-                            <div class="ts-nav-item ${active === t.name ? 'active' : ''}" data-target="${t.name}">
-                                <i class="bi bi-table"></i> 
-                                <span style="flex:1">${t.name}</span>
-                                <span style="font-size:11px;color:var(--c-text-muted)">${(t.row_count || 0).toLocaleString()}</span>
-                            </div>
-                        `).join('')}
-                    ` : `
-                        <div style="margin-bottom:8px;padding:0 14px">
-                            <span style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--c-text-muted);font-weight:600">
-                                ${searchResults.length > 0 ? `Results (${searchResults.length})` : 'No Results'}
-                            </span>
-                        </div>
-                        ${searchResults.length > 0 ? searchResults.map((result: any) => {
-                const matchCount = result.columns.length + (result.hasDataMatches ? 1 : 0);
-                return `
-                                <div class="ts-nav-item ${active === result.table.name ? 'active' : ''}" 
-                                     data-target="${result.table.name}" 
-                                     data-search="${searchQuery}"
-                                     style="cursor:pointer">
-                                    <i class="bi bi-table"></i> 
-                                    <div style="flex:1;min-width:0">
-                                        <div style="font-weight:${active === result.table.name ? '600' : '500'}">${result.table.name}</div>
-                                        <div style="font-size:10px;color:var(--c-text-muted);margin-top:2px">
-                                            ${matchCount} match${matchCount !== 1 ? 'es' : ''}
-                                            ${result.hasDataMatches ? ' • Has data matches' : ''}
-                                        </div>
-                                    </div>
-                                </div>
-                            `;
-            }).join('') : `
-                            <div style="padding:24px;text-align:center;color:var(--c-text-muted)">
-                                <i class="bi bi-search" style="font-size:24px;display:block;margin-bottom:8px;opacity:0.5"></i>
-                                <div style="font-size:12px">No matches found</div>
-                            </div>
-                        `}
-                    `}
-                </div>
-            </div>
-        `;
-        };
-
-
-        const renderOverview = () => {
-            const totalTables = tables.length;
-            const totalRecords = tables.reduce((acc: number, t: any) => acc + (t.row_count || 0), 0);
-
-            if (searchTerm && searchResults.length > 0) {
-                return `
-                    <div style="padding:40px;max-width:960px;margin:0 auto">
-                        <div style="margin-bottom:32px">
-                            <h2 style="font-size:24px;font-weight:700;color:var(--c-text-primary);margin-bottom:8px">
-                                Search Results for "${searchTerm}"
-                            </h2>
-                            <p style="color:var(--c-text-secondary);font-size:14px">Found ${searchResults.length} table${searchResults.length !== 1 ? 's' : ''} with matches</p>
-                        </div>
-
-                        <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(300px, 1fr));gap:16px">
-                            ${searchResults.map((result: any) => {
-                    const matchCount = result.columns.length + (result.hasDataMatches ? 1 : 0);
-                    return `
-                                    <div class="ts-card-nav" data-target="${result.table.name}" data-search="${searchTerm}" style="cursor:pointer">
-                                        <div style="width:44px;height:44px;background:var(--c-accent-light);border-radius:10px;display:flex;align-items:center;justify-content:center;color:var(--c-accent);font-size:20px">
-                                            <i class="bi bi-table"></i>
-                                        </div>
-                                        <div style="flex:1">
-                                            <div style="font-weight:600;font-size:14px;color:var(--c-text-primary)">${result.table.name}</div>
-                                            <div style="font-size:12px;color:var(--c-text-muted);margin-top:4px">
-                                                ${matchCount} match${matchCount !== 1 ? 'es' : ''}
-                                                ${result.hasDataMatches ? ' • Data matches' : ''}
-                                                ${result.columns.length > 0 ? ` • ${result.columns.length} column${result.columns.length !== 1 ? 's' : ''}` : ''}
-                                            </div>
-                                            ${result.columns.length > 0 ? `
-                                                <div style="margin-top:8px;font-size:11px;color:var(--c-text-muted);max-height:60px;overflow-y:auto">
-                                                    ${result.columns.slice(0, 3).map((c: any) => `
-                                                        <div style="padding:2px 0">• ${c.displayName || c.column}</div>
-                                                    `).join('')}
-                                                    ${result.columns.length > 3 ? `<div style="padding:2px 0;font-style:italic">+ ${result.columns.length - 3} more</div>` : ''}
-                                                </div>
-                                            ` : ''}
-                                        </div>
-                                        <i class="bi bi-chevron-right" style="font-size:14px;color:var(--c-text-muted)"></i>
-                                    </div>
-                                `;
-                }).join('')}
-                        </div>
-                    </div>
-                `;
-            }
-
-            return `
-                <div style="padding:48px;max-width:900px;margin:0 auto">
-                    <div style="text-align:center;margin-bottom:48px">
-                        <div style="width:80px;height:80px;background:linear-gradient(135deg, var(--c-accent-light) 0%, var(--c-accent-glow) 100%);color:var(--c-accent);border-radius:20px;display:flex;align-items:center;justify-content:center;font-size:40px;margin:0 auto 20px;box-shadow:0 8px 24px var(--c-accent-glow)">
-                            <i class="bi bi-database"></i>
-                        </div>
-                        <h2 style="font-size:28px;font-weight:700;color:var(--c-text-primary);margin-bottom:8px">Database Overview</h2>
-                        <p style="color:var(--c-text-secondary);font-size:14px">${state.berdlTableId || 'Connected Database'}</p>
-                    </div>
-
-                    <div style="display:grid;grid-template-columns:repeat(2, 1fr);gap:20px;margin-bottom:48px">
-                        <div class="glass-panel" style="padding:28px;text-align:center">
-                            <div style="font-size:13px;color:var(--c-text-muted);margin-bottom:8px;font-weight:500">Total Tables</div>
-                            <div style="font-size:40px;font-weight:700;color:var(--c-text-primary)">${totalTables}</div>
-                        </div>
-                        <div class="glass-panel" style="padding:28px;text-align:center">
-                            <div style="font-size:13px;color:var(--c-text-muted);margin-bottom:8px;font-weight:500">Total Records</div>
-                            <div style="font-size:40px;font-weight:700;color:var(--c-text-primary)">${totalRecords.toLocaleString()}</div>
-                        </div>
-                    </div>
-
-                    <h3 style="font-size:12px;font-weight:700;margin-bottom:20px;color:var(--c-text-muted);text-transform:uppercase;letter-spacing:0.08em">Available Tables</h3>
-                    <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(280px, 1fr));gap:16px">
-                        ${tables.map((t: any) => `
-                            <div class="ts-card-nav" data-target="${t.name}">
-                                <div style="width:44px;height:44px;background:var(--c-accent-light);border-radius:10px;display:flex;align-items:center;justify-content:center;color:var(--c-accent);font-size:20px"><i class="bi bi-table"></i></div>
-                                <div style="flex:1">
-                                    <div style="font-weight:600;font-size:14px;color:var(--c-text-primary)">${t.name}</div>
-                                    <div style="font-size:12px;color:var(--c-text-muted);margin-top:2px">${(t.row_count || 0).toLocaleString()} records</div>
-                                </div>
-                                <i class="bi bi-chevron-right" style="font-size:14px;color:var(--c-text-muted)"></i>
-                            </div>
-                        `).join('')}
-                    </div>
-                </div>
-            `;
-        };
-
-        const renderTableDetail = (name: string) => {
-            const config = this.configManager.getTableConfig(name);
-            const isLive = state.activeTableName === name;
-            const columns = isLive ? state.columns : (config.columns || []);
-
-            const tableTitle = config?.name || name;
-            const tableDesc = config?.settings?.description || 'No description available for this table.';
-
-            return `
-                <div style="padding:40px;max-width:960px;margin:0 auto">
-                    <div style="margin-bottom:36px">
-                        <div style="display:flex;align-items:flex-start;gap:20px">
-                            <div style="width:64px;height:64px;border-radius:16px;background:linear-gradient(135deg, var(--c-accent-light) 0%, var(--c-accent-glow) 100%);color:var(--c-accent);display:flex;align-items:center;justify-content:center;font-size:32px;flex-shrink:0;box-shadow:0 4px 16px var(--c-accent-glow)">
-                                <i class="${config?.settings?.icon || 'bi bi-table'}"></i>
-                            </div>
-                            <div style="flex:1">
-                                <h2 style="font-size:24px;font-weight:700;color:var(--c-text-primary);margin:0 0 8px 0">${tableTitle}</h2>
-                                <div style="font-size:14px;color:var(--c-text-secondary);line-height:1.6;margin-bottom:16px;max-width:600px">
-                                    ${tableDesc}
-                                </div>
-                                <div style="display:flex;gap:20px;font-size:13px;color:var(--c-text-muted)">
-                                    <span style="display:flex;align-items:center;gap:6px"><i class="bi bi-layout-three-columns"></i> ${columns.length} Columns</span>
-                                    ${isLive ? `<span style="display:flex;align-items:center;gap:6px"><i class="bi bi-list-ol"></i> ${state.totalCount?.toLocaleString()} Records</span>` : ''}
-                                    <span style="display:flex;align-items:center;gap:6px"><i class="bi bi-${isLive ? 'check-circle-fill" style="color:var(--success)' : 'circle'}"></i> ${isLive ? 'Currently Loaded' : 'Not Loaded'}</span>
-                                </div>
-                            </div>
-                            <button id="ts-export-current" class="ts-btn-secondary" data-table="${name}" style="height:40px;padding:0 20px">
-                                <i class="bi bi-download"></i> Export Schema
-                            </button>
-                        </div>
-                    </div>
-
-                    <div class="glass-panel" style="overflow:hidden">
-                        <div style="padding:14px 20px;border-bottom:1px solid var(--c-border-subtle);display:flex;justify-content:space-between;align-items:center;background:rgba(248,250,252,0.3)">
-                            <h4 style="margin:0;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--c-text-muted);display:flex;align-items:center;gap:8px">
-                                <i class="bi bi-list-columns-reverse"></i> Schema Definition
-                            </h4>
-                            <div style="position:relative">
-                                <input type="text" id="ts-schema-filter" placeholder="Search columns..." style="background:var(--c-bg-input);border:1px solid var(--c-border-subtle);border-radius:var(--radius-sm);font-size:12px;padding:6px 12px 6px 32px;width:220px;outline:none;color:var(--c-text-primary)">
-                                <i class="bi bi-search" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--c-text-muted)"></i>
-                            </div>
-                        </div>
-                        <div id="ts-schema-items-container" style="max-height:55vh;overflow-y:auto">
-                            ${columns.length === 0 ? '<div style="padding:48px;text-align:center;color:var(--c-text-muted)"><i class="bi bi-info-circle" style="font-size:24px;display:block;margin-bottom:12px;opacity:0.5"></i>No column information available. Load this table to see details.</div>' :
-                    columns.map(c => this.renderSchemaItem(c)).join('')}
-                        </div>
-                    </div>
-                </div>
-             `;
-        };
-
-        const layout = `
-            <div style="display:flex;height:100%;overflow:hidden">
-                <div id="ts-schema-sidebar">${renderSidebar(initialTable || null)}</div>
-                <div id="ts-schema-main" style="flex:1;overflow-y:auto;background:var(--c-bg-app-solid);position:relative">
-                    ${initialTable ? renderTableDetail(initialTable) : renderOverview()}
-                </div>
-            </div>
-        `;
-
-        const modal = this.createModal('Database Explorer', layout);
-        const modalBody = modal.querySelector('.ts-modal-body') as HTMLElement;
-        if (modalBody) {
-            modalBody.style.padding = '0';
-            modalBody.style.height = 'calc(80vh - 60px)';
-        }
-
-        const updateView = (target: string, searchQuery: string = searchTerm) => {
-            const sidebar = modal.querySelector('#ts-schema-sidebar');
-            const main = modal.querySelector('#ts-schema-main');
-            if (sidebar) sidebar.innerHTML = renderSidebar(target === '__overview__' ? null : target, searchQuery);
-            if (main) {
-                main.innerHTML = target === '__overview__' ? renderOverview() : renderTableDetail(target);
-                main.scrollTop = 0;
-            }
-            bindEvents();
-        };
-
-        const performSearch = async (query: string, searchData: boolean = false): Promise<void> => {
-            searchTerm = query.trim();
-            searchResults = [];
-
-            if (!searchTerm) {
-                updateView('__overview__');
-                return;
-            }
-
-            const queryLower = searchTerm.toLowerCase();
-
-            // Client-side search: tables and columns
-            for (const table of tables) {
-                const tableMatches = table.name.toLowerCase().includes(queryLower);
-                const config = this.configManager.getTableConfig(table.name);
-                const isLive = state.activeTableName === table.name;
-                const columns = isLive ? state.columns : (config.columns || []);
-
-                const matchingColumns = columns.filter((c: any) => {
-                    const colName = (c.displayName || c.column || '').toLowerCase();
-                    const colKey = (c.column || '').toLowerCase();
-                    const desc = (c.description || '').toLowerCase();
-                    return colName.includes(queryLower) || colKey.includes(queryLower) || desc.includes(queryLower);
-                });
-
-                if (tableMatches || matchingColumns.length > 0) {
-                    searchResults.push({
-                        table,
-                        columns: matchingColumns,
-                        hasDataMatches: false
-                    });
-                }
-            }
-
-            // API-based search for cell values if requested
-            if (searchData && state.berdlTableId) {
-                isSearchingData = true;
-                const sidebar = modal.querySelector('#ts-schema-sidebar');
-                if (sidebar) sidebar.innerHTML = renderSidebar(null, searchTerm);
-                bindEvents();
-
-                const dataSearchPromises = tables.map(async (table: any) => {
-                    try {
-                        const res = await this.client.getTableData({
-                            berdl_table_id: state.berdlTableId!,
-                            table_name: table.name,
-                            limit: 1,
-                            offset: 0,
-                            search_value: searchTerm
-                        });
-
-                        if (res.total_count > 0) {
-                            const existing = searchResults.find(r => r.table.name === table.name);
-                            if (existing) {
-                                existing.hasDataMatches = true;
-                            } else {
-                                searchResults.push({
-                                    table,
-                                    columns: [],
-                                    hasDataMatches: true
-                                });
-                            }
-                        }
-                    } catch (e) {
-                        console.warn(`Failed to search data in table ${table.name}`, e);
-                    }
-                });
-
-                await Promise.all(dataSearchPromises);
-                isSearchingData = false;
-            }
-
-            updateView('__overview__');
-        };
-
-        const bindEvents = () => {
-            // Database search input
-            const dbSearchInput = modal.querySelector('#ts-db-search') as HTMLInputElement;
-            const dbSearchClear = modal.querySelector('#ts-db-search-clear');
-            const searchDataBtn = modal.querySelector('#ts-search-data-btn');
-
-            if (dbSearchInput) {
-                let searchDebounce: any = null;
-                dbSearchInput.addEventListener('input', () => {
-                    const query = dbSearchInput.value;
-                    searchTerm = query;
-
-                    if (searchDebounce) clearTimeout(searchDebounce);
-                    searchDebounce = setTimeout(() => {
-                        performSearch(query, false);
-                    }, 300);
-                });
-
-                dbSearchInput.addEventListener('keypress', (e) => {
-                    if (e.key === 'Enter') {
-                        e.preventDefault();
-                        if (searchDebounce) clearTimeout(searchDebounce);
-                        performSearch(dbSearchInput.value, false);
-                    }
-                });
-            }
-
-            if (dbSearchClear) {
-                dbSearchClear.addEventListener('click', () => {
-                    if (dbSearchInput) dbSearchInput.value = '';
-                    searchTerm = '';
-                    searchResults = [];
-                    isSearchingData = false;
-                    updateView('__overview__', '');
-                });
-            }
-
-            if (searchDataBtn) {
-                searchDataBtn.addEventListener('click', async () => {
-                    if (!searchTerm || isSearchingData) return;
-                    await performSearch(searchTerm, true);
-                });
-            }
-
-            // Navigation items and cards
-            modal.querySelectorAll('.ts-nav-item, .ts-card-nav').forEach(el => {
-                el.addEventListener('click', () => {
-                    const target = (el as HTMLElement).dataset.target;
-                    const searchQuery = (el as HTMLElement).dataset.search;
-                    if (target) {
-                        if (target !== '__overview__' && searchQuery) {
-                            // Close modal and load table with search
-                            const closeBtn = modal.querySelector('.ts-modal-close') as HTMLElement;
-                            if (closeBtn) closeBtn.click();
-
-                            // Switch to the table and apply search
-                            this.switchTable(target).then(() => {
-                                this.stateManager.update({ searchValue: searchQuery, currentPage: 0 });
-                                this.fetchData();
-                            });
-                        } else {
-                            updateView(target, searchQuery || searchTerm);
-                        }
-                    }
-                });
-            });
-
-            // Column filter in table detail view
-            const input = modal.querySelector('#ts-schema-filter') as HTMLInputElement;
-            const container = modal.querySelector('#ts-schema-items-container');
-            if (input && container) {
-                input.addEventListener('input', () => {
-                    const term = input.value.toLowerCase();
-                    container.querySelectorAll('.ts-schema-item').forEach(item => {
-                        const text = (item.textContent || '').toLowerCase();
-                        (item as HTMLElement).style.display = text.includes(term) ? 'flex' : 'none';
-                    });
-                });
-            }
-
-            const exp = modal.querySelector('#ts-export-current');
-            exp?.addEventListener('click', () => {
-                const table = (exp as HTMLElement).dataset.table;
-                if (!table) return;
-                const config = this.configManager.getTableConfig(table);
-                const cols = (state.activeTableName === table) ? state.columns : (config.columns || []);
-                const schemaData = JSON.stringify(config || { tableName: table, columns: cols }, null, 2);
-                const blob = new Blob([schemaData], { type: 'application/json' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `${table}_schema.json`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-            });
-        };
-
-        bindEvents();
+        this.schemaViewer.show(initialTable);
     }
 
-    private renderSchemaItem(c: any) {
-        const badges = [];
-        if (c.sortable) badges.push({ l: 'Sortable', bg: '#dbeafe', fg: '#1d4ed8' });
-        if (c.filterable) badges.push({ l: 'Filterable', bg: '#d1fae5', fg: '#059669' });
-        if (c.copyable) badges.push({ l: 'Copyable', bg: '#e2e8f0', fg: '#475569' });
-        if (c.pin) badges.push({ l: 'Pinned', bg: '#ede9fe', fg: '#7c3aed' });
-
-        const badgeHtml = badges.map(b =>
-            `<span style="font-size:10px;padding:3px 8px;border-radius:4px;background:${b.bg};color:${b.fg};margin-right:6px;font-weight:500">${b.l}</span>`
-        ).join('');
-
-        return `
-            <div class="ts-schema-item">
-                <div style="padding-top:4px;flex-shrink:0"><i class="bi bi-hash" style="color:var(--c-accent);font-size:16px"></i></div>
-                <div style="flex:1;min-width:0">
-                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;gap:12px">
-                        <span class="ts-schema-name">${c.displayName || c.column}</span>
-                        <span class="ts-schema-type">${c.dataType || 'string'}</span>
-                    </div>
-                    ${c.description ? `<div class="ts-schema-desc">${c.description}</div>` : ''}
-                    <div style="display:flex;align-items:center;margin-top:8px;flex-wrap:wrap;gap:4px">
-                        ${badgeHtml}
-                        <span style="font-size:11px;color:var(--c-text-muted);font-family:'JetBrains Mono',monospace;margin-left:auto">col: ${c.column}</span>
-                    </div>
-                </div>
-            </div>
-        `;
-    }
 
     private isValueEmpty(value: any): boolean {
         // Check for null or undefined
@@ -1589,7 +1298,7 @@ export class TableRenderer {
             }
 
             const cleanFilename = dbFilename.trim();
-            
+
             // Construct paths (client-side, relative to public/)
             const dbPath = `/data/${cleanFilename}.db`;
             const configPath = `/config/${cleanFilename}.json`;
@@ -1603,7 +1312,7 @@ export class TableRenderer {
                     this.registry.registerDataType(config);
                     this.configManager.setCurrentDataType(config.id || cleanFilename);
                 }
-            } catch (error) {
+            } catch {
                 // Config is optional, just log a warning
                 console.warn(`No config file found at ${configPath}, using default settings`);
             }
@@ -1614,7 +1323,7 @@ export class TableRenderer {
 
             // Create a temporary UPA for this database
             const tempUpa = `local/${cleanFilename}`;
-            
+
             // Try to load the database file
             try {
                 await localDb.loadDatabase(dbPath);
@@ -1640,7 +1349,7 @@ export class TableRenderer {
                 throw new Error(`Database "${cleanFilename}" contains no tables. The database may be empty or corrupted.`);
             }
 
-            this.stateManager.update({ 
+            this.stateManager.update({
                 availableTables: tables,
                 berdlTableId: tempUpa
             });
@@ -1655,7 +1364,7 @@ export class TableRenderer {
         } catch (error: any) {
             // Provide detailed error message
             let errorMsg = error.message || 'Failed to load database';
-            
+
             // Enhance error messages
             if (errorMsg.includes('not found') || errorMsg.includes('404')) {
                 errorMsg = `Database file not found: "${dbFilename}". Please check that the file exists at /data/${dbFilename}.db`;
@@ -1682,94 +1391,236 @@ export class TableRenderer {
         }
     }
 
-    private updatePerformanceIndicator(cached?: boolean, executionTime?: number) {
-        if (!this.dom.performance) return;
-
-        const show = cached !== undefined || executionTime !== undefined;
-        if (this.dom.performance) {
-            (this.dom.performance as HTMLElement).style.display = show ? 'flex' : 'none';
-        }
-
-        if (this.dom.perfCached) {
-            (this.dom.perfCached as HTMLElement).style.display = cached ? 'inline-flex' : 'none';
-        }
-
-        if (this.dom.perfTime && executionTime !== undefined) {
-            (this.dom.perfTime as HTMLElement).textContent = `${executionTime}ms`;
-            (this.dom.perfTime as HTMLElement).style.display = 'inline-flex';
-        } else if (this.dom.perfTime) {
-            (this.dom.perfTime as HTMLElement).style.display = 'none';
-        }
-    }
-
-    private async showColumnStatistics(tableName: string) {
-        const state = this.stateManager.getState();
-        if (!state.berdlTableId || !tableName) {
-            this.showAlert('No table selected', 'warning');
-            return;
-        }
-
+    /**
+     * Load a local database from a user-provided path/URL.
+     *
+     * Notes:
+     * - Browsers cannot read arbitrary local filesystem paths directly.
+     * - In dev, Vite can serve absolute filesystem paths via `/@fs/...`.
+     * - In production, the DB must be hosted by the web server (typically under `/data/...`).
+     */
+    public async loadDatabaseFromPath(dbPathOrUrl: string): Promise<void> {
         try {
-            this.stateManager.update({ loading: true });
-            
-            // Get stats from server
-            const dbName = state.berdlTableId.replace('local/', '');
-            const serverPort = '3000';
-            const statsResponse = await fetch(`http://localhost:${serverPort}/object/${dbName}/tables/${tableName}/stats`);
-            
-            if (!statsResponse.ok) {
-                throw new Error('Failed to load statistics');
+            this.stateManager.update({ loading: true, error: null });
+
+            const raw = (dbPathOrUrl || '').trim();
+            if (!raw) throw new Error('Database path is required');
+            if (raw.toLowerCase().startsWith('file://')) {
+                throw new Error('file:// paths are not supported in the browser. In dev use an absolute path (Vite /@fs), or host the DB under /data/ in production.');
             }
 
-            const stats = await statsResponse.json();
-            
-            // Format stats for display
-            const statsHtml = `
-                <div style="padding:24px;max-width:800px">
-                    <h2 style="margin-bottom:20px;font-size:18px;font-weight:600">
-                        <i class="bi bi-graph-up"></i> Column Statistics: ${tableName}
-                    </h2>
-                    <div style="margin-bottom:16px;padding:12px;background:var(--c-bg-surface-alt);border-radius:var(--radius-sm);font-size:13px">
-                        <strong>Total Rows:</strong> ${stats.row_count.toLocaleString()}
-                    </div>
-                    <div style="display:grid;gap:12px">
-                        ${stats.columns.map((col: any) => `
-                            <div style="padding:16px;background:var(--c-bg-surface);border:1px solid var(--c-border-subtle);border-radius:var(--radius-md)">
-                                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-                                    <h3 style="font-size:14px;font-weight:600">${col.column}</h3>
-                                    <span style="font-size:11px;color:var(--c-text-muted);text-transform:uppercase">${col.type}</span>
-                                </div>
-                                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;font-size:12px">
-                                    <div><strong>Nulls:</strong> ${col.null_count.toLocaleString()}</div>
-                                    <div><strong>Distinct:</strong> ${col.distinct_count.toLocaleString()}</div>
-                                    ${col.min !== undefined ? `<div><strong>Min:</strong> ${col.min}</div>` : ''}
-                                    ${col.max !== undefined ? `<div><strong>Max:</strong> ${col.max}</div>` : ''}
-                                    ${col.mean !== undefined ? `<div><strong>Mean:</strong> ${col.mean.toFixed(2)}</div>` : ''}
-                                    ${col.median !== undefined ? `<div><strong>Median:</strong> ${col.median}</div>` : ''}
-                                    ${col.stddev !== undefined ? `<div><strong>StdDev:</strong> ${col.stddev.toFixed(2)}</div>` : ''}
-                                </div>
-                                ${col.sample_values && col.sample_values.length > 0 ? `
-                                    <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--c-border-subtle)">
-                                        <div style="font-size:11px;color:var(--c-text-muted);margin-bottom:6px">Sample Values:</div>
-                                        <div style="display:flex;flex-wrap:gap:4px">
-                                            ${col.sample_values.slice(0, 10).map((v: any) => `
-                                                <span style="padding:2px 8px;background:var(--c-bg-surface-alt);border-radius:4px;font-size:11px;font-family:monospace">${String(v).substring(0, 30)}</span>
-                                            `).join('')}
-                                        </div>
-                                    </div>
-                                ` : ''}
-                            </div>
-                        `).join('')}
-                    </div>
-                </div>
-            `;
+            const withoutHash = raw.split('#')[0];
+            const withoutQuery = withoutHash.split('?')[0];
+            const baseName = (withoutQuery.split('/').pop() || 'database').trim();
+            const cleanName = baseName.replace(/\.(db|sqlite)$/i, '') || 'database';
 
-            this.createModal(`Column Statistics: ${tableName}`, statsHtml);
+            const isHttpUrl = /^https?:\/\//i.test(raw);
+            let fetchPath = raw;
+            if (!isHttpUrl && !fetchPath.startsWith('/')) fetchPath = `/${fetchPath}`;
+
+            // Dev convenience: allow absolute filesystem paths (Linux/macOS/WSL) via Vite /@fs
+            if (import.meta.env.DEV && fetchPath.startsWith('/') && !fetchPath.startsWith('/@fs/')) {
+                const looksLikeAbsoluteFsPath =
+                    fetchPath.startsWith('/home/') ||
+                    fetchPath.startsWith('/Users/') ||
+                    fetchPath.startsWith('/mnt/') ||
+                    fetchPath.startsWith('/var/') ||
+                    fetchPath.startsWith('/tmp/');
+                if (looksLikeAbsoluteFsPath) {
+                    fetchPath = `/@fs${fetchPath}`;
+                }
+            }
+
+            // Load optional config based on mapping or filename convention
+            let config: any = null;
+            try {
+                const { LocalDbClient } = await import('../core/api/LocalDbClient');
+                const mappingKeyCandidates = [
+                    raw,
+                    withoutQuery,
+                    fetchPath,
+                    fetchPath.replace(/^\/@fs/, ''),
+                ];
+
+                let configPath: string | null = null;
+                for (const candidate of mappingKeyCandidates) {
+                    configPath = LocalDbClient.getConfigPath(candidate);
+                    if (configPath) break;
+                }
+                if (!configPath) configPath = `/config/${cleanName}.json`;
+
+                const configResponse = await fetch(configPath);
+                if (configResponse.ok) {
+                    config = await configResponse.json();
+                    this.registry.registerDataType(config);
+                    this.configManager.setCurrentDataType(config.id || cleanName);
+                }
+            } catch {
+                // Config is optional
+            }
+
+            const { LocalDbClient } = await import('../core/api/LocalDbClient');
+            const localDb = LocalDbClient.getInstance();
+
+            // Load database and list tables
+            await localDb.loadDatabase(fetchPath);
+            const tablesResult = await localDb.listTablesFromDb(fetchPath, config || {});
+            const tables = tablesResult.tables || [];
+
+            if (tables.length === 0) {
+                throw new Error(`Database "${cleanName}" contains no tables. The database may be empty or corrupted.`);
+            }
+
+            const tempUpa = `local/${cleanName}`;
+            this.stateManager.update({
+                availableTables: tables,
+                berdlTableId: tempUpa,
+            });
+            this.sidebar.updateTables(tables);
+
+            await this.switchTable(tables[0].name);
+            this.showAlert(`Successfully loaded database "${cleanName}" - ${tables.length} table${tables.length !== 1 ? 's' : ''} found`, 'success');
         } catch (error: any) {
-            this.showAlert(`Failed to load statistics: ${error.message}`, 'danger');
+            const msg = error?.message || 'Failed to load database';
+            this.showAlert(msg, 'danger');
+            this.stateManager.update({
+                availableTables: [],
+                activeTableName: null,
+                data: [],
+                columns: [],
+                visibleColumns: new Set(),
+                loading: false,
+                error: msg,
+            });
+            this.sidebar.updateTables([]);
         } finally {
             this.stateManager.update({ loading: false });
         }
+    }
+
+    /**
+     * Load database from a File object (for upload)
+     */
+    public async loadDatabaseFromFileObject(file: File): Promise<void> {
+        try {
+            this.stateManager.update({ loading: true, error: null });
+
+            if (!file.name.endsWith('.db') && !file.name.endsWith('.sqlite')) {
+                this.showAlert('Please select a valid SQLite database file (.db or .sqlite)', 'warning');
+                this.stateManager.update({ loading: false });
+                return;
+            }
+
+            const buffer = await file.arrayBuffer();
+
+            // Get the LocalDbClient
+            const { LocalDbClient } = await import('../core/api/LocalDbClient');
+            const localDb = LocalDbClient.getInstance();
+
+            // Load from buffer
+            await localDb.loadDatabaseFromBuffer(buffer, file.name);
+
+            const localUpa = `local/${file.name.replace(/\.(db|sqlite)$/, '')}`;
+
+            // Get table list
+            let tablesResult: any;
+            try {
+                // Pass empty config for now, or could try to find a matching config in the future
+                tablesResult = await localDb.listTablesFromDb(file.name);
+            } catch (tableError: any) {
+                throw new Error(`Failed to read database structure: ${tableError.message}`);
+            }
+
+            const tables = tablesResult.tables || [];
+
+            this.stateManager.update({
+                berdlTableId: localUpa,
+                availableTables: tables,
+                activeTableName: null,
+                loading: false
+            });
+
+            this.sidebar.updateTables(tables);
+
+            if (tables.length > 0) {
+                await this.switchTable(tables[0].name);
+                this.showAlert(`Loaded local file: ${file.name}`, 'success');
+            } else {
+                this.showAlert(`Database loaded but contains no tables.`, 'warning');
+            }
+
+        } catch (error: any) {
+            logger.error('Failed to load uploaded database', error);
+            this.showAlert(`Failed to load file: ${error.message}`, 'danger');
+            this.stateManager.update({ loading: false });
+        }
+    }
+
+
+
+    private async showColumnStatistics(tableName: string) {
+        await this.statsViewer.show(tableName);
+    }
+
+    /**
+     * Extract schema information from API response for config matching.
+     * Efficiently extracts table and column names for schema-based matching.
+     */
+    private extractSchemaInfo(res: any, tables: any[]): { tables: string[]; columns: Record<string, string[]> } {
+        const tableNames = tables.map(t => t.name || t);
+        const columns: Record<string, string[]> = {};
+
+        // Try to get schema from response (TableScanner may include schemas field)
+        if (res.schemas && typeof res.schemas === 'object') {
+            // Schema format: {tableName: {column: type, ...}}
+            for (const [tableName, tableSchema] of Object.entries(res.schemas)) {
+                if (tableSchema && typeof tableSchema === 'object') {
+                    columns[tableName] = Object.keys(tableSchema);
+                }
+            }
+        }
+
+        // Fallback: extract from table objects if they have column info
+        if (Object.keys(columns).length === 0) {
+            for (const table of tables) {
+                const tableName = table.name || table;
+                if (table.columns && Array.isArray(table.columns)) {
+                    columns[tableName] = table.columns.map((c: any) => 
+                        typeof c === 'string' ? c : c.name || c.column
+                    );
+                } else if (table.column_names && Array.isArray(table.column_names)) {
+                    columns[tableName] = table.column_names;
+                } else if (table.schema && typeof table.schema === 'object') {
+                    // Schema embedded in table object
+                    columns[tableName] = Object.keys(table.schema);
+                }
+            }
+        }
+
+        return { tables: tableNames, columns };
+    }
+
+    /**
+     * Fetch schema information from API if available.
+     * Used as fallback when schema is not in the tables response.
+     */
+    private async fetchSchemaInfo(berdlTableId: string): Promise<{ tables: string[]; columns: Record<string, string[]> } | null> {
+        try {
+            const schema = await this.client.getSchema(berdlTableId);
+            if (schema) {
+                const tables = Object.keys(schema);
+                const columns: Record<string, string[]> = {};
+                for (const [tableName, tableSchema] of Object.entries(schema)) {
+                    if (tableSchema && typeof tableSchema === 'object') {
+                        columns[tableName] = Object.keys(tableSchema);
+                    }
+                }
+                return { tables, columns };
+            }
+        } catch {
+            // Schema endpoint not available
+        }
+        return null;
     }
 
     private createModal(title: string, bodyHtml: string): HTMLElement {

@@ -446,6 +446,20 @@ export interface DataTypeConfig {
 // =============================================================================
 
 /**
+ * Schema matching configuration for fallback matching
+ */
+export interface SchemaMatchConfig {
+    /** Whether schema matching is enabled for this config */
+    enabled: boolean;
+    /** Required table names (at least one must match) */
+    requiredTables?: string[];
+    /** Required columns per table: {tableName: [column1, column2, ...]} */
+    requiredColumns?: Record<string, string[]>;
+    /** Minimum match score (0-1) to consider a match */
+    minMatchScore?: number;
+}
+
+/**
  * Data type reference in manifest
  */
 export interface DataTypeReference {
@@ -472,6 +486,8 @@ export interface DataTypeReference {
     matches?: string[];
     /** Load priority (lower = earlier) */
     priority?: number;
+    /** Schema-based matching configuration for fallback matching */
+    schemaMatch?: SchemaMatchConfig;
 }
 
 /**
@@ -489,6 +505,16 @@ export interface GlobalSettings {
         thousandsSeparator?: string;
         decimalSeparator?: string;
     };
+}
+
+/**
+ * Default config reference
+ */
+export interface DefaultConfigReference {
+    /** URL to default config file */
+    configUrl: string;
+    /** Description of default config */
+    description?: string;
 }
 
 /**
@@ -512,6 +538,9 @@ export interface AppConfig {
 
     /** Data type manifest */
     dataTypes: Record<string, DataTypeReference>;
+
+    /** Default config for unmapped databases */
+    defaultConfig?: DefaultConfigReference;
 
     /** Global default settings */
     defaults?: GlobalSettings;

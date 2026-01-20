@@ -21,6 +21,10 @@ export class DataGrid extends Component {
     private selectionEnd: number | null = null;
     private filterDebounceTimer: any = null;
 
+    // Search Match Tracking
+    private searchMatches: Array<{ element: HTMLElement; row: number; col: number }> = [];
+    private currentMatchIndex: number = -1;
+
     constructor(options: DataGridOptions) {
         super(options);
         this.stateManager = options.stateManager;
@@ -57,7 +61,7 @@ export class DataGrid extends Component {
             return;
         }
 
-        const searchTerm = state.searchValue.toLowerCase();
+        const searchTerm = state.searchValue ? state.searchValue.trim().toLowerCase() : '';
         let html = '<table class="ts-table"><thead><tr>';
 
         // Checkbox column for select all
@@ -71,7 +75,7 @@ export class DataGrid extends Component {
             const isFirst = idx === 0 && !state.showRowNumbers;
             const fixed = isFirst ? 'ts-col-fixed' : '';
             const sortable = c.sortable ? 'sortable' : '';
-            let icon = state.sortColumn === c.column ? (state.sortOrder === 'asc' ? ' <i class="bi bi-sort-up"></i>' : ' <i class="bi bi-sort-down"></i>') : '';
+            const icon = state.sortColumn === c.column ? (state.sortOrder === 'asc' ? ' <i class="bi bi-sort-up"></i>' : ' <i class="bi bi-sort-down"></i>') : '';
             // For auto width, add min-width to prevent columns from collapsing
             const widthStyle = c.width && c.width !== 'auto' 
                 ? `width:${c.width}` 
@@ -150,14 +154,23 @@ export class DataGrid extends Component {
                     const fixed = isFirst ? 'ts-col-fixed' : '';
                     const raw = row[c.column];
                     let content = '';
-                    if (c.transform) content = Transformers.apply(raw, c.transform, row);
-                    else if (c.column.includes('ID') || c.column === 'ID') {
-                        const esc = Transformers.escapeHtml(raw);
+                    const rawStr = raw != null ? String(raw) : '';
+                    
+                    if (c.transform) {
+                        content = Transformers.apply(raw, c.transform, row);
+                    } else if (c.column.includes('ID') || c.column === 'ID') {
+                        const esc = Transformers.escapeHtml(rawStr);
                         content = `<span class="ts-copy-id"><span class="ts-mono">${esc}</span><button class="ts-copy-btn" data-id="${esc}"><i class="bi bi-clipboard"></i></button></span>`;
-                    } else content = Transformers.escapeHtml(raw);
+                    } else {
+                        content = Transformers.escapeHtml(rawStr);
+                    }
 
-                    if (searchTerm) content = this.highlightText(content, searchTerm);
-                    html += `<td class="${fixed}">${content}</td>`;
+                    // Apply search highlighting if there's a search term
+                    if (searchTerm && searchTerm.trim()) {
+                        const highlighted = this.highlightText(content, searchTerm);
+                        content = highlighted.content;
+                    }
+                    html += `<td class="${fixed}" data-row="${i}" data-col="${c.column}">${content}</td>`;
                 });
                 html += '</tr>';
             });
@@ -165,6 +178,16 @@ export class DataGrid extends Component {
 
         html += '</tbody></table>';
         this.container.innerHTML = html;
+        
+        // Track search matches after rendering
+        if (state.searchValue && state.searchValue.trim()) {
+            this.trackSearchMatches(state.searchValue.trim());
+        } else {
+            // Clear matches if no search term
+            this.searchMatches = [];
+            this.currentMatchIndex = -1;
+        }
+        
         this.bindEvents(); // Re-bind after render
         this.restoreFocus();
     }
@@ -369,9 +392,201 @@ export class DataGrid extends Component {
         if (this.tooltip) this.tooltip.classList.remove('show');
     }
 
-    private highlightText(html: string, term: string): string {
-        if (!term) return html;
-        const regex = new RegExp(`(${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
-        return html.replace(regex, '<mark class="highlight">$1</mark>');
+    private highlightText(html: string, term: string): { content: string; hasMatches: boolean } {
+        if (!term || !term.trim()) return { content: html, hasMatches: false };
+        
+        // Escape the search term for regex (but allow word boundaries for better matching)
+        const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        // Match the term as a substring (case-insensitive) - this allows "su" to match "succinate"
+        const regex = new RegExp(`(${escapedTerm})`, 'gi');
+        
+        // Check if term exists in the HTML (checking text content)
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = html;
+        const textContent = (tempDiv.textContent || tempDiv.innerText || '').toLowerCase();
+        const hasMatches = textContent.includes(term.toLowerCase());
+        
+        if (!hasMatches) {
+            return { content: html, hasMatches: false };
+        }
+        
+        // Try simple replace first (works for plain text or escaped HTML)
+        if (!html.includes('<') || html === Transformers.escapeHtml(textContent)) {
+            regex.lastIndex = 0;
+            return {
+                content: html.replace(regex, '<mark class="highlight">$1</mark>'),
+                hasMatches: true
+            };
+        }
+        
+        // For HTML content with tags, walk through text nodes and highlight
+        const walker = document.createTreeWalker(
+            tempDiv,
+            NodeFilter.SHOW_TEXT,
+            null
+        );
+        
+        const replacements: Array<{ node: Text; replacement: string }> = [];
+        let node: Text | null;
+        
+        while (node = walker.nextNode() as Text) {
+            if (node.textContent) {
+                regex.lastIndex = 0;
+                if (regex.test(node.textContent)) {
+                    regex.lastIndex = 0;
+                    const replacement = node.textContent.replace(regex, '<mark class="highlight">$1</mark>');
+                    replacements.push({ node, replacement });
+                }
+            }
+        }
+        
+        // Apply replacements
+        replacements.forEach(({ node, replacement }) => {
+            const parent = node.parentElement;
+            if (parent) {
+                const tempSpan = document.createElement('span');
+                tempSpan.innerHTML = replacement;
+                while (tempSpan.firstChild) {
+                    parent.insertBefore(tempSpan.firstChild, node);
+                }
+                parent.removeChild(node);
+            }
+        });
+        
+        return {
+            content: tempDiv.innerHTML,
+            hasMatches: replacements.length > 0
+        };
+    }
+
+    /**
+     * Track all search matches in the rendered table for navigation
+     */
+    private trackSearchMatches(searchTerm: string): void {
+        this.searchMatches = [];
+        if (!searchTerm || !searchTerm.trim()) {
+            this.currentMatchIndex = -1;
+            return;
+        }
+
+        // Find all highlight marks in the rendered table
+        const marks = this.container.querySelectorAll('mark.highlight');
+        
+        marks.forEach((mark) => {
+            const cell = mark.closest('td[data-row][data-col]');
+            if (cell) {
+                this.searchMatches.push({
+                    element: mark as HTMLElement,
+                    row: parseInt(cell.getAttribute('data-row') || '0'),
+                    col: 0 // Column index not critical for scrolling
+                });
+            }
+        });
+
+        // Reset to first match if we have matches
+        if (this.searchMatches.length > 0) {
+            this.currentMatchIndex = 0;
+            this.highlightCurrentMatch();
+        } else {
+            this.currentMatchIndex = -1;
+        }
+    }
+
+    /**
+     * Navigate to next search match
+     */
+    public navigateToNextMatch(): boolean {
+        if (this.searchMatches.length === 0) return false;
+        this.currentMatchIndex = (this.currentMatchIndex + 1) % this.searchMatches.length;
+        this.highlightCurrentMatch();
+        return true;
+    }
+
+    /**
+     * Navigate to previous search match
+     */
+    public navigateToPreviousMatch(): boolean {
+        if (this.searchMatches.length === 0) return false;
+        this.currentMatchIndex = this.currentMatchIndex <= 0 
+            ? this.searchMatches.length - 1 
+            : this.currentMatchIndex - 1;
+        this.highlightCurrentMatch();
+        return true;
+    }
+
+    /**
+     * Highlight the current match and scroll to it
+     */
+    private highlightCurrentMatch(): void {
+        // Remove active class from all matches
+        this.container.querySelectorAll('mark.highlight').forEach(m => {
+            m.classList.remove('active');
+        });
+
+        if (this.currentMatchIndex >= 0 && this.currentMatchIndex < this.searchMatches.length) {
+            const match = this.searchMatches[this.currentMatchIndex];
+            match.element.classList.add('active');
+            this.scrollToMatch(match.element);
+        }
+    }
+
+    /**
+     * Scroll to show the highlighted match
+     */
+    private scrollToMatch(element: HTMLElement): void {
+        const cell = element.closest('td');
+        if (!cell) return;
+
+        const grid = this.container.closest('.ts-grid');
+        if (!grid) return;
+
+        // Get cell position relative to grid
+        const cellRect = cell.getBoundingClientRect();
+        const gridRect = grid.getBoundingClientRect();
+
+        // Check if cell is visible (with some padding)
+        const padding = 50;
+        const isVisible = (
+            cellRect.top >= gridRect.top + padding &&
+            cellRect.bottom <= gridRect.bottom - padding &&
+            cellRect.left >= gridRect.left + padding &&
+            cellRect.right <= gridRect.right - padding
+        );
+
+        if (!isVisible) {
+            // Scroll to make cell visible - use the grid container for scrolling
+            const scrollContainer = grid;
+            const cellOffsetTop = (cell as HTMLElement).offsetTop;
+            const cellOffsetLeft = (cell as HTMLElement).offsetLeft;
+            const containerHeight = scrollContainer.clientHeight;
+            const containerWidth = scrollContainer.clientWidth;
+            
+            // Calculate scroll position to center the cell
+            const scrollTop = cellOffsetTop - (containerHeight / 2) + (cell.clientHeight / 2);
+            const scrollLeft = cellOffsetLeft - (containerWidth / 2) + (cell.clientWidth / 2);
+            
+            scrollContainer.scrollTo({
+                top: Math.max(0, scrollTop),
+                left: Math.max(0, scrollLeft),
+                behavior: 'smooth'
+            });
+        }
+    }
+
+    /**
+     * Get current match info for display
+     */
+    public getSearchMatchInfo(): { current: number; total: number } {
+        return {
+            current: this.currentMatchIndex >= 0 ? this.currentMatchIndex + 1 : 0,
+            total: this.searchMatches.length
+        };
+    }
+
+    /**
+     * Check if there are search matches
+     */
+    public hasSearchMatches(): boolean {
+        return this.searchMatches.length > 0;
     }
 }

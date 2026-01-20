@@ -28,7 +28,8 @@ import type {
 } from '../../types/schema';
 import type { ConfigApiSettings, ResolveOptions, ResolveResult } from '../../types/config-api';
 import { getConfigResolver } from './ConfigResolver';
-import { initializeRemoteConfigProvider, getRemoteConfigProvider } from './RemoteConfigProvider';
+// Remote config removed - TableScanner doesn't provide config API endpoints
+import { logger } from '../../utils/logger';
 
 // =============================================================================
 // DEFAULTS
@@ -107,8 +108,6 @@ export class DataTypeRegistry {
     private defaultApiId: string | null = null;
     private matchMap: Map<string, string> = new Map(); // Maps object type strings to data type IDs
     private globalSettings: Required<GlobalSettings> = { ...DEFAULT_GLOBAL_SETTINGS };
-    private remoteConfigEnabled: boolean = false;
-    private configApiSettings: ConfigApiSettings | null = null;
 
     // ─── Singleton ─────────────────────────────────────────────────────────
 
@@ -197,14 +196,14 @@ export class DataTypeRegistry {
             try {
                 const response = await fetch(ref.configUrl);
                 if (!response.ok) {
-                    console.warn(`Failed to load config from ${ref.configUrl}: ${response.status}`);
+                    logger.warn(`Failed to load config from ${ref.configUrl}: ${response.status}`);
                     return;
                 }
                 const config = await response.json() as DataTypeConfig;
                 this.registerDataType(config);
                 this.loadedUrls.add(ref.configUrl);
             } catch (error) {
-                console.error(`Error loading data type config from ${ref.configUrl}:`, error);
+                logger.error(`Error loading data type config from ${ref.configUrl}`, error);
             }
         }
     }
@@ -216,18 +215,18 @@ export class DataTypeRegistry {
      */
     public registerDataType(config: DataTypeConfig): void {
         if (!config.id) {
-            console.error('DataTypeConfig must have an id');
+            logger.error('DataTypeConfig must have an id');
             return;
         }
 
         // Validate version
         if (!config.version) {
-            console.warn(`DataTypeConfig ${config.id} missing version, defaulting to 1.0.0`);
+            logger.warn(`DataTypeConfig ${config.id} missing version, defaulting to 1.0.0`);
             config.version = '1.0.0';
         }
 
         this.dataTypes.set(config.id, config);
-        console.log(`Registered data type: ${config.id} v${config.version}`);
+        logger.debug(`Registered data type: ${config.id} v${config.version}`);
     }
 
     /**
@@ -364,10 +363,10 @@ export class DataTypeRegistry {
             column: col.column,
             displayName: col.displayName || col.column.replace(/_/g, ' '),
             dataType,
-            visible: col.visible ?? DEFAULT_COLUMN_CONFIG.visible!,
-            sortable: col.sortable ?? DEFAULT_COLUMN_CONFIG.sortable!,
-            filterable: col.filterable ?? DEFAULT_COLUMN_CONFIG.filterable!,
-            searchable: col.searchable ?? DEFAULT_COLUMN_CONFIG.searchable!,
+            visible: col.visible ?? (DEFAULT_COLUMN_CONFIG.visible ?? true),
+            sortable: col.sortable ?? (DEFAULT_COLUMN_CONFIG.sortable ?? true),
+            filterable: col.filterable ?? (DEFAULT_COLUMN_CONFIG.filterable ?? true),
+            searchable: col.searchable ?? (DEFAULT_COLUMN_CONFIG.searchable ?? true),
             copyable: col.copyable ?? (dataType === 'id'),
             width: col.width || 'auto',  // Default to 'auto', but will have min-width in CSS
             align: col.align || defaultAlign,
@@ -448,7 +447,7 @@ export class DataTypeRegistry {
 
         // 2. Check matches map
         if (this.matchMap.has(typeHint)) {
-            return this.matchMap.get(typeHint)!;
+            return this.matchMap.get(typeHint) ?? null;
         }
 
         // 3. Normalize type hint (snake_case, lowercase)
@@ -460,7 +459,7 @@ export class DataTypeRegistry {
         // Return first registered type as fallback
         const firstType = this.getDataTypeIds()[0];
         if (firstType) {
-            console.warn(`Unknown data type "${typeHint}", falling back to "${firstType}"`);
+            logger.warn(`Unknown data type "${typeHint}", falling back to "${firstType}"`);
             return firstType;
         }
 
@@ -512,29 +511,8 @@ export class DataTypeRegistry {
     }
 
     // ─── Remote Config Support ────────────────────────────────────────────
-
-    /**
-     * Initialize remote config support.
-     * Call this after loading app config to enable fetching configs
-     * from the TableScanner Config Control Plane.
-     */
-    public initializeRemoteConfig(settings?: Partial<ConfigApiSettings>): void {
-        // Check for configApi settings in app config
-        const appConfigSettings = (this.appConfig as any)?.configApi as ConfigApiSettings | undefined;
-
-        if (appConfigSettings?.enabled || settings?.enabled) {
-            const mergedSettings: Partial<ConfigApiSettings> = {
-                ...appConfigSettings,
-                ...settings,
-                enabled: true,
-            };
-
-            initializeRemoteConfigProvider(mergedSettings);
-            this.configApiSettings = mergedSettings as ConfigApiSettings;
-            this.remoteConfigEnabled = true;
-            console.log('[DataTypeRegistry] Remote config provider initialized');
-        }
-    }
+    // NOTE: Remote config is deprecated - TableScanner does not provide config API endpoints
+    // Configs are resolved via static pattern matching from index.json
 
     /**
      * Resolve and register a config for a source reference.
@@ -549,10 +527,7 @@ export class DataTypeRegistry {
         options?: ResolveOptions
     ): Promise<DataTypeConfig | null> {
         const resolver = getConfigResolver();
-        const result = await resolver.resolve(sourceRef, {
-            ...options,
-            preferRemote: this.remoteConfigEnabled,
-        });
+        const result = await resolver.resolve(sourceRef, options);
 
         if (result.config) {
             // Ensure the config has an ID
@@ -563,7 +538,7 @@ export class DataTypeRegistry {
             // Register the resolved config
             this.registerDataType(result.config);
 
-            console.log(
+            logger.debug(
                 `[DataTypeRegistry] Registered ${result.config.id} from ${result.source}`
             );
             return result.config;
@@ -574,25 +549,26 @@ export class DataTypeRegistry {
 
     /**
      * Check if remote config is enabled.
+     * @deprecated Remote config is not supported - TableScanner doesn't provide config API
      */
     public isRemoteConfigEnabled(): boolean {
-        return this.remoteConfigEnabled;
+        return false; // Always false - remote config not available
     }
 
     /**
      * Get the remote config provider settings.
+     * @deprecated Remote config is not supported
      */
     public getConfigApiSettings(): ConfigApiSettings | null {
-        return this.configApiSettings;
+        return null;
     }
 
     /**
      * Set authentication token for remote config requests.
+     * @deprecated Remote config is not supported
      */
-    public setAuthToken(token: string): void {
-        if (this.remoteConfigEnabled) {
-            getRemoteConfigProvider().setToken(token);
-        }
+    public setAuthToken(_token: string): void {
+        // No-op - remote config not available
     }
 
     /**
@@ -608,10 +584,7 @@ export class DataTypeRegistry {
         options?: ResolveOptions
     ): Promise<ResolveResult> {
         const resolver = getConfigResolver();
-        return resolver.resolve(sourceRef, {
-            ...options,
-            preferRemote: this.remoteConfigEnabled,
-        });
+        return resolver.resolve(sourceRef, options);
     }
 
     /**
@@ -621,8 +594,8 @@ export class DataTypeRegistry {
     public async hasConfigFor(
         sourceRef: string,
         _options?: ResolveOptions
-    ): Promise<{ hasConfig: boolean; source: 'remote' | 'static' | 'none' }> {
-        // Check static first (fast)
+    ): Promise<{ hasConfig: boolean; source: 'static' | 'none' }> {
+        // Check static configs via pattern matching
         const appConfig = this.getAppConfig();
         if (appConfig?.dataTypes) {
             for (const [_id, ref] of Object.entries(appConfig.dataTypes)) {
@@ -632,19 +605,7 @@ export class DataTypeRegistry {
             }
         }
 
-        // Check remote if enabled
-        if (this.remoteConfigEnabled) {
-            try {
-                const remote = getRemoteConfigProvider();
-                const tableList = await remote.getTableListWithConfig(sourceRef);
-                if (tableList?.has_cached_config || tableList?.has_builtin_config) {
-                    return { hasConfig: true, source: 'remote' };
-                }
-            } catch {
-                // Remote unavailable
-            }
-        }
-
+        // Remote config not available - TableScanner doesn't provide config API
         return { hasConfig: false, source: 'none' };
     }
 

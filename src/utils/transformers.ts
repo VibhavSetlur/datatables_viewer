@@ -8,6 +8,7 @@
  */
 
 import type { TransformConfig, TransformCondition } from '../types/schema';
+import { logger } from './logger';
 
 // =============================================================================
 // TYPES
@@ -99,11 +100,13 @@ export class Transformers {
 
         // Check custom transformers
         if (Transformers.customTransformers.has(transformerName)) {
-            const fn = Transformers.customTransformers.get(transformerName)!;
-            return fn(value, transformConfig.options || {}, rowData);
+            const fn = Transformers.customTransformers.get(transformerName);
+            if (fn) {
+                return fn(value, transformConfig.options || {}, rowData);
+            }
         }
 
-        console.warn(`Unknown transformer type: "${transformerName}"`);
+        logger.warn(`Unknown transformer type: "${transformerName}"`);
         return value !== null && value !== undefined ? Transformers.escapeHtml(String(value)) : '';
     }
 
@@ -567,7 +570,7 @@ export class Transformers {
                 const regex = new RegExp(find, flags);
                 return str.replace(regex, replaceWith);
             } catch (e) {
-                console.error('Invalid regex in replace transformer', e);
+                logger.error('Invalid regex in replace transformer', e);
                 return str;
             }
         }
@@ -877,7 +880,7 @@ export class Transformers {
                 Transformers.updateOntologyElements(termId, name, options);
             }
         } catch (e) {
-            console.warn(`Ontology lookup failed for ${termId}`, e);
+            logger.warn(`Ontology lookup failed for ${termId}`, e);
         }
     }
 
@@ -930,7 +933,7 @@ export class Transformers {
                 }
             }
         } catch (e) {
-            console.error('Async lookup failed', e);
+            logger.error('Async lookup failed', e);
         }
     }
 
@@ -1186,7 +1189,7 @@ export class Transformers {
                 Transformers.updateOntologyLookupElements(termId, name, options);
             }
         } catch (e) {
-            console.warn(`Ontology lookup failed for ${termId}`, e);
+            logger.warn(`Ontology lookup failed for ${termId}`, e);
         }
     }
 
@@ -1508,7 +1511,7 @@ export class Transformers {
      */
     public static register(name: string, fn: TransformerFunction): void {
         Transformers.customTransformers.set(name, fn);
-        console.log(`Registered custom transformer: ${name}`);
+        logger.info(`Registered custom transformer: ${name}`);
     }
 
     /**

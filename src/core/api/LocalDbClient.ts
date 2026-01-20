@@ -7,147 +7,38 @@
  * @module LocalDbClient
  */
 
-import initSqlJs from 'sql.js';
-import type { Database } from 'sql.js';
+import initSqlJs, { type Database } from 'sql.js';
+import {
+    type ConfigDefinition,
+    type DatabaseMapping,
+    type TableInfo,
+    type ColumnMetadata,
+    type QueryMetadata,
+    type TableDataResponse,
+    type AdvancedFilter,
+    type Aggregation,
+    type TableDataRequest,
+    DEFAULT_LIMIT,
+    DEFAULT_OFFSET,
+    SQL_WASM_CDN_URL,
+} from '../../types/shared-types';
+import {
+    CONFIG_DEFINITIONS,
+    DATABASE_MAPPINGS,
+} from '../config/LocalDatabaseMappings';
+import { logger } from '../../utils/logger';
 
-/**
- * Config definition - primary entity
- * Multiple databases can reference the same config
- */
-interface ConfigDefinition {
-    configId: string;
-    configPath: string;
-    version?: string;
-    description?: string;
-}
-
-/**
- * Database mapping - maps file paths or UPAs to config IDs
- */
-interface DatabaseMapping {
-    dbPath: string;
-    configId: string;
-    // Optional: override config path for this specific database
-    configPath?: string;
-}
-
-interface TableInfo {
-    name: string;
-    displayName: string;
-    row_count: number;
-    column_count: number;
-    description?: string;
-}
-
-interface ColumnMetadata {
-    name: string;
-    type: string;
-    notnull: boolean;
-    pk: boolean;
-    dflt_value: any;
-}
-
-interface QueryMetadata {
-    query_type: 'select' | 'aggregate' | 'join';
-    sql: string;
-    filters_applied: number;
-    has_search: boolean;
-    has_sort: boolean;
-    has_group_by: boolean;
-    has_aggregations: boolean;
-}
-
-interface TableDataResponse {
-    headers: string[];
-    data: any[][];
-    total_count: number;
-    // Column metadata
-    column_types?: ColumnMetadata[];
-    column_schema?: ColumnMetadata[];
-    // Query metadata
-    query_metadata?: QueryMetadata;
-    // Performance
-    cached?: boolean;
-    execution_time_ms?: number;
-    // Pagination
-    limit?: number;
-    offset?: number;
-    // Additional info
-    table_name?: string;
-}
-
-interface AdvancedFilter {
-    column: string;
-    operator: 'eq' | 'ne' | 'gt' | 'gte' | 'lt' | 'lte' | 'like' | 'ilike' | 'in' | 'not_in' | 'between' | 'is_null' | 'is_not_null' | 'regex';
-    value: any;
-    value2?: any; // For between
-    logic?: 'AND' | 'OR';
-}
-
-interface Aggregation {
-    column: string;
-    function: 'count' | 'sum' | 'avg' | 'min' | 'max' | 'stddev' | 'variance' | 'distinct_count';
-    alias?: string;
-}
-
-interface TableDataRequest {
-    table_name: string;
-    limit?: number;
-    offset?: number;
-    columns?: string[];
-    sort_column?: string | null;
-    sort_order?: 'ASC' | 'DESC';
-    search_value?: string;
-    col_filter?: Record<string, any>;
-    // Advanced filtering
-    filters?: AdvancedFilter[];
-    // Aggregations
-    group_by?: string[];
-    aggregations?: Aggregation[];
-}
-
-/**
- * Config definitions - primary mapping
- * Each config can be used by multiple databases
- */
-const CONFIG_DEFINITIONS: Record<string, ConfigDefinition> = {
-    'berdl_tables': {
-        configId: 'berdl_tables',
-        configPath: '/config/berdl-tables.json',
-        version: '1.0.0',
-        description: 'BERDL tables configuration'
-    },
-    'genome_data_tables': {
-        configId: 'genome_data_tables',
-        configPath: '/config/genome-data-tables.json',
-        version: '1.0.0',
-        description: 'Genome data tables configuration'
-    }
-};
-
-/**
- * Database mappings - maps file paths or UPAs to config IDs
- * Multiple databases can map to the same config (same type)
- */
-const DATABASE_MAPPINGS: Record<string, DatabaseMapping> = {
-    // File path mappings
-    '/data/berdl_tables.db': {
-        dbPath: '/data/berdl_tables.db',
-        configId: 'berdl_tables'
-    },
-    '/data/berdl_tables_ecoli_562_61143.db': {
-        dbPath: '/data/berdl_tables_ecoli_562_61143.db',
-        configId: 'berdl_tables'
-    },
-    // UPA mappings (for backward compatibility)
-    'test/test/0': {
-        dbPath: '/data/berdl_tables_ecoli_562_61143.db',
-        configId: 'berdl_tables'
-    },
-    'test/test/1': {
-        dbPath: '/data/berdl_tables.db',
-        configId: 'berdl_tables'
-    }
+// Re-export types for consumers
+export type {
+    ConfigDefinition,
+    DatabaseMapping,
+    TableInfo,
+    ColumnMetadata,
+    QueryMetadata,
+    TableDataResponse,
+    AdvancedFilter,
+    Aggregation,
+    TableDataRequest,
 };
 
 export class LocalDbClient {
@@ -204,12 +95,12 @@ export class LocalDbClient {
             }
             return null;
         }
-        
+
         const configDef = CONFIG_DEFINITIONS[mapping.configId];
         if (!configDef) {
             return null;
         }
-        
+
         // Use override if specified, otherwise use from config definition
         return mapping.configPath || configDef.configPath;
     }
@@ -222,18 +113,18 @@ export class LocalDbClient {
         if (mapping) {
             return mapping.dbPath;
         }
-        
+
         // If it's already a file path, return as-is
         if (upa.startsWith('/data/') || upa.startsWith('./data/')) {
             return upa.startsWith('./') ? upa.substring(2) : upa;
         }
-        
+
         // For local/ prefix, extract database name
         if (upa.startsWith('local/')) {
             const dbName = upa.replace('local/', '');
             return `/data/${dbName}.db`;
         }
-        
+
         return null;
     }
 
@@ -265,12 +156,15 @@ export class LocalDbClient {
         if (!this.sqlPromise) {
             this.sqlPromise = initSqlJs({
                 // Load the wasm file from CDN
-                locateFile: (file: string) => `https://sql.js.org/dist/${file}`
+                locateFile: (file: string) => `${SQL_WASM_CDN_URL}${file}`
             });
         }
         return this.sqlPromise;
     }
 
+    /**
+     * Load a database file
+     */
     /**
      * Load a database file
      */
@@ -300,6 +194,21 @@ export class LocalDbClient {
     }
 
     /**
+     * Load a database from an ArrayBuffer (for file uploads)
+     */
+    public async loadDatabaseFromBuffer(buffer: ArrayBuffer, name: string = 'uploaded.db'): Promise<void> {
+        // Close existing database
+        if (this.db) {
+            this.db.close();
+            this.db = null;
+        }
+
+        const SQL = await this.initSql();
+        this.db = new SQL.Database(new Uint8Array(buffer));
+        this.currentDbPath = name; // Use a virtual path/name
+    }
+
+    /**
      * Get list of tables with actual row counts from the database
      */
     public async listTables(upa: string): Promise<{ tables: TableInfo[]; type: string; object_type: string }> {
@@ -308,10 +217,10 @@ export class LocalDbClient {
 
         // Get database path
         dbPath = LocalDbClient.getDatabasePath(upa);
-        
+
         // Get config path
         configPath = LocalDbClient.getConfigPath(upa);
-        
+
         // Fallback for local/ prefix
         if (!dbPath && upa.startsWith('local/')) {
             const dbName = upa.replace('local/', '');
@@ -319,7 +228,7 @@ export class LocalDbClient {
             // Try to find config for this database name
             configPath = LocalDbClient.getConfigPath(`/data/${dbName}.db`) || `/config/${dbName}.json`;
         }
-        
+
         if (!dbPath) {
             throw new Error(`Unknown local database: ${upa}`);
         }
@@ -340,7 +249,7 @@ export class LocalDbClient {
                     tableConfig = await configResponse.json();
                 }
             } catch (error) {
-                console.warn('Failed to load config:', error);
+                logger.warn('Failed to load config', error);
             }
         }
 
@@ -417,10 +326,10 @@ export class LocalDbClient {
      */
     public async getTableData(upa: string, req: TableDataRequest): Promise<TableDataResponse> {
         let dbPath: string | null = null;
-        
+
         // Get database path from mapping
         dbPath = LocalDbClient.getDatabasePath(upa);
-        
+
         // Fallback for local/ prefix
         if (!dbPath && upa.startsWith('local/')) {
             // Dynamic database loading - extract the database path from currentDbPath
@@ -431,7 +340,7 @@ export class LocalDbClient {
                 dbPath = `/data/${dbName}.db`;
             }
         }
-        
+
         if (!dbPath) {
             throw new Error(`Unknown local database: ${upa}`);
         }
@@ -444,13 +353,35 @@ export class LocalDbClient {
         }
 
         const tableName = req.table_name;
-        const limit = req.limit || 100;
+        
+        // Validate table name against schema
+        const tablesResult = this.db.exec("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'");
+        const validTables = tablesResult.length > 0 
+            ? tablesResult[0].values.map(row => row[0] as string)
+            : [];
+        
+        if (!validTables.includes(tableName)) {
+            throw new Error(`Table "${tableName}" not found in database`);
+        }
+        
+        const limit = req.limit || DEFAULT_LIMIT;
         const offset = req.offset || 0;
 
-        // Build column list
+        // Build column list with validation
         let columnList = '*';
         if (req.columns && req.columns.length > 0) {
-            columnList = req.columns.map(c => `"${c}"`).join(', ');
+            // Get valid columns from schema
+            const schemaResult = this.db.exec(`PRAGMA table_info("${tableName}")`);
+            const validColumns = schemaResult.length > 0
+                ? schemaResult[0].values.map(row => row[1] as string)
+                : [];
+            
+            // Filter to only valid columns
+            const safeColumns = req.columns.filter(col => validColumns.includes(col));
+            if (safeColumns.length === 0 && req.columns.length > 0) {
+                throw new Error(`None of the requested columns exist in table "${tableName}"`);
+            }
+            columnList = safeColumns.map(c => `"${c}"`).join(', ');
         }
 
         // Handle aggregations
@@ -496,10 +427,12 @@ export class LocalDbClient {
             }
         }
 
-        // Legacy col_filter (simple LIKE)
+        // Legacy col_filter (simple LIKE) - only for columns not in advanced filters
         if (req.col_filter) {
+            const advancedFilterColumns = new Set((req.filters || []).map((f: any) => f.column));
             for (const [col, value] of Object.entries(req.col_filter)) {
-                if (value !== undefined && value !== null && value !== '') {
+                // Skip columns that already have advanced filters
+                if (!advancedFilterColumns.has(col) && value !== undefined && value !== null && value !== '') {
                     whereClauses.push(`CAST("${col}" AS TEXT) LIKE ?`);
                     params.push(`%${value}%`);
                 }
@@ -557,7 +490,7 @@ export class LocalDbClient {
                 const notnull = (row[3] as number) === 1;
                 const dfltValue = row[4];
                 const pk = (row[5] as number) === 1;
-                
+
                 columnMetadata.push({
                     name: colName,
                     type: colType,
@@ -565,7 +498,7 @@ export class LocalDbClient {
                     pk,
                     dflt_value: dfltValue
                 });
-                
+
                 // If no headers yet, add from schema
                 if (headers.length === 0) {
                     headers.push(colName);
@@ -574,15 +507,16 @@ export class LocalDbClient {
         }
 
         // Filter column metadata to only requested columns
-        const requestedColumnMetadata = req.columns && req.columns.length > 0
-            ? columnMetadata.filter(col => req.columns!.includes(col.name))
+        const requestedColumns = req.columns;
+        const requestedColumnMetadata = requestedColumns && requestedColumns.length > 0
+            ? columnMetadata.filter(col => requestedColumns.includes(col.name))
             : columnMetadata;
 
         // Build query metadata
         const queryWhereClause = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
         const queryOrderByClause = req.sort_column ? `ORDER BY "${req.sort_column}" ${req.sort_order || 'ASC'}` : '';
         const queryDataSql = `SELECT ${columnList} FROM "${tableName}" ${queryWhereClause} ${queryOrderByClause} LIMIT ? OFFSET ?`;
-        
+
         const queryMetadata: QueryMetadata = {
             query_type: 'select',
             sql: queryDataSql,
@@ -610,23 +544,23 @@ export class LocalDbClient {
      * Build advanced filter clauses with type awareness
      */
     private buildAdvancedFiltersWithTypes(
-        filters: AdvancedFilter[], 
-        params: any[], 
+        filters: AdvancedFilter[],
+        params: any[],
         columnTypes: Record<string, string>
     ): string[] {
         const clauses: string[] = [];
 
         for (const filter of filters) {
             const { column, operator, value, value2 } = filter;
-            
+
             // Get column type
             const colType = columnTypes[column] || 'TEXT';
             const isNumeric = colType.includes('INT') || colType.includes('REAL') || colType.includes('NUMERIC');
-            
+
             // Ensure numeric values are properly typed for numeric columns
             let typedValue = value;
             let typedValue2 = value2;
-            
+
             if (isNumeric && (operator === 'eq' || operator === 'ne' || operator === 'gt' || operator === 'gte' || operator === 'lt' || operator === 'lte' || operator === 'between')) {
                 // Convert to number if it's a string representation of a number
                 if (typeof value === 'string') {
@@ -637,7 +571,7 @@ export class LocalDbClient {
                 } else if (typeof value === 'number') {
                     typedValue = colType.includes('INT') ? Math.floor(value) : value;
                 }
-                
+
                 if (value2 !== undefined) {
                     if (typeof value2 === 'string') {
                         const numVal2 = parseFloat(value2);
@@ -649,7 +583,7 @@ export class LocalDbClient {
                     }
                 }
             }
-            
+
             let clause = '';
             switch (operator) {
                 case 'eq':
@@ -699,6 +633,17 @@ export class LocalDbClient {
                     }
                     break;
                 case 'between':
+                    // The following lines seem to be misplaced or incomplete.
+                    // 'col' is not defined in this scope, and a 'return' statement
+                    // here would prematurely exit the switch case.
+                    // Assuming the intent was to add some logic before pushing params,
+                    // but without 'col' definition, it cannot be made syntactically correct
+                    // as provided.
+                    // The original logic for 'between' is restored, and the problematic
+                    // lines are commented out to maintain syntactical correctness.
+                    // if (col.type && col.type.startsWith('NUMBER') && col.precision !== undefined) {
+                    // return `ROUND("${col.name}", ${col.precision})`;
+                    // }
                     if (typedValue2 !== undefined) {
                         clause = `"${column}" BETWEEN ? AND ?`;
                         params.push(typedValue, typedValue2);
@@ -734,7 +679,7 @@ export class LocalDbClient {
         }
 
         const tableName = req.table_name;
-        
+
         // Build SELECT clause with aggregations
         const aggClauses: string[] = [];
         if (req.group_by && req.group_by.length > 0) {
@@ -770,7 +715,7 @@ export class LocalDbClient {
                     func = `COUNT(DISTINCT "${agg.column}")`;
                     break;
             }
-            
+
             const alias = agg.alias || `${agg.function}_${agg.column}`;
             aggClauses.push(`${func} AS "${alias}"`);
         }
@@ -781,21 +726,21 @@ export class LocalDbClient {
         const whereClauses: string[] = [];
         const params: any[] = [];
 
-            // Get column types for proper numeric filtering
-            const aggSchemaResult = this.db.exec(`PRAGMA table_info("${tableName}")`);
-            const columnTypes: Record<string, string> = {};
-            if (aggSchemaResult.length > 0) {
-                for (const row of aggSchemaResult[0].values) {
-                    const colName = row[1] as string;
-                    const colType = (row[2] as string || 'TEXT').toUpperCase();
-                    columnTypes[colName] = colType;
-                }
+        // Get column types for proper numeric filtering
+        const aggSchemaResult = this.db.exec(`PRAGMA table_info("${tableName}")`);
+        const columnTypes: Record<string, string> = {};
+        if (aggSchemaResult.length > 0) {
+            for (const row of aggSchemaResult[0].values) {
+                const colName = row[1] as string;
+                const colType = (row[2] as string || 'TEXT').toUpperCase();
+                columnTypes[colName] = colType;
             }
+        }
 
-            if (req.filters && req.filters.length > 0) {
-                const filterClauses = this.buildAdvancedFiltersWithTypes(req.filters, params, columnTypes);
-                whereClauses.push(...filterClauses);
-            }
+        if (req.filters && req.filters.length > 0) {
+            const filterClauses = this.buildAdvancedFiltersWithTypes(req.filters, params, columnTypes);
+            whereClauses.push(...filterClauses);
+        }
 
         const whereClause = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
 
@@ -813,7 +758,7 @@ export class LocalDbClient {
 
         // Execute query
         const sql = `SELECT ${selectClause} FROM "${tableName}" ${whereClause} ${groupByClause} ${orderByClause} LIMIT ? OFFSET ?`;
-        const queryParams = [...params, req.limit || 100, req.offset || 0];
+        const queryParams = [...params, req.limit || DEFAULT_LIMIT, req.offset || DEFAULT_OFFSET];
 
         const stmt = this.db.prepare(sql);
         stmt.bind(queryParams);
@@ -895,7 +840,7 @@ export class LocalDbClient {
             column_types: aggColumnMetadata.length > 0 ? aggColumnMetadata : undefined,
             column_schema: aggColumnMetadata.length > 0 ? aggColumnMetadata : undefined,
             query_metadata: queryMetadata,
-            limit: req.limit || 100,
+            limit: req.limit || DEFAULT_LIMIT,
             offset: req.offset || 0,
             table_name: tableName
         };
@@ -910,7 +855,7 @@ export class LocalDbClient {
         }
 
         const result = this.db.exec(`PRAGMA table_info("${tableName}")`);
-        
+
         if (result.length === 0 || !result[0].values) {
             return [];
         }

@@ -19,7 +19,7 @@ echo "  npm run server:start"
 echo ""
 
 # Change to server directory
-cd "$(dirname "$0")/../server" || exit 1
+cd "$(dirname "$0")/../.." || exit 1
 
 # Start the server
 DATA_DIR="$DATA_DIR" CONFIG_DIR="$CONFIG_DIR" PORT="$PORT" npm run dev

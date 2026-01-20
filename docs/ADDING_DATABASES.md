@@ -38,7 +38,7 @@ The viewer will:
 
 For client-side access without a server:
 
-1. **Define config (if not exists) in `src/core/api/LocalDbClient.ts`:**
+1. **Define config (if not exists) in `src/core/config/LocalDatabaseMappings.ts`:**
    ```typescript
    const CONFIG_DEFINITIONS: Record<string, ConfigDefinition> = {
        // ... existing configs ...
@@ -100,12 +100,12 @@ For server-side querying with caching and optimizations:
 
 There are two mapping systems:
 
-1. **LOCAL_DB_MAP** - Maps UPAs to database files (client-side)
+1. **DATABASE_MAPPINGS** - Maps file paths and/or UPAs to config IDs (client-side)
 2. **index.json** - Maps data types to configs (both client and server)
 
 ### Mapping in CONFIG_DEFINITIONS and DATABASE_MAPPINGS
 
-**Location:** `src/core/api/LocalDbClient.ts`
+**Location:** `src/core/config/LocalDatabaseMappings.ts`
 
 **Structure:**
 ```typescript
@@ -232,7 +232,7 @@ cat public/config/my-new-database-config/v1.0.0/my-new-database-config.json
 
 ### Step 4: Add Config Definition and Database Mapping
 
-Edit `src/core/api/LocalDbClient.ts`:
+Edit `src/core/config/LocalDatabaseMappings.ts`:
 
 ```typescript
 // Add to CONFIG_DEFINITIONS
@@ -454,7 +454,7 @@ npm run generate-config public/data/genomes.db genomes-config
 ### Example 2: Client-Side Mapping
 
 ```typescript
-// In LocalDbClient.ts
+// In LocalDatabaseMappings.ts
 
 // Step 1: Define config
 const CONFIG_DEFINITIONS: Record<string, ConfigDefinition> = {

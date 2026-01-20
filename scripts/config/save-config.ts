@@ -18,11 +18,11 @@ import { createRequire } from 'module';
 // Use createRequire to load from root node_modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const require = createRequire(join(__dirname, '..'));
+const require = createRequire(import.meta.url);
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
 
-const ROOT_DIR = join(__dirname, '..');
+const ROOT_DIR = join(__dirname, '../..');
 const CONFIG_DIR = join(ROOT_DIR, 'public', 'config');
 const INDEX_FILE = join(CONFIG_DIR, 'index.json');
 const SCHEMA_FILE = join(CONFIG_DIR, 'schemas', 'config.schema.json');
@@ -45,11 +45,12 @@ function loadValidator(): Ajv.ValidateFunction {
     const dataTypeConfigSchema = {
         ...schema.definitions.DataTypeConfig,
         $schema: schema.$schema,
+        definitions: schema.definitions,
     };
-    
+
     const ajv = new Ajv({ allErrors: true, strict: false });
     addFormats(ajv);
-    
+
     return ajv.compile(dataTypeConfigSchema);
 }
 
@@ -58,16 +59,16 @@ function loadValidator(): Ajv.ValidateFunction {
  */
 function validateConfig(config: any, validator: Ajv.ValidateFunction): { valid: boolean; errors: string[] } {
     const valid = validator(config);
-    
+
     if (valid) {
         return { valid: true, errors: [] };
     }
-    
+
     const errors = (validator.errors || []).map(err => {
         const path = err.instancePath || '/';
         return `${path}: ${err.message}`;
     });
-    
+
     return { valid: false, errors };
 }
 
@@ -82,7 +83,7 @@ function generateFilename(objectType: string): string {
         .replace(/[^a-z0-9-]/g, '-')
         .replace(/-+/g, '-')
         .replace(/^-|-$/g, '');
-    
+
     return `${cleanName}.json`;
 }
 
@@ -92,13 +93,13 @@ function generateFilename(objectType: string): string {
 function updateIndexJson(configId: string, filename: string, objectType: string, matches?: string[]): void {
     const indexPath = INDEX_FILE;
     const index = JSON.parse(readFileSync(indexPath, 'utf-8'));
-    
+
     // Generate matches if not provided
     const configMatches = matches || [
         objectType,
         objectType.replace(/-\d+\.\d+$/, '-*'), // Match version wildcard
     ];
-    
+
     // Add or update dataType entry
     index.dataTypes[configId] = {
         configUrl: `/config/${filename}`,
@@ -106,7 +107,7 @@ function updateIndexJson(configId: string, filename: string, objectType: string,
         priority: 10,
         autoLoad: true,
     };
-    
+
     // Write back
     writeFileSync(indexPath, JSON.stringify(index, null, 4) + '\n', 'utf-8');
 }
@@ -118,7 +119,7 @@ function main() {
     try {
         // Read config from stdin or file
         let configData: ConfigRequest;
-        
+
         if (process.argv[2]) {
             // Read from file
             const filePath = process.argv[2];
@@ -145,7 +146,7 @@ function main() {
             });
             return; // Wait for stdin
         }
-        
+
         processConfig(configData);
     } catch (error: any) {
         console.error(`Error: ${error.message}`);
@@ -159,16 +160,16 @@ function processConfig(configData: ConfigRequest) {
         console.error('Error: Missing required field: object_type');
         process.exit(1);
     }
-    
+
     if (!configData.config) {
         console.error('Error: Missing required field: config');
         process.exit(1);
     }
-    
+
     // Validate config against schema
     const validator = loadValidator();
     const validation = validateConfig(configData.config, validator);
-    
+
     if (!validation.valid) {
         console.error('Validation failed:');
         validation.errors.forEach(err => {
@@ -176,32 +177,32 @@ function processConfig(configData: ConfigRequest) {
         });
         process.exit(1);
     }
-    
+
     // Generate filename
     const filename = generateFilename(configData.object_type);
     const configId = configData.config.id || filename.replace('.json', '');
     const filePath = join(CONFIG_DIR, filename);
-    
+
     // Ensure config directory exists
     if (!existsSync(CONFIG_DIR)) {
         mkdirSync(CONFIG_DIR, { recursive: true });
     }
-    
+
     // Write config file
     writeFileSync(filePath, JSON.stringify(configData.config, null, 2) + '\n', 'utf-8');
     console.log(`Config saved to: ${filePath}`);
-    
+
     // Update index.json
     updateIndexJson(configId, filename, configData.object_type);
     console.log(`Updated index.json with entry: ${configId}`);
-    
+
     console.log('Success: Config saved and index.json updated');
 }
 
 // Run if called directly
-const isMainModule = import.meta.url === `file://${process.argv[1]}` || 
-                     process.argv[1]?.endsWith('save-config.ts') ||
-                     process.argv[1]?.endsWith('save-config.js');
+const isMainModule = import.meta.url === `file://${process.argv[1]}` ||
+    process.argv[1]?.endsWith('save-config.ts') ||
+    process.argv[1]?.endsWith('save-config.js');
 
 if (isMainModule) {
     main();

@@ -7,6 +7,8 @@
  * @version 3.1.0
  */
 
+import { logger } from '../../utils/logger';
+
 // Core classes and singletons
 export { DataTypeRegistry, getRegistry } from './DataTypeRegistry';
 export {
@@ -68,14 +70,12 @@ export async function initializeConfigSystem(options?: {
             const appConfig = await response.json();
             await registry.initialize(appConfig);
         } catch (error) {
-            console.error('[Config] Failed to load app config:', error);
+            logger.error('[Config] Failed to load app config', error);
         }
     }
 
-    // Initialize remote if requested
-    if (options?.enableRemote !== false) {
-        registry.initializeRemoteConfig(options?.remoteSettings);
-    }
+    // Remote config is not supported - TableScanner doesn't provide config API
+    // Configs are resolved via static pattern matching from index.json
 
     return registry;
 }

@@ -2,24 +2,25 @@
  * Category Manager
  * 
  * Manages column visibility based on category groupings.
+ * Stateless implementation - relies on external state for visibility source of truth.
  */
 
-import type { TableConfig, CategoryConfig } from '../../utils/config-manager';
+import type { TableConfig, CategoryConfig } from '../config/ConfigManager';
 
 interface CategoryState extends CategoryConfig {
-    visible: boolean;
+    visible: boolean; // Computed visibility based on current columns
 }
 
 export class CategoryManager {
-    private categories: Map<string, CategoryState>;
+    private categories: Map<string, CategoryConfig>;
     private columnsByCategory: Map<string, Set<string>>;
-    private visibleCategories: Set<string>;
+    private initialVisibleCategories: Set<string>;
     private uncategorizedColumns: Set<string>;
 
     constructor(config: TableConfig) {
         this.categories = new Map();
         this.columnsByCategory = new Map();
-        this.visibleCategories = new Set();
+        this.initialVisibleCategories = new Set();
         this.uncategorizedColumns = new Set();
 
         this.initialize(config);
@@ -29,13 +30,10 @@ export class CategoryManager {
         const categories = config.categories || [];
         // Initial setup from config
         categories.forEach(cat => {
-            this.categories.set(cat.id, {
-                ...cat,
-                visible: cat.defaultVisible !== false
-            });
+            this.categories.set(cat.id, cat);
             this.columnsByCategory.set(cat.id, new Set());
             if (cat.defaultVisible !== false) {
-                this.visibleCategories.add(cat.id);
+                this.initialVisibleCategories.add(cat.id);
             }
         });
 
@@ -69,29 +67,78 @@ export class CategoryManager {
         });
     }
 
-    public getVisibleColumns(): Set<string> {
+    /**
+     * Returns the set of columns that should be visible by default
+     * based on category configuration. Used for initial state only.
+     */
+    public getInitialVisibleColumns(): Set<string> {
         const visibleCols = new Set<string>();
 
         // 1. Add categories
-        this.visibleCategories.forEach(catId => {
+        this.initialVisibleCategories.forEach(catId => {
             const cols = this.columnsByCategory.get(catId);
             if (cols) {
                 cols.forEach(c => visibleCols.add(c));
             }
         });
 
-        // 2. Add uncategorized (Always visible)
+        // 2. Add uncategorized (Always visible defaults)
         this.uncategorizedColumns.forEach(c => visibleCols.add(c));
 
         return visibleCols;
     }
 
-    public getAllCategories(): (CategoryState & { columnCount: number })[] {
-        return Array.from(this.categories.values()).map(cat => ({
-            ...cat,
-            visible: this.visibleCategories.has(cat.id),
-            columnCount: this.columnsByCategory.get(cat.id)?.size || 0
-        }));
+    public getColumnsForCategory(catId: string): Set<string> {
+        return this.columnsByCategory.get(catId) || new Set();
+    }
+
+    /**
+     * Calculates the new visibility state when a category is toggled.
+     * If all columns in category are visible -> Hide all
+     * If any column is hidden -> Show all
+     */
+    public calculateVisibilityChange(catId: string, currentVisibleColumns: Set<string>): Set<string> {
+        const catCols = this.columnsByCategory.get(catId);
+        if (!catCols || catCols.size === 0) return new Set(currentVisibleColumns);
+
+        const newVisible = new Set(currentVisibleColumns);
+        const colArray = Array.from(catCols);
+
+        // Check if all columns in this category are currently visible
+        const allVisible = colArray.every(col => currentVisibleColumns.has(col));
+
+        if (allVisible) {
+            // Hide all
+            colArray.forEach(col => newVisible.delete(col));
+        } else {
+            // Show all
+            colArray.forEach(col => newVisible.add(col));
+        }
+
+        return newVisible;
+    }
+
+    /**
+     * Returns category metadata with computed visibility status based on provided column state.
+     */
+    public getAllCategories(currentVisibleColumns: Set<string>): (CategoryState & { columnCount: number })[] {
+        return Array.from(this.categories.values()).map(cat => {
+            const catCols = this.columnsByCategory.get(cat.id);
+            const colCount = catCols?.size || 0;
+
+            // A category is considered "visible" (checked) if ALL its columns are visible
+            // Partial visibility could be supported (indeterminate state), but for now:
+            // All visible = checked
+            // Any hidden = unchecked (allows "Show All" behavior on click)
+            const isVisible = colCount > 0 &&
+                Array.from(catCols || []).every(c => currentVisibleColumns.has(c));
+
+            return {
+                ...cat,
+                visible: isVisible,
+                columnCount: colCount
+            };
+        });
     }
 
     public getColumnsByCategory(): Map<string, string[]> {
@@ -104,20 +151,5 @@ export class CategoryManager {
 
     public getUncategorizedColumns(): string[] {
         return Array.from(this.uncategorizedColumns);
-    }
-
-    public toggleCategory(catId: string): void {
-        const isVisible = this.visibleCategories.has(catId);
-        if (isVisible) {
-            this.visibleCategories.delete(catId);
-        } else {
-            this.visibleCategories.add(catId);
-        }
-    }
-
-    public showAllCategories(): void {
-        this.categories.forEach((_, catId) => {
-            this.visibleCategories.add(catId);
-        });
     }
 }

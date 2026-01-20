@@ -9,6 +9,7 @@
 
 import { EventBus, eventBus } from '../state/EventBus';
 import type { StateManager, AppState } from '../state/StateManager';
+import { logger } from '../../utils/logger';
 
 // =============================================================================
 // PLUGIN INTERFACES
@@ -265,7 +266,7 @@ export class PluginManager {
      */
     public register(plugin: Plugin): void {
         if (this.plugins.has(plugin.id)) {
-            console.warn(`Plugin ${plugin.id} is already registered`);
+            logger.warn(`Plugin ${plugin.id} is already registered`);
             return;
         }
 
@@ -273,7 +274,7 @@ export class PluginManager {
         if (plugin.dependencies) {
             for (const dep of plugin.dependencies) {
                 if (!this.plugins.has(dep)) {
-                    console.error(`Plugin ${plugin.id} requires ${dep} which is not registered`);
+                    logger.error(`Plugin ${plugin.id} requires ${dep} which is not registered`);
                     return;
                 }
             }
@@ -313,7 +314,7 @@ export class PluginManager {
     public async enable(pluginId: string): Promise<boolean> {
         const registered = this.plugins.get(pluginId);
         if (!registered) {
-            console.error(`Plugin ${pluginId} not found`);
+            logger.error(`Plugin ${pluginId} not found`);
             return false;
         }
 
@@ -331,7 +332,7 @@ export class PluginManager {
             eventBus.emit('plugin:activated', { name: pluginId });
             return true;
         } catch (error) {
-            console.error(`Failed to initialize plugin ${pluginId}:`, error);
+            logger.error(`Failed to initialize plugin ${pluginId}`, error);
             return false;
         }
     }
@@ -423,9 +424,9 @@ export class PluginManager {
         for (const [, registered] of this.plugins) {
             if (registered.enabled && registered.plugin[hookName]) {
                 try {
-                    (registered.plugin[hookName] as Function)(...args);
+                    (registered.plugin[hookName] as (...args: unknown[]) => void)(...args);
                 } catch (error) {
-                    console.error(`Error in plugin hook ${hookName}:`, error);
+                    logger.error(`Error in plugin hook ${hookName}`, error);
                 }
             }
         }
@@ -436,10 +437,17 @@ export class PluginManager {
     // =========================================================================
 
     private createPluginAPI(pluginId: string): PluginAPI {
-        const registered = this.plugins.get(pluginId)!;
+        const registered = this.plugins.get(pluginId);
+        if (!registered) {
+            throw new Error(`Plugin ${pluginId} not found when creating API`);
+        }
+
+        if (!this.stateManager) {
+            throw new Error('StateManager not initialized in PluginManager');
+        }
 
         return {
-            stateManager: this.stateManager!,
+            stateManager: this.stateManager,
             events: eventBus,
 
             getSettings: () => ({ ...registered.settings }),
@@ -496,7 +504,7 @@ export class PluginManager {
         try {
             localStorage.setItem(`plugin:${pluginId}`, JSON.stringify(settings));
         } catch (error) {
-            console.error(`Failed to save settings for plugin ${pluginId}:`, error);
+            logger.error(`Failed to save settings for plugin ${pluginId}`, error);
         }
     }
 }

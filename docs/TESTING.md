@@ -60,19 +60,24 @@ This will:
 
 For client-side testing (no server needed):
 
-1. **Add to LOCAL_DB_MAP** in `src/core/api/LocalDbClient.ts`:
+1. **Add a mapping in** `src/core/config/LocalDatabaseMappings.ts`:
    ```typescript
-   const LOCAL_DB_MAP: Record<string, LocalDbConfig> = {
-       'test/test/0': {
-           upa: 'test/test/0',
-           dbPath: '/data/berdl_tables_ecoli_562_61143.db',
-           configPath: '/config/berdl-tables.json'
-       },
-       'your/test/1': {  // Add your mapping
-           upa: 'your/test/1',
-           dbPath: '/data/your-database.db',
-           configPath: '/config/your-config.json'
-       }
+   export const CONFIG_DEFINITIONS = {
+     // ... existing configs ...
+     your_config: {
+       configId: 'your_config',
+       configPath: '/config/your-config.json',
+       version: '1.0.0',
+       description: 'Your database configuration',
+     },
+   };
+
+   export const DATABASE_MAPPINGS = {
+     // ... existing mappings ...
+     'your/test/1': {
+       dbPath: '/data/your-database.db',
+       configId: 'your_config',
+     },
    };
    ```
 

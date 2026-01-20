@@ -46,7 +46,7 @@
             "description": "DNA, RNA, and protein sequences",
             "icon": "bi-text-left",
             "color": "#f59e0b",
-            "defaultVisible": false,
+            "defaultVisible": true,
             "order": 4
         },
         {

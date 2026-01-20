@@ -9,15 +9,16 @@
  * @version 3.1.0
  */
 
-import { DataTypeRegistry } from '../core/config/DataTypeRegistry';
-import { getConfigResolver } from '../core/config/ConfigResolver';
+import { DataTypeRegistry } from './DataTypeRegistry';
+import { getConfigResolver } from './ConfigResolver';
+import { logger } from '../../utils/logger';
 import type {
     AppConfig,
     DataTypeConfig,
     TableSchema,
     ResolvedTableConfig
-} from '../types/schema';
-import type { ResolveOptions, ResolveResult } from '../types/config-api';
+} from '../../types/schema';
+import type { ResolveOptions, ResolveResult } from '../../types/config-api';
 
 // =============================================================================
 // LEGACY INTERFACES (for backward compatibility)
@@ -182,7 +183,7 @@ export class ConfigManager {
             return true;
         }
 
-        console.warn(`Data type "${dataTypeId}" not found in registry`);
+        logger.warn(`Data type "${dataTypeId}" not found in registry`);
         return false;
     }
 
@@ -418,20 +419,12 @@ export class ConfigManager {
     }
 
     // =========================================================================
-    // REMOTE CONFIG (Config Control Plane Integration)
+    // CONFIG RESOLUTION (Static Pattern Matching)
     // =========================================================================
 
     /**
-     * Initialize remote config support.
-     * Enables fetching configs from TableScanner Config Control Plane.
-     */
-    public initializeRemoteConfig(): void {
-        this.registry.initializeRemoteConfig();
-    }
-
-    /**
      * Resolve and load config for a source reference.
-     * Uses the cascading resolver (remote → static → generated → default).
+     * Uses pattern matching from index.json to find the appropriate config.
      * 
      * @param sourceRef - Object reference (e.g., "76990/7/2")
      * @param options - Resolution options
@@ -442,10 +435,7 @@ export class ConfigManager {
         options?: ResolveOptions
     ): Promise<ResolveResult> {
         const resolver = getConfigResolver();
-        const result = await resolver.resolve(sourceRef, {
-            ...options,
-            preferRemote: this.registry.isRemoteConfigEnabled(),
-        });
+        const result = await resolver.resolve(sourceRef, options);
 
         // Auto-register and set as current
         if (result.config) {
@@ -460,15 +450,17 @@ export class ConfigManager {
 
     /**
      * Check if remote config is enabled.
+     * @deprecated Remote config is not supported - always returns false
      */
     public isRemoteEnabled(): boolean {
-        return this.registry.isRemoteConfigEnabled();
+        return false;
     }
 
     /**
      * Set auth token for remote config requests.
+     * @deprecated Remote config is not supported - no-op
      */
-    public setAuthToken(token: string): void {
-        this.registry.setAuthToken(token);
+    public setAuthToken(_token: string): void {
+        // No-op - remote config not available
     }
 }

@@ -6,6 +6,16 @@
 
 import type { ApiConfig } from '../../types/schema';
 import { LocalDbClient } from './LocalDbClient';
+import {
+    type AdvancedFilter,
+    type Aggregation,
+    type ApiTableDataRequest,
+    type ColumnMetadata,
+    type QueryMetadata,
+    type TableDataResponse,
+    DEFAULT_LIMIT,
+    DEFAULT_OFFSET,
+} from '../../types/shared-types';
 
 interface ClientOptions {
     apiConfig?: ApiConfig;
@@ -20,73 +30,17 @@ interface CacheEntry<T> {
     timestamp: number;
 }
 
-interface AdvancedFilter {
-    column: string;
-    operator: 'eq' | 'ne' | 'gt' | 'gte' | 'lt' | 'lte' | 'like' | 'ilike' | 'in' | 'not_in' | 'between' | 'is_null' | 'is_not_null' | 'regex';
-    value: any;
-    value2?: any;
-}
+// Re-export types that external code may need
+export type {
+    AdvancedFilter,
+    Aggregation,
+    ColumnMetadata,
+    QueryMetadata,
+    TableDataResponse,
+};
 
-interface Aggregation {
-    column: string;
-    function: 'count' | 'sum' | 'avg' | 'min' | 'max' | 'stddev' | 'variance' | 'distinct_count';
-    alias?: string;
-}
-
-interface TableDataRequest {
-    berdl_table_id: string;
-    table_name: string;
-    limit?: number;
-    offset?: number;
-    columns?: string[];
-    sort_column?: string | null;
-    sort_order?: 'ASC' | 'DESC';
-    search_value?: string;
-    col_filter?: Record<string, any>;
-    filters?: AdvancedFilter[];
-    group_by?: string[];
-    aggregations?: Aggregation[];
-    query_filters?: any;
-    kb_env?: string;
-}
-
-interface ColumnMetadata {
-    name: string;
-    type: string;
-    notnull: boolean;
-    pk: boolean;
-    dflt_value: any;
-}
-
-interface QueryMetadata {
-    query_type: 'select' | 'aggregate' | 'join';
-    sql: string;
-    filters_applied: number;
-    has_search: boolean;
-    has_sort: boolean;
-    has_group_by: boolean;
-    has_aggregations: boolean;
-}
-
-interface TableDataResponse {
-    headers: string[];
-    data: any[][];
-    total_count: number;
-    // Column metadata
-    column_types?: ColumnMetadata[];
-    column_schema?: ColumnMetadata[];
-    // Query metadata
-    query_metadata?: QueryMetadata;
-    // Performance
-    cached?: boolean;
-    execution_time_ms?: number;
-    // Pagination
-    limit?: number;
-    offset?: number;
-    // Additional info
-    table_name?: string;
-    database_path?: string;
-}
+// Use ApiTableDataRequest for API calls
+type TableDataRequest = ApiTableDataRequest;
 
 export class ApiClient {
     private baseUrl: string;
@@ -117,9 +71,9 @@ export class ApiClient {
     private getDefaultUrl(env: string): string {
         // Check for environment variable first (for static deployment)
         // Vite exposes env vars prefixed with VITE_
-        const envApiUrl = (import.meta.env?.VITE_API_URL as string) || 
-                         (typeof window !== 'undefined' && (window as any).__API_URL__);
-        
+        const envApiUrl = (import.meta.env?.VITE_API_URL as string) ||
+            (typeof window !== 'undefined' && (window as any).__API_URL__);
+
         if (envApiUrl) {
             return envApiUrl;
         }
@@ -244,7 +198,7 @@ export class ApiClient {
         if (LocalDbClient.isLocalDb(berdlTableId)) {
             // Check if we have a remote TableScanner API configured
             const hasRemoteApi = this.baseUrl && !this.baseUrl.includes('localhost') && !this.baseUrl.includes('127.0.0.1');
-            
+
             if (hasRemoteApi && berdlTableId.startsWith('local/')) {
                 // Use remote TableScanner service (separate deployment)
                 try {
@@ -261,7 +215,7 @@ export class ApiClient {
                     return this.localDb.listTables(berdlTableId);
                 }
             }
-            
+
             // Use LocalDbClient for client-side SQLite (no server needed)
             return this.localDb.listTables(berdlTableId);
         }
@@ -276,7 +230,7 @@ export class ApiClient {
         if (LocalDbClient.isLocalDb(req.berdl_table_id)) {
             // Check if we have a remote TableScanner API configured
             const hasRemoteApi = this.baseUrl && !this.baseUrl.includes('localhost') && !this.baseUrl.includes('127.0.0.1');
-            
+
             if (hasRemoteApi && req.berdl_table_id.startsWith('local/')) {
                 // Use remote TableScanner service (separate deployment)
                 try {
@@ -284,8 +238,8 @@ export class ApiClient {
                     const body = {
                         ...req,
                         berdl_table_id: `local/${dbName}`,
-                        limit: req.limit || 100,
-                        offset: req.offset || 0,
+                        limit: req.limit || DEFAULT_LIMIT,
+                        offset: req.offset || DEFAULT_OFFSET,
                     };
                     return this.request(
                         `${this.baseUrl}/table-data`,
@@ -299,7 +253,7 @@ export class ApiClient {
                     return this.localDb.getTableData(req.berdl_table_id, req);
                 }
             }
-            
+
             // Use LocalDbClient for client-side SQLite (no server needed)
             return this.localDb.getTableData(req.berdl_table_id, req);
         }
@@ -307,12 +261,26 @@ export class ApiClient {
         // Use remote TableScanner service for non-local databases
         const body = {
             ...req,
-            limit: req.limit || 100,
-            offset: req.offset || 0,
+            limit: req.limit || DEFAULT_LIMIT,
+            offset: req.offset || DEFAULT_OFFSET,
             kb_env: this.environment
         };
 
         return this.request('/table-data', 'POST', body, false);
+    }
+
+    /**
+     * Get schema information for all tables in a database.
+     * Used for schema-based config matching.
+     */
+    public async getSchema(berdlTableId: string): Promise<Record<string, Record<string, string>> | null> {
+        try {
+            // Try schema endpoint
+            return await this.request(`/schema/${berdlTableId}/tables`, 'GET', undefined, true);
+        } catch {
+            // Schema endpoint not available, return null
+            return null;
+        }
     }
 }
 

@@ -33,7 +33,7 @@ Multiple Databases → Same Config
 
 ### Location
 
-`src/core/api/LocalDbClient.ts`
+`src/core/config/LocalDatabaseMappings.ts`
 
 ### Purpose
 
@@ -75,7 +75,7 @@ const CONFIG_DEFINITIONS: Record<string, ConfigDefinition> = {
 
 ### Location
 
-`src/core/api/LocalDbClient.ts`
+`src/core/config/LocalDatabaseMappings.ts`
 
 ### Purpose
 
@@ -180,7 +180,7 @@ const DATABASE_MAPPINGS: Record<string, DatabaseMapping> = {
 
 ### Step 1: Define Config
 
-Edit `src/core/api/LocalDbClient.ts`:
+Edit `src/core/config/LocalDatabaseMappings.ts`:
 
 ```typescript
 const CONFIG_DEFINITIONS: Record<string, ConfigDefinition> = {
@@ -401,7 +401,7 @@ const CONFIG_DEFINITIONS = {
 ### Old System (UPA → Config)
 
 ```typescript
-// OLD
+// OLD (deprecated/removed)
 const LOCAL_DB_MAP = {
     'test/test/1': {
         upa: 'test/test/1',

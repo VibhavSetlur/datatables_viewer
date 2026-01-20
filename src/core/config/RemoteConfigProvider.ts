@@ -15,6 +15,7 @@ import type {
     TableListWithConfig,
     ConfigCacheEntry,
 } from '../../types/config-api';
+import { logger } from '../../utils/logger';
 
 // =============================================================================
 // DEFAULT SETTINGS
@@ -111,7 +112,7 @@ export class RemoteConfigProvider {
         } = {}
     ): Promise<{ config: DataTypeConfig; source: string } | null> {
         if (!this.settings.enabled) {
-            console.debug('[RemoteConfigProvider] Provider disabled');
+            logger.debug('[RemoteConfigProvider] Provider disabled');
             return null;
         }
 
@@ -121,7 +122,7 @@ export class RemoteConfigProvider {
         if (!options.forceRefresh && this.settings.cacheEnabled) {
             const cached = this.getFromCache(cacheKey);
             if (cached) {
-                console.debug(`[RemoteConfigProvider] Cache hit for ${sourceRef}`);
+                logger.debug(`[RemoteConfigProvider] Cache hit for ${sourceRef}`);
                 return { config: cached.config, source: `cached:${cached.source}` };
             }
         }
@@ -161,15 +162,15 @@ export class RemoteConfigProvider {
                     });
                 }
 
-                console.log(
+                logger.info(
                     `[RemoteConfigProvider] Resolved config for ${sourceRef} from ${response.source}`
                 );
                 return { config: response.config, source: response.source };
             }
         } catch (error) {
             this.pendingRequests.delete(`resolve:${cacheKey}`);
-            console.warn(
-                `[RemoteConfigProvider] Failed to resolve config for ${sourceRef}:`,
+            logger.warn(
+                `[RemoteConfigProvider] Failed to resolve config for ${sourceRef}`,
                 error
             );
         }
@@ -195,8 +196,8 @@ export class RemoteConfigProvider {
                 `/object/${encodeURIComponent(sourceRef)}/tables`
             );
         } catch (error) {
-            console.warn(
-                `[RemoteConfigProvider] Failed to get table list for ${sourceRef}:`,
+            logger.warn(
+                `[RemoteConfigProvider] Failed to get table list for ${sourceRef}`,
                 error
             );
             return null;
@@ -230,14 +231,14 @@ export class RemoteConfigProvider {
             );
 
             if (response && response.config) {
-                console.log(
+                logger.info(
                     `[RemoteConfigProvider] Generated config for ${sourceRef}: ${response.status}`
                 );
                 return response;
             }
         } catch (error) {
-            console.warn(
-                `[RemoteConfigProvider] Failed to generate config for ${sourceRef}:`,
+            logger.warn(
+                `[RemoteConfigProvider] Failed to generate config for ${sourceRef}`,
                 error
             );
         }
@@ -259,8 +260,8 @@ export class RemoteConfigProvider {
             );
             return response?.config ?? null;
         } catch (error) {
-            console.warn(
-                `[RemoteConfigProvider] Failed to get config ${configId}:`,
+            logger.warn(
+                `[RemoteConfigProvider] Failed to get config ${configId}`,
                 error
             );
             return null;
@@ -283,8 +284,8 @@ export class RemoteConfigProvider {
             );
             return response ?? null;
         } catch (error) {
-            console.warn(
-                `[RemoteConfigProvider] Failed to get config by fingerprint ${fingerprint}:`,
+            logger.warn(
+                `[RemoteConfigProvider] Failed to get config by fingerprint ${fingerprint}`,
                 error
             );
             return null;
@@ -308,7 +309,7 @@ export class RemoteConfigProvider {
      */
     public clearCache(): void {
         this.cache.clear();
-        console.debug('[RemoteConfigProvider] Cache cleared');
+        logger.debug('[RemoteConfigProvider] Cache cleared');
     }
 
     /**

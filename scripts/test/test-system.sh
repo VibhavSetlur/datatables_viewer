@@ -25,7 +25,7 @@ echo ""
 
 # Test 2: Validate test config
 echo "Test 2: Validating test config..."
-if npm run validate-config scripts/test-config.json > /dev/null 2>&1; then
+if npm run validate-config scripts/test/test-config.json > /dev/null 2>&1; then
     echo -e "${GREEN}✓${NC} Test config is valid"
 else
     echo -e "${RED}✗${NC} Test config validation failed"
@@ -35,7 +35,7 @@ echo ""
 
 # Test 3: Save config (dry run - check if script exists and is executable)
 echo "Test 3: Checking save-config script..."
-if [ -f "scripts/save-config.ts" ]; then
+if [ -f "scripts/config/save-config.ts" ]; then
     echo -e "${GREEN}✓${NC} save-config.ts exists"
 else
     echo -e "${RED}✗${NC} save-config.ts not found"

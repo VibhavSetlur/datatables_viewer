@@ -1,5 +1,5 @@
 import { Component, type ComponentOptions } from '../Component';
-import { ConfigManager } from '../../utils/config-manager';
+import { ConfigManager } from '../../core/config/ConfigManager';
 import { StateManager, type AppState } from '../../core/state/StateManager';
 import { CategoryManager } from '../../core/managers/CategoryManager';
 
@@ -13,6 +13,7 @@ export interface SidebarOptions extends ComponentOptions {
     onReset: () => void;
     onShowSchema: (tableName: string) => void;
     onShowStats: (tableName: string) => void;
+    onLoadDbPath?: (dbPath: string) => void;
 }
 
 export class Sidebar extends Component {
@@ -63,7 +64,7 @@ export class Sidebar extends Component {
 
             // Update filter chips if they changed
             this.renderFilterChips();
-            
+
             // Update aggregations display
             this.updateAggregationsDisplay(state);
         });
@@ -81,7 +82,7 @@ export class Sidebar extends Component {
 
         if (hasAggregations || hasGroupBy) {
             this.dom.aggregationsSection.style.display = 'block';
-            const aggText = state.aggregations?.map(agg => 
+            const aggText = state.aggregations?.map(agg =>
                 `${agg.function.toUpperCase()}(${agg.column})`
             ).join(', ') || 'None';
             const groupText = state.groupBy?.join(', ') || 'None';
@@ -145,8 +146,21 @@ export class Sidebar extends Component {
                             <input type="text" class="ts-input" id="ts-berdl" 
                                 placeholder="e.g., 76990/7/2" value="76990/7/2">
                         </div>
-                        <button class="ts-btn-primary" id="ts-load" style="height: 34px;">
+                        <button class="ts-btn-primary" id="ts-load" style="height: 34px; width: 100%;">
                             <i class="bi bi-lightning-charge-fill"></i> Load Data
+                        </button>
+                        <div style="margin-top: 12px; display: flex; align-items: center; gap: 8px;">
+                            <div style="height: 1px; background: var(--c-border-subtle); flex: 1;"></div>
+                            <span style="font-size: 11px; color: var(--c-text-muted); text-transform: uppercase;">OR</span>
+                            <div style="height: 1px; background: var(--c-border-subtle); flex: 1;"></div>
+                        </div>
+                        <div class="ts-field" style="margin-top: 12px;">
+                            <label class="ts-label">Local DB path / URL</label>
+                            <input type="text" class="ts-input" id="ts-local-db-path"
+                                placeholder="e.g. /data/my.db">
+                        </div>
+                        <button class="ts-btn-secondary" id="ts-load-local-db" style="height: 34px; width: 100%; margin-top: 8px;">
+                            <i class="bi bi-folder2-open"></i> Load Local DB
                         </button>
                         <div id="ts-loading-indicator" style="display:none;margin-top:12px;padding:12px;background:var(--c-bg-surface);border-radius:var(--radius-sm);border:1px solid var(--c-border-subtle)">
                             <div style="display:flex;align-items:center;gap:10px;color:var(--c-text-secondary);font-size:13px">
@@ -249,7 +263,9 @@ export class Sidebar extends Component {
             aggregationsBtn: '#ts-aggregations-btn',
             aggregationsInfo: '#ts-aggregations-info',
             export: '#ts-export',
-            reset: '#ts-reset'
+            reset: '#ts-reset',
+            localDbPath: '#ts-local-db-path',
+            loadLocalDb: '#ts-load-local-db'
         });
     }
 
@@ -276,6 +292,26 @@ export class Sidebar extends Component {
             if (e.key === 'Enter') this.dom.loadBtn.click();
         });
 
+        // Local DB path load
+        const loadLocalDb = () => {
+            const rawPath = (this.dom.localDbPath as HTMLInputElement | undefined)?.value?.trim() || '';
+            if (!rawPath || !this.options.onLoadDbPath) return;
+
+            // Best-effort update of the "Object ID / UPA" field for visibility
+            const base = rawPath.split('?')[0].split('#')[0].split('/').pop() || rawPath;
+            const name = base.replace(/\.(db|sqlite)$/i, '');
+            if (this.dom.berdl && name) {
+                (this.dom.berdl as HTMLInputElement).value = `local/${name}`;
+            }
+
+            this.options.onLoadDbPath(rawPath);
+        };
+
+        this.dom.loadLocalDb?.addEventListener('click', loadLocalDb);
+        this.dom.localDbPath?.addEventListener('keypress', (e: KeyboardEvent) => {
+            if (e.key === 'Enter') loadLocalDb();
+        });
+
         // Table Select
         this.dom.tableSelect?.addEventListener('change', (e: Event) => {
             this.options.onTableChange((e.target as HTMLSelectElement).value);
@@ -294,9 +330,11 @@ export class Sidebar extends Component {
                 const item = target.closest('.ts-cat-group') as HTMLElement;
                 const catId = item?.dataset.cat;
                 if (catId && this.categoryManager) {
-                    this.categoryManager.toggleCategory(catId);
-                    this.stateManager.update({ visibleColumns: this.categoryManager.getVisibleColumns() });
-                    this.renderControlList();
+                    // Update: stateless toggle
+                    const currentVisible = this.stateManager.getState().visibleColumns;
+                    const newVisible = this.categoryManager.calculateVisibilityChange(catId, currentVisible);
+                    this.stateManager.update({ visibleColumns: newVisible });
+                    // renderControlList will be called by state subscription
                 }
                 return;
             }
@@ -379,10 +417,10 @@ export class Sidebar extends Component {
         // Clear filters
         if (this.dom.clearFilters) {
             this.dom.clearFilters.addEventListener('click', () => {
-                this.stateManager.update({ 
-                    columnFilters: {}, 
+                this.stateManager.update({
+                    columnFilters: {},
                     advancedFilters: undefined,
-                    currentPage: 0 
+                    currentPage: 0
                 });
             });
         }
@@ -427,32 +465,36 @@ export class Sidebar extends Component {
 
         // Dynamic import to avoid circular dependencies
         import('../components/AdvancedFilterPanel').then(({ AdvancedFilterPanel }) => {
+            const container = modal.querySelector('#ts-advanced-filter-container');
+            if (!container) return;
+
             const panel = new AdvancedFilterPanel({
-            container: modal.querySelector('#ts-advanced-filter-container')!,
-            columns,
-            onApply: (filters) => {
-                this.stateManager.update({ 
-                    advancedFilters: filters,
-                    currentPage: 0 
-                });
-                document.body.removeChild(modal);
-                this.options.onLoadData();
-            },
-            onCancel: () => {
-                document.body.removeChild(modal);
+                container: container as HTMLElement,
+                columns,
+                onApply: (filters: any) => {
+                    this.stateManager.update({
+                        advancedFilters: filters,
+                        currentPage: 0
+                    });
+                    document.body.removeChild(modal);
+                    this.options.onLoadData();
+                },
+                onCancel: () => {
+                    document.body.removeChild(modal);
+                }
+            });
+
+            if (state.advancedFilters) {
+                panel.setFilters(state.advancedFilters);
             }
-        });
 
-        if (state.advancedFilters) {
-            panel.setFilters(state.advancedFilters);
-        }
-
-        modal.querySelector('.ts-modal-close')?.addEventListener('click', () => {
-            document.body.removeChild(modal);
-        });
+            modal.querySelector('.ts-modal-close')?.addEventListener('click', () => {
+                document.body.removeChild(modal);
+            });
 
             panel.mount();
         });
+
     }
 
     private showAggregationsPanel() {
@@ -476,9 +518,9 @@ export class Sidebar extends Component {
                     <div style="margin-bottom:16px">
                         <label style="display:block;margin-bottom:8px;font-weight:500">Group By Columns</label>
                         <select multiple class="ts-select" id="ts-group-by" style="min-height:100px">
-                            ${columns.map(col => 
-                                `<option value="${col.column}">${col.displayName || col.column}</option>`
-                            ).join('')}
+                            ${columns.map(col =>
+            `<option value="${col.column}">${col.displayName || col.column}</option>`
+        ).join('')}
                         </select>
                         <small style="color:var(--c-text-muted)">Hold Ctrl/Cmd to select multiple</small>
                     </div>
@@ -496,8 +538,8 @@ export class Sidebar extends Component {
 
         document.body.appendChild(modal);
 
-        let aggregations = state.aggregations || [];
-        let groupBy = state.groupBy || [];
+        const aggregations = state.aggregations || [];
+        const groupBy = state.groupBy || [];
 
         const renderAggregations = () => {
             const list = modal.querySelector('#ts-aggregations-list');
@@ -511,9 +553,9 @@ export class Sidebar extends Component {
             list.innerHTML = aggregations.map((agg, idx) => `
                 <div class="ts-agg-item" style="display:grid;grid-template-columns:1fr 1fr auto;gap:8px;margin-bottom:8px;padding:12px;background:var(--c-bg-surface-alt);border-radius:var(--radius-sm)">
                     <select class="ts-select" data-agg-col="${idx}">
-                        ${columns.map(col => 
-                            `<option value="${col.column}" ${agg.column === col.column ? 'selected' : ''}>${col.displayName || col.column}</option>`
-                        ).join('')}
+                        ${columns.map(col =>
+                `<option value="${col.column}" ${agg.column === col.column ? 'selected' : ''}>${col.displayName || col.column}</option>`
+            ).join('')}
                     </select>
                     <select class="ts-select" data-agg-func="${idx}">
                         <option value="count" ${agg.function === 'count' ? 'selected' : ''}>Count</option>
@@ -565,7 +607,7 @@ export class Sidebar extends Component {
         modal.querySelector('#ts-agg-apply')?.addEventListener('click', () => {
             const groupBySelect = modal.querySelector('#ts-group-by') as HTMLSelectElement;
             const selectedGroupBy = Array.from(groupBySelect.selectedOptions).map(opt => opt.value);
-            
+
             this.stateManager.update({
                 aggregations: aggregations.length > 0 ? aggregations : undefined,
                 groupBy: selectedGroupBy.length > 0 ? selectedGroupBy : undefined,
@@ -586,7 +628,7 @@ export class Sidebar extends Component {
         });
 
         renderAggregations();
-        
+
         // Set initial group by
         const groupBySelect = modal.querySelector('#ts-group-by') as HTMLSelectElement;
         if (groupBy) {
@@ -626,7 +668,7 @@ export class Sidebar extends Component {
         this.dom.controlSection.style.display = 'block';
 
         const state = this.stateManager.getState();
-        const cats = this.categoryManager ? this.categoryManager.getAllCategories() : [];
+        const cats = this.categoryManager ? this.categoryManager.getAllCategories(state.visibleColumns) : [];
         const colsByCat = this.categoryManager ? this.categoryManager.getColumnsByCategory() : new Map();
         const uncategorized = this.categoryManager ? this.categoryManager.getUncategorizedColumns() : state.columns.map(c => c.column);
 
@@ -697,30 +739,36 @@ export class Sidebar extends Component {
         if (!this.dom.filterChips) return;
 
         const chips: string[] = [];
-        
-        // Simple column filters
+
+        // Get columns that have advanced filters (to exclude from simple filter display)
+        const advancedFilterColumns = new Set((advancedFilters || []).map(f => f.column));
+
+        // Simple column filters (only for columns without advanced filters)
         Object.entries(filters).forEach(([col, val]) => {
-            chips.push(`
-                <div class="ts-chip">
-                    <span class="ts-chip-label">${col}:</span>
-                    <span class="ts-chip-value">${val}</span>
-                    <button class="ts-chip-clear" data-col="${col}"><i class="bi bi-x"></i></button>
-                </div>
-            `);
+            // Skip columns that have advanced filters - they're displayed below
+            if (!advancedFilterColumns.has(col)) {
+                chips.push(`
+                    <div class="ts-chip">
+                        <span class="ts-chip-label">${col}:</span>
+                        <span class="ts-chip-value">${val}</span>
+                        <button class="ts-chip-clear" data-col="${col}"><i class="bi bi-x"></i></button>
+                    </div>
+                `);
+            }
         });
 
         // Advanced filters
         if (advancedFilters && advancedFilters.length > 0) {
             advancedFilters.forEach((filter, idx) => {
                 const opLabel = this.getOperatorLabel(filter.operator);
-                const valueDisplay = filter.operator === 'between' 
+                const valueDisplay = filter.operator === 'between'
                     ? `${filter.value} - ${filter.value2}`
                     : filter.operator === 'in' || filter.operator === 'not_in'
-                    ? Array.isArray(filter.value) ? filter.value.join(', ') : String(filter.value)
-                    : filter.operator === 'is_null' || filter.operator === 'is_not_null'
-                    ? ''
-                    : String(filter.value);
-                
+                        ? Array.isArray(filter.value) ? filter.value.join(', ') : String(filter.value)
+                        : filter.operator === 'is_null' || filter.operator === 'is_not_null'
+                            ? ''
+                            : String(filter.value || '');
+
                 chips.push(`
                     <div class="ts-chip ts-chip-advanced">
                         <span class="ts-chip-label">${filter.column} ${opLabel}:</span>
@@ -737,18 +785,27 @@ export class Sidebar extends Component {
             btn.addEventListener('click', (e: Event) => {
                 const col = (e.currentTarget as HTMLElement).dataset.col;
                 const advFilterIdx = (e.currentTarget as HTMLElement).dataset.advFilter;
-                
+
                 if (col) {
                     const newState = { ...this.stateManager.getState().columnFilters };
                     delete newState[col];
                     this.stateManager.update({ columnFilters: newState, currentPage: 0 });
                 } else if (advFilterIdx !== undefined) {
                     const state = this.stateManager.getState();
+                    const filterToRemove = state.advancedFilters?.[parseInt(advFilterIdx)];
                     const newFilters = [...(state.advancedFilters || [])];
                     newFilters.splice(parseInt(advFilterIdx), 1);
-                    this.stateManager.update({ 
+                    
+                    // Also clear the corresponding column filter if it exists
+                    const newColumnFilters = { ...state.columnFilters };
+                    if (filterToRemove?.column) {
+                        delete newColumnFilters[filterToRemove.column];
+                    }
+                    
+                    this.stateManager.update({
+                        columnFilters: newColumnFilters,
                         advancedFilters: newFilters.length > 0 ? newFilters : undefined,
-                        currentPage: 0 
+                        currentPage: 0
                     });
                 }
             });

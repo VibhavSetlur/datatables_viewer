@@ -361,6 +361,16 @@ export interface AIProposalResponse {
 // =============================================================================
 
 /**
+ * Schema information for matching
+ */
+export interface SchemaInfo {
+    /** Table names in the database */
+    tables: string[];
+    /** Column names per table: {tableName: [column1, column2, ...]} */
+    columns: Record<string, string[]>;
+}
+
+/**
  * Options for config resolution.
  */
 export interface ResolveOptions {
@@ -375,6 +385,9 @@ export interface ResolveOptions {
 
     /** Prefer remote over static */
     preferRemote?: boolean;
+
+    /** Schema information for schema-based matching fallback */
+    schema?: SchemaInfo;
 }
 
 /**
@@ -385,13 +398,16 @@ export interface ResolveResult {
     config: DataTypeConfig;
 
     /** Resolution source category */
-    source: 'remote' | 'static' | 'generated' | 'default';
+    source: 'remote' | 'static' | 'schema_match' | 'generated' | 'default';
 
     /** Detailed source info */
     sourceDetail: string;
 
     /** Whether result came from cache */
     fromCache: boolean;
+
+    /** Warning message if config not found */
+    warning?: string;
 }
 
 /**

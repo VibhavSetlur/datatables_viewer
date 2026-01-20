@@ -11,6 +11,7 @@ server/data/
 docs/personal
 archive/
 trash/
+docs/PRODUCTION_READINESS.md
 
 # Dependencies
 node_modules/

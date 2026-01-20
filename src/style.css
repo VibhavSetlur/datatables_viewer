@@ -634,14 +634,24 @@ button {
 }
 
 .ts-search-box {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 460px;
+    min-width: 320px;
+}
+
+.ts-search-input-wrap {
     position: relative;
-    width: 300px;
+    flex: 1;
+    min-width: 220px;
 }
 
 .ts-search {
     width: 100%;
     height: 36px;
-    padding: 0 36px 0 14px;
+    /* Leave room for clear + search icons */
+    padding: 0 60px 0 14px;
     border-radius: 999px;
     border: 1px solid var(--c-border-strong);
     background: var(--c-bg-input);
@@ -699,13 +709,18 @@ button {
    ============================================ */
 .ts-grid {
     flex: 1;
-    overflow: auto;
+    /* Allow horizontal scrolling regardless of row count */
+    overflow-x: auto;
+    overflow-y: auto;
     background: var(--c-bg-surface);
 }
 
 .ts-table {
+    /* Let the table grow wider than the viewport when there are many columns,
+       while still filling the available width for smaller tables */
     table-layout: fixed;
-    width: 100%;
+    width: max-content;
+    min-width: 100%;
     border-collapse: collapse;
     font-size: var(--row-font-size);
 }
@@ -843,18 +858,110 @@ tr:hover .ts-copy-btn {
     color: var(--c-accent);
 }
 
-/* Search Highlight */
+/* Search Highlight - Glossy Apple-style */
 mark.highlight {
-    background: #fef08a;
+    background: linear-gradient(135deg, #ffd700 0%, #ffed4e 50%, #ffd700 100%);
     color: #1e293b;
-    padding: 1px 3px;
-    border-radius: 2px;
-    font-weight: 500;
+    padding: 2px 4px;
+    border-radius: 4px;
+    font-weight: 600;
+    box-shadow: 0 1px 3px rgba(255, 215, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+    text-shadow: 0 1px 1px rgba(255, 255, 255, 0.5);
+    position: relative;
+    display: inline-block;
+    animation: highlightPulse 2s ease-in-out infinite;
+}
+
+mark.highlight.active {
+    background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 50%, #3b82f6 100%);
+    color: white;
+    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+    animation: highlightActive 0.3s ease-out;
+    z-index: 10;
+}
+
+@keyframes highlightPulse {
+    0%, 100% {
+        box-shadow: 0 1px 3px rgba(255, 215, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+    }
+    50% {
+        box-shadow: 0 2px 6px rgba(255, 215, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+    }
+}
+
+@keyframes highlightActive {
+    0% {
+        transform: scale(1);
+        box-shadow: 0 1px 3px rgba(59, 130, 246, 0.4);
+    }
+    50% {
+        transform: scale(1.05);
+        box-shadow: 0 4px 12px rgba(59, 130, 246, 0.8);
+    }
+    100% {
+        transform: scale(1);
+        box-shadow: 0 2px 8px rgba(59, 130, 246, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+    }
 }
 
 [data-theme="dark"] mark.highlight {
-    background: #854d0e;
-    color: #fef08a;
+    background: linear-gradient(135deg, #fbbf24 0%, #fcd34d 50%, #fbbf24 100%);
+    color: #0f172a;
+    box-shadow: 0 1px 3px rgba(251, 191, 36, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+[data-theme="dark"] mark.highlight.active {
+    background: linear-gradient(135deg, #60a5fa 0%, #93c5fd 50%, #60a5fa 100%);
+    color: white;
+    box-shadow: 0 2px 8px rgba(96, 165, 250, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+
+/* Search Navigation Controls */
+.ts-search-nav {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: 0 0 auto;
+    margin-left: 0;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+}
+
+.ts-search-nav-info {
+    font-size: 11px;
+    color: var(--c-text-muted);
+    padding: 0 6px;
+    font-weight: 500;
+    min-width: 50px;
+    text-align: center;
+}
+
+.ts-search-nav-btn {
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--c-bg-surface);
+    border: 1px solid var(--c-border-subtle);
+    border-radius: var(--radius-sm);
+    color: var(--c-text-secondary);
+    cursor: pointer;
+    transition: var(--transition-fast);
+    font-size: 12px;
+}
+
+.ts-search-nav-btn:hover:not(:disabled) {
+    background: var(--c-bg-hover);
+    border-color: var(--c-accent);
+    color: var(--c-accent);
+}
+
+.ts-search-nav-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
 }
 
 /* Filter Row - Perfectly aligned under headers */
@@ -899,7 +1006,9 @@ mark.highlight {
 
 /* Table layout - ensure filters align perfectly with headers */
 .ts-table {
-    width: 100%;
+    /* Keep in sync with the primary .ts-table definition above */
+    width: max-content;
+    min-width: 100%;
     border-collapse: collapse;
     /* Use fixed layout for perfect alignment */
     table-layout: fixed;

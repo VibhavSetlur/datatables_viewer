@@ -3,6 +3,9 @@ import { Component, type ComponentOptions } from '../Component';
 export interface ToolbarOptions extends ComponentOptions {
     onSearch: (term: string) => void;
     onRefresh: () => void;
+    onSearchNext?: () => void;
+    onSearchPrev?: () => void;
+    getSearchMatchInfo?: () => { current: number; total: number };
 }
 
 export class Toolbar extends Component {
@@ -17,13 +20,24 @@ export class Toolbar extends Component {
     protected render() {
         this.container.innerHTML = `
             <div class="ts-search-box">
-                <input type="text" id="ts-search" class="ts-search" 
-                    placeholder="Search data..." 
-                    aria-label="Search all table columns">
-                <button class="ts-search-clear" id="ts-search-clear" aria-label="Clear search">
-                    <i class="bi bi-x-lg"></i>
-                </button>
-                <i class="bi bi-search ts-search-icon"></i>
+                <div class="ts-search-input-wrap">
+                    <input type="text" id="ts-search" class="ts-search" 
+                        placeholder="Highlight matches (doesn't filter rows)..." 
+                        aria-label="Highlight matches in table (does not filter rows)">
+                    <button class="ts-search-clear" id="ts-search-clear" aria-label="Clear search">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                    <i class="bi bi-search ts-search-icon"></i>
+                </div>
+                <div class="ts-search-nav">
+                    <button class="ts-search-nav-btn" id="ts-search-prev" title="Previous match (Shift+Enter)" aria-label="Previous match">
+                        <i class="bi bi-chevron-up"></i>
+                    </button>
+                    <span class="ts-search-nav-info" id="ts-search-info">0/0</span>
+                    <button class="ts-search-nav-btn" id="ts-search-next" title="Next match (Enter)" aria-label="Next match">
+                        <i class="bi bi-chevron-down"></i>
+                    </button>
+                </div>
             </div>
             <div class="ts-spacer" style="flex:1"></div>
             <div class="ts-toolbar-actions">
@@ -38,6 +52,9 @@ export class Toolbar extends Component {
         this.cacheDom({
             search: '#ts-search',
             searchClear: '#ts-search-clear',
+            searchPrev: '#ts-search-prev',
+            searchNext: '#ts-search-next',
+            searchInfo: '#ts-search-info',
             refresh: '#ts-refresh',
             settings: '#ts-settings-btn'
         });
@@ -46,25 +63,86 @@ export class Toolbar extends Component {
     protected bindEvents() {
         this.dom.search?.addEventListener('input', () => {
             clearTimeout(this.searchTimer);
+            const term = (this.dom.search as HTMLInputElement).value;
+            // Update nav immediately for better UX
+            this.updateSearchNav();
             this.searchTimer = setTimeout(() => {
-                const term = (this.dom.search as HTMLInputElement).value;
                 this.options.onSearch(term);
+                // Update again after search completes
+                setTimeout(() => this.updateSearchNav(), 350);
             }, 300);
+        });
+
+        // Handle Enter key for navigation
+        this.dom.search?.addEventListener('keydown', (e: KeyboardEvent) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                this.options.onSearchNext?.();
+                this.updateSearchNav();
+            } else if (e.key === 'Enter' && e.shiftKey) {
+                e.preventDefault();
+                this.options.onSearchPrev?.();
+                this.updateSearchNav();
+            }
         });
 
         this.dom.searchClear?.addEventListener('click', () => {
             (this.dom.search as HTMLInputElement).value = '';
             this.options.onSearch('');
+            this.updateSearchNav();
             (this.dom.search as HTMLInputElement).focus();
+        });
+
+        this.dom.searchPrev?.addEventListener('click', () => {
+            this.options.onSearchPrev?.();
+            this.updateSearchNav();
+        });
+
+        this.dom.searchNext?.addEventListener('click', () => {
+            this.options.onSearchNext?.();
+            this.updateSearchNav();
         });
 
         this.dom.refresh?.addEventListener('click', () => this.options.onRefresh());
 
-        // Settings event is handled by parent listening to this button ID or we expose a callback
-        // For now, let's keep it simple and just let TableRenderer attach to the ID via bubbling or direct selection
-        // But since Toolbar is a component, it should ideally expose an event. 
-        // We'll update the interface in the next step or just let TableRenderer grab it.
-        // Actually, let's update interface now.
+        // Initial update
+        setTimeout(() => this.updateSearchNav(), 100);
+    }
+
+    /**
+     * Update search navigation UI
+     */
+    public updateSearchNav(): void {
+        const searchInput = this.dom.search as HTMLInputElement;
+        const searchTerm = searchInput?.value?.trim() || '';
+        const navContainer = this.container.querySelector('.ts-search-nav') as HTMLElement;
+        
+        if (!navContainer) return;
+
+        // Show/hide navigation based on search term
+        if (searchTerm) {
+            navContainer.style.opacity = '1';
+            navContainer.style.pointerEvents = 'auto';
+        } else {
+            navContainer.style.opacity = '0';
+            navContainer.style.pointerEvents = 'none';
+            return;
+        }
+
+        if (this.options.getSearchMatchInfo) {
+            const info = this.options.getSearchMatchInfo();
+            if (this.dom.searchInfo) {
+                if (info.total > 0) {
+                    (this.dom.searchInfo as HTMLElement).textContent = `${info.current}/${info.total}`;
+                    (this.dom.searchPrev as HTMLButtonElement).disabled = false;
+                    (this.dom.searchNext as HTMLButtonElement).disabled = false;
+                } else {
+                    (this.dom.searchInfo as HTMLElement).textContent = '0/0';
+                    (this.dom.searchPrev as HTMLButtonElement).disabled = true;
+                    (this.dom.searchNext as HTMLButtonElement).disabled = true;
+                }
+            }
+        }
     }
 
     public getSettingsButton(): HTMLElement | null {

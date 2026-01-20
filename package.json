@@ -24,30 +24,36 @@
         "test:coverage": "vitest run --coverage",
         "test:ui": "vitest --ui",
         "test:e2e": "playwright test",
-        "lint": "eslint src --ext .ts",
-        "lint:fix": "eslint src --ext .ts --fix",
+        "lint": "eslint src",
+        "lint:fix": "eslint src --fix",
         "format": "prettier --write src/**/*.ts",
         "clean": "rm -rf dist node_modules/.vite",
         "prepare": "husky install || true",
-        "validate-config": "tsx scripts/validate-config.ts",
-        "version-config": "./scripts/version-config.sh",
-        "extract-server-docs": "tsx scripts/extract-server-docs.ts",
-        "generate-config": "tsx scripts/generate-config.ts"
+        "validate-config": "tsx scripts/config/validate-config.ts",
+        "version-config": "./scripts/config/version-config.sh",
+        "extract-server-docs": "tsx scripts/server/extract-server-docs.ts",
+        "generate-config": "tsx scripts/config/generate-config.ts",
+        "config-api": "tsx scripts/server/api-handler.ts"
     },
     "devDependencies": {
+        "@eslint/js": "^9.39.2",
         "@playwright/test": "^1.45.0",
+        "@types/better-sqlite3": "^7.6.13",
         "@types/node": "^18.0.0",
         "@typescript-eslint/eslint-plugin": "^7.0.0",
         "@typescript-eslint/parser": "^7.0.0",
         "@vitest/coverage-v8": "^2.0.0",
         "@vitest/ui": "^2.0.0",
+        "better-sqlite3": "^11.10.0",
         "eslint": "^8.57.0",
+        "globals": "^17.0.0",
         "husky": "^9.0.0",
         "jsdom": "^24.0.0",
         "lint-staged": "^15.0.0",
         "prettier": "^3.3.0",
         "tsx": "^4.7.0",
         "typescript": "~5.9.3",
+        "typescript-eslint": "^8.53.1",
         "vite": "^6.0.0",
         "vitest": "^2.0.0"
     },
@@ -62,8 +68,8 @@
         "npm": ">=9.0.0"
     },
     "dependencies": {
-        "sql.js": "^1.13.0",
         "ajv": "^8.12.0",
-        "ajv-formats": "^2.1.1"
+        "ajv-formats": "^2.1.1",
+        "sql.js": "^1.13.0"
     }
 }

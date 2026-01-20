@@ -8,6 +8,7 @@
  */
 
 import { eventBus } from '../state/EventBus';
+import { logger } from '../../utils/logger';
 
 // =============================================================================
 // TYPES
@@ -204,7 +205,7 @@ export class PreferencesManager {
         const schema = PREFERENCE_SCHEMAS[key];
 
         if (!schema.validate(value)) {
-            console.warn(`Invalid value for preference "${key}":`, value);
+            logger.warn(`Invalid value for preference "${key}"`, { value });
             return false;
         }
 
@@ -263,7 +264,7 @@ export class PreferencesManager {
         if (!this.listeners.has(key)) {
             this.listeners.set(key, new Set());
         }
-        this.listeners.get(key)!.add(callback);
+        this.listeners.get(key)?.add(callback);
 
         // Return unsubscribe function
         return () => {
@@ -303,7 +304,7 @@ export class PreferencesManager {
             this.setMany(validated);
             return true;
         } catch (e) {
-            console.error('Failed to import preferences:', e);
+            logger.error('Failed to import preferences', e);
             return false;
         }
     }
@@ -334,7 +335,7 @@ export class PreferencesManager {
 
             return result;
         } catch (e) {
-            console.warn('Failed to load preferences:', e);
+            logger.warn('Failed to load preferences', e);
             return defaults;
         }
     }
@@ -343,7 +344,7 @@ export class PreferencesManager {
         try {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(this.preferences));
         } catch (e) {
-            console.error('Failed to save preferences:', e);
+            logger.error('Failed to save preferences', e);
         }
     }
 

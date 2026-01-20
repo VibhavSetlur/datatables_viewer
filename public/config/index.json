@@ -39,7 +39,15 @@
                 "KBase.GenomeDataTables-*"
             ],
             "priority": 1,
-            "autoLoad": true
+            "autoLoad": true,
+            "schemaMatch": {
+                "enabled": true,
+                "requiredTables": ["Genes"],
+                "requiredColumns": {
+                    "Genes": ["ID", "Database_ID"]
+                },
+                "minMatchScore": 0.7
+            }
         },
         "test_data": {
             "configUrl": "/config/test-data.json",
@@ -58,23 +66,36 @@
                 "berdl/*"
             ],
             "priority": 5,
-            "autoLoad": true
+            "autoLoad": true,
+            "schemaMatch": {
+                "enabled": true,
+                "requiredTables": ["genome", "contigs"],
+                "requiredColumns": {
+                    "genome": ["genome_id", "genome_name"],
+                    "contigs": ["contig_id", "genome_id"]
+                },
+                "minMatchScore": 0.6
+            }
         },
         "metabolic_models": {
             "matches": [
                 "KBaseFBA.FBAModel-*"
             ],
             "priority": 2,
-            "autoLoad": false
+            "autoLoad": false,
+            "schemaMatch": {
+                "enabled": true,
+                "requiredTables": ["Model"],
+                "requiredColumns": {
+                    "Model": ["id", "name"]
+                },
+                "minMatchScore": 0.7
+            }
         }
     },
-    "configApi": {
-        "enabled": true,
-        "baseUrl": "http://127.0.0.1:8000",
-        "timeout": 10000,
-        "cacheEnabled": true,
-        "cacheTTL": 300000,
-        "fallbackToStatic": true
+    "defaultConfig": {
+        "configUrl": "/config/default-config.json",
+        "description": "Fallback configuration for unmapped databases"
     },
     "defaults": {
         "pageSize": 50,
@@ -90,7 +111,7 @@
         }
     },
     "features": {
-        "remoteConfig": true,
+        "remoteConfig": false,
         "schemaExplorer": true,
         "columnSearch": true,
         "exportFormats": [

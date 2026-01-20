@@ -1,35 +1,34 @@
 /**
  * Config Resolver
  * 
- * Implements cascading resolution logic to find the best available
+ * Implements robust resolution logic to find the best available
  * configuration for a data source.
  * 
  * Resolution Priority:
- * 1. Static configs (local JSON files via DataTypeRegistry)
- * 2. Remote API (TableScanner Config Control Plane)
- * 3. AI-generated config (triggers generation if needed)
- * 4. Minimal default config
+ * 1. Pattern matching (UPA/object type patterns from index.json)
+ * 2. Schema-based matching (compare table/column names)
+ * 3. Default config (default-config.json)
  * 
- * @version 1.0.0
+ * @version 3.0.0
  */
 
 import type { DataTypeConfig, TableSchema } from '../../types/schema';
-import type { ResolveOptions, ResolveResult } from '../../types/config-api';
+import type { ResolveOptions, ResolveResult, SchemaInfo } from '../../types/config-api';
 import { DataTypeRegistry } from './DataTypeRegistry';
-import { getRemoteConfigProvider } from './RemoteConfigProvider';
+import { logger } from '../../utils/logger';
 
 // =============================================================================
 // CONFIG RESOLVER CLASS
 // =============================================================================
 
 /**
- * ConfigResolver provides unified config resolution across multiple sources.
- * It attempts remote resolution first, falls back to static configs,
- * and can trigger AI generation as a last resort.
+ * ConfigResolver provides unified config resolution from static sources.
+ * Uses pattern matching and schema-based matching to find the appropriate config.
  */
 export class ConfigResolver {
     private registry: DataTypeRegistry;
-    private remoteEnabled: boolean = true;
+    private schemaMatchCache: Map<string, { configId: string; score: number; timestamp: number }> = new Map();
+    private defaultConfigCache: DataTypeConfig | null = null;
 
     constructor() {
         this.registry = DataTypeRegistry.getInstance();
@@ -38,20 +37,6 @@ export class ConfigResolver {
     // =========================================================================
     // PUBLIC API
     // =========================================================================
-
-    /**
-     * Enable or disable remote resolution.
-     */
-    public setRemoteEnabled(enabled: boolean): void {
-        this.remoteEnabled = enabled;
-    }
-
-    /**
-     * Check if remote resolution is enabled.
-     */
-    public isRemoteEnabled(): boolean {
-        return this.remoteEnabled && getRemoteConfigProvider().isEnabled();
-    }
 
     /**
      * Resolve the best available configuration for a data source.
@@ -64,71 +49,51 @@ export class ConfigResolver {
         sourceRef: string,
         options: ResolveOptions = {}
     ): Promise<ResolveResult> {
-        const preferRemote = options.preferRemote ?? this.remoteEnabled;
-
-        // 1. Try static configs from registry first
+        // 1. Try pattern matching (UPA/object type patterns from index.json)
         const staticConfig = this.findStaticConfig(sourceRef, options.objectType);
         if (staticConfig) {
             return {
                 config: staticConfig,
                 source: 'static',
                 sourceDetail: `static:${staticConfig.id}`,
-                fromCache: true, // Static is always "cached"
+                fromCache: true,
             };
         }
 
-        // 2. Try remote (TableScanner) if enabled and preferred
-        if (preferRemote && this.isRemoteEnabled()) {
-            try {
-                const remote = getRemoteConfigProvider();
-                const result = await remote.resolve(sourceRef, {
-                    fingerprint: options.fingerprint,
-                    objectType: options.objectType,
-                    forceRefresh: options.forceRefresh,
-                });
-
-                if (result) {
-                    return {
-                        config: result.config,
-                        source: 'remote',
-                        sourceDetail: result.source,
-                        fromCache: result.source.startsWith('cached:'),
-                    };
-                }
-            } catch (error) {
-                console.warn('[ConfigResolver] Remote resolution failed:', error);
-                // Continue to fallbacks
+        // 2. Try schema-based matching if schema info is available
+        if (options.schema && options.schema.tables.length > 0) {
+            const schemaMatch = await this.findSchemaMatch(options.schema);
+            if (schemaMatch) {
+                return {
+                    config: schemaMatch.config,
+                    source: 'schema_match',
+                    sourceDetail: `schema_match:${schemaMatch.configId} (score: ${schemaMatch.score.toFixed(2)})`,
+                    fromCache: false,
+                    warning: `No pattern match found. Matched by schema similarity (${(schemaMatch.score * 100).toFixed(0)}% match).`,
+                };
             }
         }
 
-        // 3. Try to generate via API (if remote is enabled)
-        if (preferRemote && this.isRemoteEnabled()) {
-            try {
-                const remote = getRemoteConfigProvider();
-                const generated = await remote.generateConfig(sourceRef, {
-                    forceRegenerate: options.forceRefresh,
-                });
-
-                if (generated && generated.config) {
-                    return {
-                        config: generated.config,
-                        source: 'generated',
-                        sourceDetail: `generated:${generated.config_source}`,
-                        fromCache: generated.cache_hit,
-                    };
-                }
-            } catch (error) {
-                console.warn('[ConfigResolver] Config generation failed:', error);
-            }
+        // 3. Load default config (default-config.json)
+        const defaultConfig = await this.loadDefaultConfig();
+        if (defaultConfig) {
+            return {
+                config: defaultConfig,
+                source: 'default',
+                sourceDetail: 'default_config',
+                fromCache: false,
+                warning: `No configuration found for "${sourceRef}". Using default configuration. Consider adding a mapping in index.json.`,
+            };
         }
 
-        // 4. Return minimal default
-        console.log(`[ConfigResolver] Using default config for ${sourceRef}`);
+        // 4. Fallback to minimal generated config
+        logger.warn(`[ConfigResolver] No config found for ${sourceRef}, using minimal fallback`);
         return {
             config: this.createDefaultConfig(sourceRef),
             source: 'default',
             sourceDetail: 'minimal_fallback',
             fromCache: false,
+            warning: `No configuration found for "${sourceRef}". Database will be rendered with basic settings.`,
         };
     }
 
@@ -172,7 +137,7 @@ export class ConfigResolver {
             // Register in the data type registry
             this.registry.registerDataType(result.config);
 
-            console.log(
+            logger.debug(
                 `[ConfigResolver] Registered ${result.config.id} from ${result.source}`
             );
             return result.config;
@@ -195,41 +160,14 @@ export class ConfigResolver {
     public async getResolutionHints(
         sourceRef: string
     ): Promise<{
-        hasRemoteConfig: boolean;
         hasStaticConfig: boolean;
-        canGenerate: boolean;
-        recommendedSource: 'remote' | 'static' | 'generate';
+        recommendedSource: 'static' | 'default';
     }> {
         const hasStatic = this.hasStaticConfig(sourceRef);
-        let hasRemote = false;
-        let canGenerate = false;
-
-        if (this.isRemoteEnabled()) {
-            try {
-                const remote = getRemoteConfigProvider();
-                const tableList = await remote.getTableListWithConfig(sourceRef);
-
-                if (tableList) {
-                    hasRemote = tableList.has_cached_config || tableList.has_builtin_config;
-                    canGenerate = true; // If we can fetch tables, we can generate
-                }
-            } catch {
-                // Remote unavailable
-            }
-        }
-
-        let recommendedSource: 'remote' | 'static' | 'generate' = 'static';
-        if (hasRemote) {
-            recommendedSource = 'remote';
-        } else if (canGenerate && !hasStatic) {
-            recommendedSource = 'generate';
-        }
 
         return {
-            hasRemoteConfig: hasRemote,
             hasStaticConfig: hasStatic,
-            canGenerate,
-            recommendedSource,
+            recommendedSource: hasStatic ? 'static' : 'default',
         };
     }
 
@@ -305,6 +243,131 @@ export class ConfigResolver {
     private generateConfigId(sourceRef: string): string {
         const safeId = sourceRef.replace(/[^a-zA-Z0-9]/g, '_');
         return `auto_${safeId}`;
+    }
+
+    /**
+     * Find config by schema matching (table/column name comparison).
+     * Efficiently compares database schema against config schemas.
+     */
+    private async findSchemaMatch(
+        schema: SchemaInfo
+    ): Promise<{ config: DataTypeConfig; configId: string; score: number } | null> {
+        // Check cache first
+        const cacheKey = this.getSchemaCacheKey(schema);
+        const cached = this.schemaMatchCache.get(cacheKey);
+        if (cached && Date.now() - cached.timestamp < 300000) { // 5 min cache
+            const config = this.registry.getDataType(cached.configId);
+            if (config) {
+                return { config, configId: cached.configId, score: cached.score };
+            }
+        }
+
+        const appConfig = this.registry.getAppConfig();
+        if (!appConfig?.dataTypes) {
+            return null;
+        }
+
+        let bestMatch: { config: DataTypeConfig; configId: string; score: number } | null = null;
+        const dbTables = new Set(schema.tables.map(t => t.toLowerCase()));
+        const dbColumns = new Map<string, Set<string>>();
+        
+        // Normalize column names for comparison
+        for (const [table, cols] of Object.entries(schema.columns)) {
+            dbColumns.set(table.toLowerCase(), new Set(cols.map(c => c.toLowerCase())));
+        }
+
+        // Check each config with schema matching enabled
+        for (const [configId, ref] of Object.entries(appConfig.dataTypes)) {
+            const schemaMatch = (ref as any).schemaMatch;
+            if (!schemaMatch?.enabled) continue;
+
+            const config = this.registry.getDataType(configId);
+            if (!config?.tables) continue;
+
+            const requiredTables = schemaMatch.requiredTables || [];
+            const requiredColumns = schemaMatch.requiredColumns || {};
+            const minScore = schemaMatch.minMatchScore || 0.6;
+
+            // Calculate match score
+            let score = 0;
+            let totalChecks = 0;
+
+            // Check required tables
+            for (const reqTable of requiredTables) {
+                totalChecks++;
+                if (dbTables.has(reqTable.toLowerCase())) {
+                    score += 1;
+                    
+                    // Check required columns for this table
+                    const reqCols = requiredColumns[reqTable] || [];
+                    if (reqCols.length > 0) {
+                        const dbCols = dbColumns.get(reqTable.toLowerCase());
+                        if (dbCols) {
+                            const matchedCols = reqCols.filter((col: string) => 
+                                dbCols.has(col.toLowerCase())
+                            ).length;
+                            score += (matchedCols / reqCols.length) * 0.5; // Column match contributes 50% of table score
+                        }
+                    }
+                }
+            }
+
+            if (totalChecks === 0) continue;
+
+            const finalScore = score / totalChecks;
+            if (finalScore >= minScore && (!bestMatch || finalScore > bestMatch.score)) {
+                bestMatch = { config, configId, score: finalScore };
+            }
+        }
+
+        // Cache result
+        if (bestMatch) {
+            this.schemaMatchCache.set(cacheKey, {
+                configId: bestMatch.configId,
+                score: bestMatch.score,
+                timestamp: Date.now(),
+            });
+        }
+
+        return bestMatch;
+    }
+
+    /**
+     * Generate cache key from schema info.
+     */
+    private getSchemaCacheKey(schema: SchemaInfo): string {
+        const tables = schema.tables.sort().join(',');
+        const columns = Object.entries(schema.columns)
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([table, cols]) => `${table}:${cols.sort().join(',')}`)
+            .join('|');
+        return `${tables}|${columns}`;
+    }
+
+    /**
+     * Load default config from default-config.json.
+     */
+    private async loadDefaultConfig(): Promise<DataTypeConfig | null> {
+        if (this.defaultConfigCache) {
+            return this.defaultConfigCache;
+        }
+
+        try {
+            const appConfig = this.registry.getAppConfig();
+            const defaultConfigUrl = (appConfig as any)?.defaultConfig?.configUrl || '/config/default-config.json';
+            
+            const response = await fetch(defaultConfigUrl);
+            if (response.ok) {
+                const config = await response.json();
+                this.defaultConfigCache = config;
+                logger.info('[ConfigResolver] Loaded default config');
+                return config;
+            }
+        } catch (error) {
+            logger.warn('[ConfigResolver] Failed to load default config', error);
+        }
+
+        return null;
     }
 }
 
