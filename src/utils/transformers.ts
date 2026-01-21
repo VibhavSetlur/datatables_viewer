@@ -31,6 +31,7 @@ interface LookupCacheEntry {
 
 interface OntologyCacheEntry {
     name: string;
+    description?: string;
     timestamp: number;
 }
 
@@ -760,7 +761,8 @@ export class Transformers {
             if (terms.length === 0) return '';
 
             // Render each term and join them
-            return `<div class="ts-ontology-list" style="display:flex;flex-wrap:wrap;gap:4px">
+            const layout = options.layout === 'vertical' ? 'flex-direction:column;align-items:flex-start;' : 'flex-wrap:wrap;';
+            return `<div class="ts-ontology-list" style="display:flex;gap:4px;${layout}">
                 ${terms.map(term => Transformers.renderSingleOntologyTerm(term, options)).join('')}
             </div>`;
         }
@@ -769,11 +771,29 @@ export class Transformers {
     }
 
     private static renderSingleOntologyTerm(termId: string, options: TransformerOptions): string {
+        // Normalize ID based on type
+        if (options.ontologyType) {
+            const type = options.ontologyType.toLowerCase();
+            if (type === 'uniref') {
+                // Strip "UniRef:" prefix and any following description
+                termId = termId.replace(/^UniRef:/i, '');
+                const match = termId.match(/^(UniRef\d+_\S+)/i);
+                if (match) termId = match[1];
+            } else if (type === 'ec') {
+                termId = termId.replace(/^EC:/i, '').trim();
+            } else if (type === 'cog') {
+                termId = termId.replace(/^COG:/i, '').trim();
+            } else if (type === 'kegg' || type === 'ko') {
+                termId = termId.replace(/^KEGG:/i, '').replace(/^ko:/i, '').trim();
+            }
+        }
+
         const cacheKey = `${options.ontologyType || 'custom'}:${termId}`;
         const cached = Transformers.ontologyCache.get(cacheKey);
 
         if (cached && (Date.now() - cached.timestamp < Transformers.cacheTimeout)) {
-            return Transformers.formatOntologyTerm(termId, cached.name, options);
+            // Pass description if available
+            return Transformers.formatOntologyTerm(termId, cached.name, { ...options, description: cached.description });
         }
 
         // Trigger async lookup
@@ -830,10 +850,31 @@ export class Transformers {
         const href = options.urlTemplate ? ` href="${url}" target="_blank" rel="noopener noreferrer"` : '';
 
         if (style === 'badge') {
-            if (termName) {
-                return `<${tag}${href} class="ts-badge ts-ontology-badge" data-term="${escapedId}" style="text-decoration:none">${Transformers.escapeHtml(termName)}</${tag}>`;
-            }
-            return `<${tag}${href} class="ts-badge ts-ontology-badge ts-loading-term" data-term="${escapedId}" style="text-decoration:none">${escapedId}</${tag}>`;
+            // Split Layout: Badge (ID) + Text (Description)
+            const descAttr = options.description ? ` data-description="${Transformers.escapeHtml(options.description)}"` : '';
+
+            // Content for the badge (ID only)
+            const badgeContent = escapedId;
+
+            // Content for the description side-text (Name)
+            const descContent = termName ? Transformers.escapeHtml(termName) : '';
+
+            const loadingClass = !termName ? 'ts-loading-term' : '';
+
+            return `
+            <div class="ts-ontology-wrapper" style="display:flex;align-items:center;gap:8px;margin-bottom:2px;">
+                <${tag}${href} class="ts-badge ts-ontology-badge ${loadingClass}" data-term="${escapedId}"${descAttr} style="text-decoration:none;font-family:monospace;flex-shrink:0;">${badgeContent}</${tag}>
+                <span class="ts-ontology-description" data-term-desc="${escapedId}" style="color:var(--c-text-primary);font-size:0.95em;line-height:1.2;">${descContent}</span>
+                ${options.description ? `
+                <div class="ts-ontology-card">
+                    <div class="ts-ontology-card-header">
+                        <span class="ts-ontology-card-id">${escapedId}</span>
+                        <span class="ts-ontology-card-title">${Transformers.escapeHtml(termName || '')}</span>
+                    </div>
+                    <div class="ts-ontology-card-body" style="color:var(--c-text-primary)">${Transformers.escapeHtml(options.description)}</div>
+                    ${options.urlTemplate ? `<div class="ts-ontology-card-footer"><a href="${url}" target="_blank" class="ts-link">View Details <i class="bi bi-box-arrow-up-right"></i></a></div>` : ''}
+                </div>` : ''}
+            </div>`;
         }
 
         if (termName) {
@@ -851,6 +892,7 @@ export class Transformers {
         // Debounce or queue? For now just direct async
         try {
             let name: string | null = null;
+            let description: string | undefined = undefined;
 
             // Check pre-loaded map first if provided in options (fallback if not in global cache)
             if (options.map && options.map[termId]) {
@@ -858,13 +900,53 @@ export class Transformers {
             } else {
                 switch (options.ontologyType) {
                     case 'GO':
-                        name = await Transformers.lookupGO(termId);
+                        const goData = await Transformers.lookupGO(termId);
+                        if (goData) {
+                            name = goData.name;
+                            description = goData.description;
+                        }
                         break;
                     case 'KEGG':
-                        name = termId; // Placeholder
+                        const keggData = await Transformers.lookupKEGGOrtholog(termId);
+                        if (keggData) {
+                            name = keggData.name;
+                            description = keggData.description;
+                        }
+                        break;
+                    case 'Pfam':
+                        const pfamData = await Transformers.lookupPfamDomain(termId);
+                        if (pfamData) {
+                            name = pfamData.name;
+                            description = pfamData.description;
+                        }
+                        break;
+                    case 'COG':
+                        const cogData = await Transformers.lookupCOG(termId);
+                        if (cogData) {
+                            name = cogData.name;
+                            description = cogData.description;
+                        }
                         break;
                     case 'EC':
-                        name = termId; // Placeholder
+                        const ecData = await Transformers.lookupECNumber(termId);
+                        if (ecData) {
+                            name = ecData.name;
+                            description = ecData.description;
+                        }
+                        break;
+                    case 'SO':
+                        const soData = await Transformers.lookupSequenceOntology(termId);
+                        if (soData) {
+                            name = soData.name;
+                            description = soData.description;
+                        }
+                        break;
+                    case 'UniRef':
+                        const unirefData = await Transformers.lookupUniRef(termId);
+                        if (unirefData) {
+                            name = unirefData.name;
+                            description = unirefData.description;
+                        }
                         break;
                     case 'custom':
                         // If we have a lookup endpoint but NOT a table lookup (which should be pre-loaded)
@@ -876,8 +958,8 @@ export class Transformers {
             }
 
             if (name) {
-                Transformers.ontologyCache.set(cacheKey, { name, timestamp: Date.now() });
-                Transformers.updateOntologyElements(termId, name, options);
+                Transformers.ontologyCache.set(cacheKey, { name, description, timestamp: Date.now() });
+                Transformers.updateOntologyElements(termId, name, { ...options, description });
             }
         } catch (e) {
             logger.warn(`Ontology lookup failed for ${termId}`, e);
@@ -885,32 +967,72 @@ export class Transformers {
     }
 
     private static updateOntologyElements(termId: string, name: string, options: TransformerOptions) {
-        // This is tricky because we might have split elements now.
-        // The data-term attribute is on the inner span/a, so this selector still works.
-        const elements = document.querySelectorAll(`.ts-ontology[data-term="${termId}"], .ts-ontology-badge[data-term="${termId}"]`);
-        elements.forEach(el => {
+        // Update Badges (ID)
+        const badges = document.querySelectorAll(`.ts-ontology-badge[data-term="${termId}"]`);
+        badges.forEach(el => {
+            el.classList.remove('ts-loading-term');
+            // Provide description for the badge tooltip/data
+            if (options.description) {
+                el.setAttribute('data-description', options.description);
+            }
+        });
+
+        // Update Description Text (Side Text)
+        const descriptions = document.querySelectorAll(`.ts-ontology-description[data-term-desc="${termId}"]`);
+        descriptions.forEach(el => {
+            el.textContent = name;
+        });
+
+        // Update Old Style Elements (non-badge)
+        const oldElements = document.querySelectorAll(`.ts-ontology[data-term="${termId}"]`);
+        oldElements.forEach(el => {
             el.classList.remove('ts-loading-term');
             const showId = options.showId !== false;
 
-            // Preserve href if it's an anchor
-
-            if (el.classList.contains('ts-ontology-badge')) {
-                el.textContent = name;
-            } else if (showId) {
+            if (showId) {
                 el.innerHTML = `${Transformers.escapeHtml(name)} <span class="ts-ontology-id">(${Transformers.escapeHtml(termId)})</span>`;
             } else {
                 el.textContent = name;
             }
         });
+
+        // Update Cards (Inject Details)
+        if (options.description || name) {
+            const wrappers = document.querySelectorAll(`.ts-ontology-wrapper`);
+            wrappers.forEach(wrapper => {
+                const badge = wrapper.querySelector(`[data-term="${termId}"]`);
+                if (badge && !wrapper.querySelector('.ts-ontology-card')) {
+                    const url = options.urlTemplate ? options.urlTemplate.replace(/\{value\}/g, encodeURIComponent(termId)) : '#';
+                    const cardHtml = `
+                        <div class="ts-ontology-card">
+                            <div class="ts-ontology-card-header">
+                                <span class="ts-ontology-card-id">${Transformers.escapeHtml(termId)}</span>
+                                <span class="ts-ontology-card-title">${Transformers.escapeHtml(name)}</span>
+                            </div>
+                            <div class="ts-ontology-card-body" style="color:var(--c-text-primary)">${Transformers.escapeHtml(options.description || name)}</div>
+                            ${options.urlTemplate ? `<div class="ts-ontology-card-footer"><a href="${url}" target="_blank" class="ts-link">View Details <i class="bi bi-box-arrow-up-right"></i></a></div>` : ''}
+                        </div>`;
+                    wrapper.insertAdjacentHTML('beforeend', cardHtml);
+                }
+            });
+        }
     }
 
-    private static async lookupGO(termId: string): Promise<string | null> {
-        const response = await fetch(`https://www.ebi.ac.uk/QuickGO/services/ontology/go/terms/${termId}`, {
+    private static async lookupGO(termId: string): Promise<{ name: string, description?: string } | null> {
+        const url = `https://www.ebi.ac.uk/QuickGO/services/ontology/go/terms/${encodeURIComponent(termId)}`;
+        const response = await fetch(url, {
             headers: { 'Accept': 'application/json' }
         });
         if (!response.ok) return null;
         const data = await response.json();
-        return data.results?.[0]?.name || null;
+        const result = data.results?.[0];
+        if (result?.name) {
+            return {
+                name: result.name,
+                description: result.definition?.text
+            };
+        }
+        return null;
     }
 
     private static async lookupCustom(termId: string, endpoint: string): Promise<string | null> {
@@ -1138,37 +1260,44 @@ export class Transformers {
 
                 // Gene Ontology (GO)
                 case 'go':
-                    name = await Transformers.lookupGOTerm(termId);
+                    const go = await Transformers.lookupGOTerm(termId);
+                    if (go) name = go.name;
                     break;
 
                 // KEGG Orthologs
                 case 'kegg':
-                    name = await Transformers.lookupKEGGOrtholog(termId);
+                    const kegg = await Transformers.lookupKEGGOrtholog(termId);
+                    if (kegg) name = kegg.name;
                     break;
 
                 // Pfam Domains
                 case 'pfam':
-                    name = await Transformers.lookupPfamDomain(termId);
+                    const pfam = await Transformers.lookupPfamDomain(termId);
+                    if (pfam) name = pfam.name;
                     break;
 
                 // COG Categories
                 case 'cog':
-                    name = await Transformers.lookupCOG(termId);
+                    const cog = await Transformers.lookupCOG(termId);
+                    if (cog) name = cog.name;
                     break;
 
                 // EC Numbers (Enzyme Commission)
                 case 'ec':
-                    name = await Transformers.lookupECNumber(termId);
+                    const ec = await Transformers.lookupECNumber(termId);
+                    if (ec) name = ec.name;
                     break;
 
                 // Sequence Ontology
                 case 'so':
-                    name = await Transformers.lookupSequenceOntology(termId);
+                    const so = await Transformers.lookupSequenceOntology(termId);
+                    if (so) name = so.name;
                     break;
 
                 // UniProt Reference Clusters
                 case 'uniref':
-                    name = await Transformers.lookupUniRef(termId);
+                    const uniref = await Transformers.lookupUniRef(termId);
+                    if (uniref) name = uniref.name;
                     break;
 
                 // Custom API lookup
@@ -1239,7 +1368,7 @@ export class Transformers {
      * Lookup Gene Ontology (GO) term name
      * Uses QuickGO API from EBI
      */
-    private static async lookupGOTerm(goId: string): Promise<string | null> {
+    private static async lookupGOTerm(goId: string): Promise<{ name: string, description?: string } | null> {
         try {
             // Normalize GO ID format (GO:0033103 or just 0033103)
             const normalizedId = goId.startsWith('GO:') ? goId : `GO:${goId}`;
@@ -1249,8 +1378,12 @@ export class Transformers {
             );
             if (!response.ok) return null;
             const data = await response.json();
-            if (data.results?.[0]?.name) {
-                return data.results[0].name;
+            const result = data.results?.[0];
+            if (result?.name) {
+                return {
+                    name: result.name,
+                    description: result.definition?.text
+                };
             }
             return null;
         } catch {
@@ -1262,18 +1395,36 @@ export class Transformers {
      * Lookup KEGG Ortholog name
      * Uses KEGG REST API
      */
-    private static async lookupKEGGOrtholog(koId: string): Promise<string | null> {
+    private static async lookupKEGGOrtholog(koId: string): Promise<{ name: string, description?: string } | null> {
         try {
             // Normalize KO ID format (K11904 or KEGG:K11904)
             const normalizedId = koId.replace(/^KEGG:/i, '').replace(/^ko:/i, '');
             const response = await fetch(`https://rest.kegg.jp/get/${normalizedId}`);
             if (!response.ok) return null;
             const text = await response.text();
-            // Parse KEGG flat file format - extract NAME or DEFINITION
-            const nameMatch = text.match(/^DEFINITION\s+(.+?)(?:\n|$)/m);
-            if (nameMatch) return nameMatch[1].trim();
-            const defMatch = text.match(/^NAME\s+(.+?)(?:\n|$)/m);
-            if (defMatch) return defMatch[1].trim();
+
+            // Parse KEGG flat file format
+            let name: string | null = null;
+            let description: string | undefined = undefined;
+
+            const defMatch = text.match(/^DEFINITION\s+(.+?)(?:\n|$)/m);
+            if (defMatch) {
+                // Use DEFINITION as the primary name (e.g. "alcohol dehydrogenase")
+                name = defMatch[1].trim();
+            }
+
+            const nameMatch = text.match(/^NAME\s+(.+?)(?:\n|$)/m);
+            if (nameMatch) {
+                // Use NAME (symbols) as secondary description or if primary is missing
+                const symbols = nameMatch[1].trim();
+                if (!name) {
+                    name = symbols;
+                } else {
+                    description = symbols;
+                }
+            }
+
+            if (name) return { name, description };
             return null;
         } catch {
             return null;
@@ -1284,7 +1435,7 @@ export class Transformers {
      * Lookup Pfam domain name
      * Uses InterPro API
      */
-    private static async lookupPfamDomain(pfamId: string): Promise<string | null> {
+    private static async lookupPfamDomain(pfamId: string): Promise<{ name: string, description?: string } | null> {
         try {
             // Normalize Pfam ID (PF00001 or just 00001)
             const normalizedId = pfamId.startsWith('PF') ? pfamId : `PF${pfamId}`;
@@ -1294,7 +1445,22 @@ export class Transformers {
             );
             if (!response.ok) return null;
             const data = await response.json();
-            return data.metadata?.name || null;
+
+            const shortName = data.metadata?.name?.name || data.metadata?.name;
+            const desc = data.metadata?.description ? data.metadata.description[0] : undefined;
+
+            if (desc) {
+                // Use full description as the primary name
+                return {
+                    name: desc,
+                    description: shortName
+                };
+            } else if (shortName) {
+                return {
+                    name: shortName
+                };
+            }
+            return null;
         } catch {
             return null;
         }
@@ -1304,7 +1470,7 @@ export class Transformers {
      * Lookup COG category or ID description
      * Uses NCBI COG API for full COG IDs and EggNOG for categories
      */
-    private static async lookupCOG(cogId: string): Promise<string | null> {
+    private static async lookupCOG(cogId: string): Promise<{ name: string, description?: string } | null> {
         try {
             // Handle COG category letters (e.g., "U" or "COG:U")
             const cleanId = cogId.replace(/^COG:/i, '').trim();
@@ -1328,7 +1494,7 @@ export class Transformers {
     /**
      * Lookup COG category description from NCBI COG API
      */
-    private static async lookupCOGCategory(category: string): Promise<string | null> {
+    private static async lookupCOGCategory(category: string): Promise<{ name: string, description?: string } | null> {
         try {
             // Use NCBI COG API for functional category descriptions
             const response = await fetch(
@@ -1338,7 +1504,7 @@ export class Transformers {
             if (response.ok) {
                 const data = await response.json();
                 if (data.results?.[0]?.fun_cat_description) {
-                    return data.results[0].fun_cat_description;
+                    return { name: data.results[0].fun_cat_description };
                 }
             }
 
@@ -1351,7 +1517,7 @@ export class Transformers {
     /**
      * Lookup full COG ID description from NCBI COG database
      */
-    private static async lookupCOGId(cogId: string): Promise<string | null> {
+    private static async lookupCOGId(cogId: string): Promise<{ name: string, description?: string } | null> {
         try {
             const response = await fetch(
                 `https://www.ncbi.nlm.nih.gov/research/cog/api/cog/${encodeURIComponent(cogId)}/?format=json`
@@ -1361,10 +1527,10 @@ export class Transformers {
 
             const data = await response.json();
             if (data.cog_name) {
-                return data.cog_name;
+                return { name: data.cog_name, description: data.fun_cat_description };
             }
             if (data.fun_cat_description) {
-                return data.fun_cat_description;
+                return { name: data.fun_cat_description };
             }
 
             return null;
@@ -1377,18 +1543,27 @@ export class Transformers {
      * Lookup EC number enzyme name
      * Uses KEGG Enzyme database
      */
-    private static async lookupECNumber(ecNumber: string): Promise<string | null> {
+    private static async lookupECNumber(ecNumber: string): Promise<{ name: string, description?: string } | null> {
         try {
             // Normalize EC format (remove "EC:" prefix if present)
             const cleanEc = ecNumber.replace(/^EC:/i, '').trim();
             const response = await fetch(`https://rest.kegg.jp/get/ec:${cleanEc}`);
             if (!response.ok) return null;
             const text = await response.text();
+
             // Parse KEGG flat file - extract NAME
+            let name: string | null = null;
             const nameMatch = text.match(/^NAME\s+(.+?)(?:\n|$)/m);
             if (nameMatch) {
                 // KEGG may have multiple names separated by semicolons
-                return nameMatch[1].split(';')[0].trim();
+                name = nameMatch[1].split(';')[0].trim();
+            }
+
+            // Extract definition or class as description
+            const classMatch = text.match(/^CLASS\s+(.+?)(?:\n|$)/m);
+
+            if (name) {
+                return { name, description: classMatch ? classMatch[1].trim() : undefined };
             }
             return null;
         } catch {
@@ -1400,41 +1575,26 @@ export class Transformers {
      * Lookup Sequence Ontology term from EBI OLS API
      * Provides scalable access to all SO terms without hardcoded values
      */
-    private static async lookupSequenceOntology(soId: string): Promise<string | null> {
+    private static async lookupSequenceOntology(soId: string): Promise<{ name: string, description?: string } | null> {
         try {
             // Normalize SO ID (SO:0001217 or just 0001217)
             const normalizedId = soId.startsWith('SO:') ? soId : `SO:${soId}`;
 
             // Use EBI Ontology Lookup Service (OLS) API
-            // Format: http://purl.obolibrary.org/obo/SO_0001217
             const oboId = normalizedId.replace(':', '_');
             const response = await fetch(
                 `https://www.ebi.ac.uk/ols4/api/ontologies/so/terms?iri=http://purl.obolibrary.org/obo/${oboId}`,
                 { headers: { 'Accept': 'application/json' } }
             );
 
-            if (!response.ok) {
-                // Fallback to OLS v3 API
-                const fallbackResponse = await fetch(
-                    `https://www.ebi.ac.uk/ols/api/ontologies/so/terms?iri=http://purl.obolibrary.org/obo/${oboId}`,
-                    { headers: { 'Accept': 'application/json' } }
-                );
-                if (!fallbackResponse.ok) return null;
-                const data = await fallbackResponse.json();
+            if (response.ok) {
+                const data = await response.json();
                 if (data._embedded?.terms?.[0]?.label) {
-                    return data._embedded.terms[0].label;
+                    return {
+                        name: data._embedded.terms[0].label,
+                        description: data._embedded.terms[0].description ? data._embedded.terms[0].description[0] : undefined
+                    };
                 }
-                return null;
-            }
-
-            const data = await response.json();
-            // OLS4 response format
-            if (data._embedded?.terms?.[0]?.label) {
-                return data._embedded.terms[0].label;
-            }
-            // Alternative OLS4 format
-            if (data.elements?.[0]?.label) {
-                return data.elements[0].label;
             }
 
             return null;
@@ -1447,7 +1607,7 @@ export class Transformers {
      * Lookup UniRef cluster representative protein name
      * Uses UniProt REST API
      */
-    private static async lookupUniRef(unirefId: string): Promise<string | null> {
+    private static async lookupUniRef(unirefId: string): Promise<{ name: string, description?: string } | null> {
         try {
             // Normalize UniRef ID (UniRef100_A0A093EEX8 or just A0A093EEX8)
             let cleanId = unirefId;
@@ -1467,11 +1627,18 @@ export class Transformers {
 
             // Get recommended name or submitted name
             const proteinDesc = data.proteinDescription;
+            let name: string | null = null;
+
             if (proteinDesc?.recommendedName?.fullName?.value) {
-                return proteinDesc.recommendedName.fullName.value;
+                name = proteinDesc.recommendedName.fullName.value;
+            } else if (proteinDesc?.submissionNames?.[0]?.fullName?.value) {
+                name = proteinDesc.submissionNames[0].fullName.value;
             }
-            if (proteinDesc?.submissionNames?.[0]?.fullName?.value) {
-                return proteinDesc.submissionNames[0].fullName.value;
+
+            if (name) {
+                // Get function comment
+                const func = data.comments?.find((c: any) => c.type === 'FUNCTION')?.texts?.[0]?.value;
+                return { name, description: func };
             }
 
             return null;

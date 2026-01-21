@@ -312,15 +312,13 @@
                     "filterable": true,
                     "width": "250px",
                     "transform": {
-                        "type": "ontologyLookup",
+                        "type": "ontology",
                         "options": {
-                            "ontologyType": "go",
-                            "urlTemplate": "https://amigo.geneontology.org/amigo/term/{id}",
-                            "idPattern": "(GO:\\d+)",
-                            "delimiter": ";",
-                            "maxLength": 40,
-                            "showId": true,
-                            "style": "inline"
+                            "prefix": "GO",
+                            "ontologyType": "GO",
+                            "urlTemplate": "https://amigo.geneontology.org/amigo/term/{value}",
+                            "style": "badge",
+                            "delimiter": ";"
                         }
                     }
                 },
@@ -335,15 +333,14 @@
                     "filterable": true,
                     "width": "280px",
                     "transform": {
-                        "type": "ontologyLookup",
+                        "type": "ontology",
                         "options": {
-                            "ontologyType": "kegg",
-                            "urlTemplate": "https://www.genome.jp/entry/{id}",
-                            "idPattern": "(K\\d+)",
-                            "delimiter": ";",
-                            "maxLength": 45,
-                            "showId": true,
-                            "style": "inline"
+                            "prefix": "KO",
+                            "ontologyType": "KEGG",
+                            "urlTemplate": "https://www.genome.jp/entry/{value}",
+                            "style": "badge",
+                            "layout": "vertical",
+                            "delimiter": ";"
                         }
                     }
                 },
@@ -358,15 +355,14 @@
                     "filterable": true,
                     "width": "250px",
                     "transform": {
-                        "type": "ontologyLookup",
+                        "type": "ontology",
                         "options": {
-                            "ontologyType": "pfam",
-                            "urlTemplate": "https://www.ebi.ac.uk/interpro/entry/pfam/{id}",
-                            "idPattern": "(PF\\d+)",
-                            "delimiter": ";",
-                            "maxLength": 40,
-                            "showId": true,
-                            "style": "inline"
+                            "prefix": "PFAM",
+                            "ontologyType": "Pfam",
+                            "urlTemplate": "https://www.ebi.ac.uk/interpro/entry/pfam/{value}",
+                            "style": "badge",
+                            "layout": "vertical",
+                            "delimiter": ";"
                         }
                     }
                 },
@@ -381,15 +377,14 @@
                     "filterable": true,
                     "width": "220px",
                     "transform": {
-                        "type": "ontologyLookup",
+                        "type": "ontology",
                         "options": {
-                            "ontologyType": "cog",
-                            "urlTemplate": "https://www.ncbi.nlm.nih.gov/research/cog/cog/{id}",
-                            "idPattern": "(COG\\d+|[A-Z])",
-                            "delimiter": ";",
-                            "maxLength": 40,
-                            "showId": true,
-                            "style": "inline"
+                            "prefix": "COG",
+                            "ontologyType": "COG",
+                            "urlTemplate": "https://www.ncbi.nlm.nih.gov/research/cog/cog/{value}",
+                            "style": "badge",
+                            "layout": "vertical",
+                            "delimiter": ";"
                         }
                     }
                 },
@@ -404,15 +399,14 @@
                     "filterable": true,
                     "width": "240px",
                     "transform": {
-                        "type": "ontologyLookup",
+                        "type": "ontology",
                         "options": {
-                            "ontologyType": "ec",
-                            "urlTemplate": "https://enzyme.expasy.org/EC/{id}",
-                            "idPattern": "([\\d]+\\.[\\d.-]+)",
-                            "delimiter": ";",
-                            "maxLength": 40,
-                            "showId": true,
-                            "style": "inline"
+                            "prefix": "EC",
+                            "ontologyType": "EC",
+                            "urlTemplate": "https://enzyme.expasy.org/EC/{value}",
+                            "style": "badge",
+                            "layout": "vertical",
+                            "delimiter": ";"
                         }
                     }
                 },
@@ -426,14 +420,14 @@
                     "sortable": false,
                     "width": "200px",
                     "transform": {
-                        "type": "ontologyLookup",
+                        "type": "ontology",
                         "options": {
-                            "ontologyType": "so",
-                            "urlTemplate": "http://www.sequenceontology.org/browser/current_release/term/{id}",
-                            "idPattern": "(SO:\\d+)",
-                            "maxLength": 35,
-                            "showId": true,
-                            "style": "inline"
+                            "prefix": "SO",
+                            "ontologyType": "SO",
+                            "urlTemplate": "http://www.sequenceontology.org/browser/current_release/term/{value}",
+                            "style": "badge",
+                            "layout": "vertical",
+                            "delimiter": ";"
                         }
                     }
                 },
@@ -447,14 +441,14 @@
                     "sortable": true,
                     "width": "280px",
                     "transform": {
-                        "type": "ontologyLookup",
+                        "type": "ontology",
                         "options": {
-                            "ontologyType": "uniref",
-                            "urlTemplate": "https://www.uniprot.org/uniref/{id}",
-                            "idPattern": "(UniRef\\d+_[A-Z0-9]+)",
-                            "maxLength": 40,
-                            "showId": true,
-                            "style": "inline"
+                            "prefix": "UniRef100",
+                            "ontologyType": "UniRef",
+                            "urlTemplate": "https://www.uniprot.org/uniref/{value}",
+                            "style": "badge",
+                            "layout": "vertical",
+                            "delimiter": ";"
                         }
                     }
                 },
@@ -468,14 +462,14 @@
                     "sortable": true,
                     "width": "280px",
                     "transform": {
-                        "type": "ontologyLookup",
+                        "type": "ontology",
                         "options": {
-                            "ontologyType": "uniref",
-                            "urlTemplate": "https://www.uniprot.org/uniref/{id}",
-                            "idPattern": "(UniRef\\d+_[A-Z0-9]+)",
-                            "maxLength": 40,
-                            "showId": true,
-                            "style": "inline"
+                            "prefix": "UniRef90",
+                            "ontologyType": "UniRef",
+                            "urlTemplate": "https://www.uniprot.org/uniref/{value}",
+                            "style": "badge",
+                            "layout": "vertical",
+                            "delimiter": ";"
                         }
                     }
                 },
@@ -489,14 +483,14 @@
                     "sortable": true,
                     "width": "280px",
                     "transform": {
-                        "type": "ontologyLookup",
+                        "type": "ontology",
                         "options": {
-                            "ontologyType": "uniref",
-                            "urlTemplate": "https://www.uniprot.org/uniref/{id}",
-                            "idPattern": "(UniRef\\d+_[A-Z0-9]+)",
-                            "maxLength": 40,
-                            "showId": true,
-                            "style": "inline"
+                            "prefix": "UniRef50",
+                            "ontologyType": "UniRef",
+                            "urlTemplate": "https://www.uniprot.org/uniref/{value}",
+                            "style": "badge",
+                            "layout": "vertical",
+                            "delimiter": ";"
                         }
                     }
                 },
@@ -553,14 +547,12 @@
                     "sortable": false,
                     "width": "300px",
                     "transform": {
-                        "type": "ontologyLookup",
+                        "type": "ontology",
                         "options": {
-                            "ontologyType": "modelseed_reactions",
-                            "urlTemplate": "https://modelseed.org/biochem/reactions/{id}",
-                            "idPattern": "(rxn\\d+)",
-                            "maxLength": 50,
-                            "showId": true,
-                            "style": "inline"
+                            "prefix": "RXN",
+                            "urlTemplate": "https://modelseed.org/biochem/reactions/{value}",
+                            "style": "badge",
+                            "delimiter": ";"
                         }
                     }
                 },
@@ -617,6 +609,18 @@
                     "width": "120px"
                 },
                 {
+                    "column": "contig_id",
+                    "displayName": "Contig",
+                    "dataType": "id",
+                    "categories": [
+                        "core"
+                    ],
+                    "visible": true,
+                    "sortable": true,
+                    "filterable": true,
+                    "width": "120px"
+                },
+                {
                     "column": "feature_id",
                     "displayName": "Feature ID",
                     "dataType": "id",
@@ -627,6 +631,83 @@
                     "sortable": true,
                     "filterable": true,
                     "copyable": true,
+                    "width": "120px"
+                },
+                {
+                    "column": "length",
+                    "displayName": "Length",
+                    "dataType": "integer",
+                    "categories": [
+                        "statistics"
+                    ],
+                    "visible": true,
+                    "sortable": true,
+                    "align": "right",
+                    "width": "80px"
+                },
+                {
+                    "column": "start",
+                    "displayName": "Start",
+                    "dataType": "integer",
+                    "categories": [
+                        "statistics"
+                    ],
+                    "visible": true,
+                    "sortable": true,
+                    "align": "right",
+                    "width": "80px"
+                },
+                {
+                    "column": "end",
+                    "displayName": "End",
+                    "dataType": "integer",
+                    "categories": [
+                        "statistics"
+                    ],
+                    "visible": true,
+                    "sortable": true,
+                    "align": "right",
+                    "width": "80px"
+                },
+                {
+                    "column": "strand",
+                    "displayName": "Strand",
+                    "dataType": "string",
+                    "categories": [
+                        "core"
+                    ],
+                    "visible": true,
+                    "sortable": true,
+                    "align": "center",
+                    "width": "60px"
+                },
+                {
+                    "column": "sequence",
+                    "displayName": "Sequence",
+                    "dataType": "sequence",
+                    "categories": [
+                        "sequence"
+                    ],
+                    "visible": true,
+                    "sortable": false,
+                    "width": "150px",
+                    "transform": {
+                        "type": "sequence",
+                        "options": {
+                            "maxLength": 20,
+                            "showCopyButton": true
+                        }
+                    }
+                },
+                {
+                    "column": "sequence_hash",
+                    "displayName": "Sequence Hash",
+                    "dataType": "id",
+                    "categories": [
+                        "sequence"
+                    ],
+                    "visible": false,
+                    "sortable": true,
                     "width": "120px"
                 },
                 {
@@ -688,20 +769,56 @@
                     "width": "250px"
                 },
                 {
-                    "column": "go",
-                    "displayName": "GO Terms",
+                    "column": "gene_names",
+                    "displayName": "Gene Names",
+                    "dataType": "string",
+                    "categories": [
+                        "functional"
+                    ],
+                    "visible": true,
+                    "sortable": true,
+                    "filterable": true,
+                    "width": "120px"
+                },
+                {
+                    "column": "cog",
+                    "displayName": "COG",
                     "dataType": "ontology",
                     "categories": [
                         "ontology"
                     ],
                     "visible": true,
-                    "width": "180px",
+                    "width": "140px",
                     "transform": {
                         "type": "ontology",
                         "options": {
-                            "prefix": "GO",
-                            "urlTemplate": "https://amigo.geneontology.org/amigo/term/{value}",
-                            "style": "badge"
+                            "prefix": "COG",
+                            "ontologyType": "COG",
+                            "urlTemplate": "https://www.ncbi.nlm.nih.gov/research/cog/cog/{value}",
+                            "style": "badge",
+                            "layout": "vertical",
+                            "delimiter": ";"
+                        }
+                    }
+                },
+                {
+                    "column": "ec",
+                    "displayName": "EC Number",
+                    "dataType": "ontology",
+                    "categories": [
+                        "ontology"
+                    ],
+                    "visible": true,
+                    "width": "160px",
+                    "transform": {
+                        "type": "ontology",
+                        "options": {
+                            "prefix": "EC",
+                            "ontologyType": "EC",
+                            "urlTemplate": "https://enzyme.expasy.org/EC/{value}",
+                            "style": "badge",
+                            "layout": "vertical",
+                            "delimiter": ";"
                         }
                     }
                 },
@@ -718,39 +835,137 @@
                         "type": "ontology",
                         "options": {
                             "prefix": "KO",
+                            "ontologyType": "KEGG",
                             "urlTemplate": "https://www.genome.jp/entry/{value}",
-                            "style": "badge"
+                            "style": "badge",
+                            "layout": "vertical",
+                            "delimiter": ";"
+                        }
+                    }
+                },
+                {
+                    "column": "pfam",
+                    "displayName": "Pfam Domains",
+                    "dataType": "ontology",
+                    "categories": [
+                        "ontology"
+                    ],
+                    "visible": true,
+                    "width": "160px",
+                    "transform": {
+                        "type": "ontology",
+                        "options": {
+                            "prefix": "PFAM",
+                            "ontologyType": "Pfam",
+                            "urlTemplate": "https://www.ebi.ac.uk/interpro/entry/pfam/{value}",
+                            "style": "badge",
+                            "layout": "vertical",
+                            "delimiter": ";"
+                        }
+                    }
+                },
+                {
+                    "column": "go",
+                    "displayName": "GO Terms",
+                    "dataType": "ontology",
+                    "categories": [
+                        "ontology"
+                    ],
+                    "visible": true,
+                    "width": "180px",
+                    "transform": {
+                        "type": "ontology",
+                        "options": {
+                            "prefix": "GO",
+                            "ontologyType": "GO",
+                            "urlTemplate": "https://amigo.geneontology.org/amigo/term/{value}",
+                            "style": "badge",
+                            "layout": "vertical",
+                            "delimiter": ";"
+                        }
+                    }
+                },
+                {
+                    "column": "so",
+                    "displayName": "Sequence Ontology",
+                    "dataType": "ontology",
+                    "categories": [
+                        "ontology"
+                    ],
+                    "visible": true,
+                    "width": "140px",
+                    "transform": {
+                        "type": "ontology",
+                        "options": {
+                            "prefix": "SO",
+                            "ontologyType": "SO",
+                            "urlTemplate": "http://www.sequenceontology.org/browser/current_release/term/{value}",
+                            "style": "badge",
+                            "layout": "vertical",
+                            "delimiter": ";"
+                        }
+                    }
+                },
+                {
+                    "column": "uniref_100",
+                    "displayName": "UniRef100",
+                    "dataType": "ontology",
+                    "categories": [
+                        "external"
+                    ],
+                    "visible": true,
+                    "width": "200px",
+                    "transform": {
+                        "type": "ontology",
+                        "options": {
+                            "prefix": "UniRef100",
+                            "ontologyType": "UniRef",
+                            "urlTemplate": "https://www.uniprot.org/uniref/{value}",
+                            "style": "badge",
+                            "layout": "vertical",
+                            "delimiter": ";"
                         }
                     }
                 },
                 {
                     "column": "uniref_90",
                     "displayName": "UniRef90",
-                    "dataType": "id",
+                    "dataType": "ontology",
                     "categories": [
                         "external"
                     ],
                     "visible": true,
-                    "width": "160px",
+                    "width": "200px",
                     "transform": {
-                        "type": "chain",
+                        "type": "ontology",
                         "options": {
-                            "transforms": [
-                                {
-                                    "type": "replace",
-                                    "options": {
-                                        "find": "UniRef:",
-                                        "replace": ""
-                                    }
-                                },
-                                {
-                                    "type": "link",
-                                    "options": {
-                                        "urlTemplate": "https://www.uniprot.org/uniref/{value}",
-                                        "target": "_blank"
-                                    }
-                                }
-                            ]
+                            "prefix": "UniRef90",
+                            "ontologyType": "UniRef",
+                            "urlTemplate": "https://www.uniprot.org/uniref/{value}",
+                            "style": "badge",
+                            "layout": "vertical",
+                            "delimiter": ";"
+                        }
+                    }
+                },
+                {
+                    "column": "uniref_50",
+                    "displayName": "UniRef50",
+                    "dataType": "ontology",
+                    "categories": [
+                        "external"
+                    ],
+                    "visible": true,
+                    "width": "200px",
+                    "transform": {
+                        "type": "ontology",
+                        "options": {
+                            "prefix": "UniRef50",
+                            "ontologyType": "UniRef",
+                            "urlTemplate": "https://www.uniprot.org/uniref/{value}",
+                            "style": "badge",
+                            "layout": "vertical",
+                            "delimiter": ";"
                         }
                     }
                 }

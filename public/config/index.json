@@ -83,15 +83,15 @@
                 "enabled": true,
                 "requiredTables": [
                     "genome",
-                    "contigs"
+                    "genome_features"
                 ],
                 "requiredColumns": {
                     "genome": [
-                        "genome_id",
-                        "genome_name"
+                        "id",
+                        "gtdb_taxonomy"
                     ],
-                    "contigs": [
-                        "contig_id",
+                    "genome_features": [
+                        "id",
                         "genome_id"
                     ]
                 },

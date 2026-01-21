@@ -882,9 +882,12 @@ mark.highlight.active {
 }
 
 @keyframes highlightPulse {
-    0%, 100% {
+
+    0%,
+    100% {
         box-shadow: 0 1px 3px rgba(255, 215, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3);
     }
+
     50% {
         box-shadow: 0 2px 6px rgba(255, 215, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.3);
     }
@@ -895,10 +898,12 @@ mark.highlight.active {
         transform: scale(1);
         box-shadow: 0 1px 3px rgba(59, 130, 246, 0.4);
     }
+
     50% {
         transform: scale(1.05);
         box-shadow: 0 4px 12px rgba(59, 130, 246, 0.8);
     }
+
     100% {
         transform: scale(1);
         box-shadow: 0 2px 8px rgba(59, 130, 246, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.3);
@@ -965,9 +970,7 @@ mark.highlight.active {
 }
 
 /* Filter Row - Perfectly aligned under headers */
-.ts-filter-row {
-    /* Ensure filter row is part of thead for proper alignment */
-}
+
 
 .ts-filter-row th {
     padding: 4px var(--row-padding-x) 8px;
@@ -998,11 +1001,7 @@ mark.highlight.active {
     padding: 4px 8px 8px;
 }
 
-/* Ensure filter row cells match header cell widths */
-.ts-table thead th,
-.ts-table .ts-filter-row th {
-    /* Use table-layout: fixed for consistent widths */
-}
+
 
 /* Table layout - ensure filters align perfectly with headers */
 .ts-table {
@@ -1034,14 +1033,10 @@ mark.highlight.active {
 }
 
 /* For auto-width columns, ensure they get reasonable space distribution */
-.ts-table th[style*="min-width:80px"]:not([style*="width:"]) {
-    /* Auto columns will distribute remaining space but respect min-width */
-}
+
 
 /* Ensure thead and filter row are in same table structure */
-.ts-table thead {
-    /* Standard thead */
-}
+
 
 .ts-table .ts-filter-row {
     /* Filter row is part of thead, so it inherits column widths */
@@ -2616,4 +2611,134 @@ kbd {
 
 .ts-table {
     font-size: var(--font-size-base);
+}
+
+/* ============================================
+   ONTOLOGY CARDS
+   ============================================ */
+.ts-ontology-wrapper {
+    position: relative;
+    display: inline-flex;
+    /* Changed to inline-flex to work better with badges */
+    vertical-align: middle;
+}
+
+.ts-ontology-card {
+    display: none;
+    position: absolute;
+    bottom: calc(100% + 10px);
+    left: 50%;
+    transform: translateX(-50%);
+    width: 320px;
+    background: var(--c-bg-surface);
+    border: 1px solid var(--c-border-subtle);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    z-index: 10000;
+    /* High z-index to show above sticky headers */
+    text-align: left;
+    white-space: normal;
+    animation: ts-fade-in 0.2s ease;
+}
+
+.ts-ontology-wrapper:hover .ts-ontology-card {
+    display: block;
+}
+
+/* Arrow */
+.ts-ontology-card::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    margin-left: -6px;
+    border-width: 6px;
+    border-style: solid;
+    border-color: var(--c-bg-surface) transparent transparent transparent;
+    z-index: 10001;
+}
+
+.ts-ontology-card::before {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    margin-left: -7px;
+    border-width: 7px;
+    border-style: solid;
+    border-color: var(--c-border-subtle) transparent transparent transparent;
+    z-index: 10000;
+}
+
+.ts-ontology-card-header {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--c-border-subtle);
+    background: var(--c-bg-surface-alt);
+    border-radius: var(--radius-md) var(--radius-md) 0 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.ts-ontology-card-id {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--c-accent);
+    /* Highlight ID */
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.ts-ontology-card-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--c-text-primary);
+    line-height: 1.4;
+}
+
+.ts-ontology-card-body {
+    padding: 14px 16px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--c-text-secondary);
+    max-height: 250px;
+    overflow-y: auto;
+}
+
+.ts-ontology-card-footer {
+    padding: 10px 16px;
+    border-top: 1px solid var(--c-border-subtle);
+    background: var(--c-bg-surface);
+    border-radius: 0 0 var(--radius-md) var(--radius-md);
+    display: flex;
+    justify-content: flex-end;
+}
+
+.ts-link {
+    color: var(--c-accent);
+    text-decoration: none;
+    font-size: 12px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    border-radius: var(--radius-sm);
+    transition: var(--transition-fast);
+}
+
+.ts-link:hover {
+    background: var(--c-accent-light);
+}
+
+@keyframes ts-fade-in {
+    from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(4px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+    }
 }

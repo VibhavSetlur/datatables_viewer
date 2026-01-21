@@ -147,8 +147,11 @@
                         "type": "ontology",
                         "options": {
                             "prefix": "GO",
+                            "ontologyType": "GO",
                             "urlTemplate": "https://amigo.geneontology.org/amigo/term/{value}",
-                            "style": "badge"
+                            "style": "badge",
+                            "layout": "vertical",
+                            "delimiter": ";"
                         }
                     }
                 },
@@ -316,35 +319,68 @@
                 {
                     "column": "EC_Number",
                     "displayName": "EC Number",
-                    "dataType": "id",
+                    "dataType": "ontology",
                     "categories": [
                         "functional"
                     ],
                     "sortable": true,
                     "filterable": true,
-                    "width": "100px"
+                    "width": "160px",
+                    "transform": {
+                        "type": "ontology",
+                        "options": {
+                            "prefix": "EC",
+                            "ontologyType": "EC",
+                            "urlTemplate": "https://enzyme.expasy.org/EC/{value}",
+                            "style": "badge",
+                            "layout": "vertical",
+                            "delimiter": ";"
+                        }
+                    }
                 },
                 {
                     "column": "COG",
                     "displayName": "COG",
-                    "dataType": "id",
+                    "dataType": "ontology",
                     "categories": [
                         "functional"
                     ],
                     "sortable": true,
                     "filterable": true,
-                    "width": "80px"
+                    "width": "140px",
+                    "transform": {
+                        "type": "ontology",
+                        "options": {
+                            "prefix": "COG",
+                            "ontologyType": "COG",
+                            "urlTemplate": "https://www.ncbi.nlm.nih.gov/research/cog/cog/{value}",
+                            "style": "badge",
+                            "layout": "vertical",
+                            "delimiter": ";"
+                        }
+                    }
                 },
                 {
                     "column": "Pfam",
                     "displayName": "Pfam",
-                    "dataType": "id",
+                    "dataType": "ontology",
                     "categories": [
                         "functional"
                     ],
                     "sortable": true,
                     "filterable": true,
-                    "width": "100px"
+                    "width": "160px",
+                    "transform": {
+                        "type": "ontology",
+                        "options": {
+                            "prefix": "PF",
+                            "ontologyType": "Pfam",
+                            "urlTemplate": "https://www.ebi.ac.uk/interpro/entry/pfam/{value}",
+                            "style": "badge",
+                            "layout": "vertical",
+                            "delimiter": ";"
+                        }
+                    }
                 },
                 {
                     "column": "TIGRFAM",
