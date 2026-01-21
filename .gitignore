@@ -13,6 +13,10 @@ docs/personal
 archive/
 trash/
 docs/PRODUCTION_READINESS.md
+DEPLOYMENT.md
+DEPLOYMENT_CHECKLIST.md
+AUTHENTICATION_FIX.md
+TROUBLESHOOTING.md
 
 # Dependencies
 node_modules/

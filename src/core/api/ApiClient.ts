@@ -135,7 +135,11 @@ export class ApiClient {
             ...this.customHeaders
         };
         if (this.token) {
-            (headers as any)['Authorization'] = this.token;
+            // TableScanner API expects "Bearer <token>" format
+            const authValue = this.token.startsWith('Bearer ') 
+                ? this.token 
+                : `Bearer ${this.token}`;
+            (headers as any)['Authorization'] = authValue;
         }
         return headers;
     }
@@ -215,13 +219,30 @@ export class ApiClient {
 
         if (!response.ok) {
             let errorMsg = `HTTP ${response.status}`;
+            let errorDetails: any = null;
             try {
                 const data = await response.json();
-                errorMsg = data.detail || data.message || errorMsg;
+                errorDetails = data;
+                // Try multiple common error message fields - prioritize detail field
+                if (data.detail && typeof data.detail === 'string' && data.detail.length > 0) {
+                    errorMsg = data.detail;
+                } else {
+                    errorMsg = data.message || data.error || data.msg || errorMsg;
+                }
+                // For 500 errors with Shock API issues, include full context
+                if (response.status === 500 && data.detail && data.detail.includes('shock-api')) {
+                    errorMsg = data.detail; // Use the full detail message
+                }
             } catch {
-                errorMsg = `${errorMsg}: ${response.statusText}`;
+                const text = await response.text().catch(() => '');
+                errorMsg = text || `${errorMsg}: ${response.statusText}`;
             }
-            throw new Error(errorMsg);
+            
+            // Create error with additional context
+            const error = new Error(errorMsg);
+            (error as any).status = response.status;
+            (error as any).details = errorDetails;
+            throw error;
         }
 
         const data = await response.json();
@@ -234,28 +255,9 @@ export class ApiClient {
     // Public Methods
 
     public async listTables(berdlTableId: string): Promise<any> {
-        // Local SQLite database mode (client-side)
+        // Local SQLite database mode - ALWAYS use LocalDbClient for local databases
+        // Local databases are client-side files and cannot be accessed via remote API
         if (LocalDbClient.isLocalDb(berdlTableId)) {
-            // Check if we have a remote TableScanner API configured
-            const hasRemoteApi = this.baseUrl && !this.baseUrl.includes('localhost') && !this.baseUrl.includes('127.0.0.1');
-
-            if (hasRemoteApi && berdlTableId.startsWith('local/')) {
-                // Use remote TableScanner service (separate deployment)
-                try {
-                    const dbName = berdlTableId.replace('local/', '');
-                    return this.request(
-                        `${this.baseUrl}/object/${dbName}/tables`,
-                        'GET',
-                        undefined,
-                        true
-                    );
-                } catch (error) {
-                    console.warn('[ApiClient] Remote TableScanner API failed, falling back to client-side:', error);
-                    // Fall back to client-side SQLite
-                    return this.localDb.listTables(berdlTableId);
-                }
-            }
-
             // Use LocalDbClient for client-side SQLite (no server needed)
             return this.localDb.listTables(berdlTableId);
         }
@@ -266,34 +268,9 @@ export class ApiClient {
 
 
     public async getTableData(req: TableDataRequest): Promise<TableDataResponse> {
-        // Local SQLite database mode
+        // Local SQLite database mode - ALWAYS use LocalDbClient for local databases
+        // Local databases are client-side files and cannot be accessed via remote API
         if (LocalDbClient.isLocalDb(req.berdl_table_id)) {
-            // Check if we have a remote TableScanner API configured
-            const hasRemoteApi = this.baseUrl && !this.baseUrl.includes('localhost') && !this.baseUrl.includes('127.0.0.1');
-
-            if (hasRemoteApi && req.berdl_table_id.startsWith('local/')) {
-                // Use remote TableScanner service (separate deployment)
-                try {
-                    const dbName = req.berdl_table_id.replace('local/', '');
-                    const body = {
-                        ...req,
-                        berdl_table_id: `local/${dbName}`,
-                        limit: req.limit || DEFAULT_LIMIT,
-                        offset: req.offset || DEFAULT_OFFSET,
-                    };
-                    return this.request(
-                        `${this.baseUrl}/table-data`,
-                        'POST',
-                        body,
-                        false
-                    );
-                } catch (error) {
-                    console.warn('[ApiClient] Remote TableScanner API failed, falling back to client-side:', error);
-                    // Fall back to client-side SQLite
-                    return this.localDb.getTableData(req.berdl_table_id, req);
-                }
-            }
-
             // Use LocalDbClient for client-side SQLite (no server needed)
             return this.localDb.getTableData(req.berdl_table_id, req);
         }

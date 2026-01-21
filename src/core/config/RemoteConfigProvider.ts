@@ -374,7 +374,11 @@ export class RemoteConfigProvider {
             };
 
             if (this.token) {
-                (options.headers as Record<string, string>)['Authorization'] = this.token;
+                // TableScanner API expects "Bearer <token>" format
+                const authValue = this.token.startsWith('Bearer ') 
+                    ? this.token 
+                    : `Bearer ${this.token}`;
+                (options.headers as Record<string, string>)['Authorization'] = authValue;
             }
 
             if (params && Object.keys(params).length > 0) {

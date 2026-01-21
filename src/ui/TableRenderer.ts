@@ -541,13 +541,35 @@ export class TableRenderer {
             if (errorMsg.includes('404') || errorMsg.includes('Not Found')) {
                 errorMsg = `Database or object "${trimmedBerdl}" not found. Please check the ID and try again.`;
             } else if (errorMsg.includes('401') || errorMsg.includes('Unauthorized')) {
-                errorMsg = `Authentication failed. Please check your token and try again.`;
+                // Check if it's a Shock API access issue (TableScanner can't access the database)
+                if (errorMsg.includes('shock-api') || errorMsg.includes('Failed to access database')) {
+                    errorMsg = `TableScanner cannot access the database. This usually means:\n` +
+                        `1. Your token doesn't have permission to access object "${trimmedBerdl}"\n` +
+                        `2. The object exists in a different environment (prod vs appdev)\n` +
+                        `3. The token is expired or invalid\n\n` +
+                        `Original error: ${errorMsg}`;
+                } else {
+                    errorMsg = `Authentication failed. Please check your token and try again.\n\nDetails: ${errorMsg}`;
+                }
             } else if (errorMsg.includes('403') || errorMsg.includes('Forbidden')) {
-                errorMsg = `Access denied to database "${trimmedBerdl}". Please check your permissions.`;
+                errorMsg = `Access denied to database "${trimmedBerdl}". Please check your permissions.\n\nDetails: ${errorMsg}`;
+            } else if (errorMsg.includes('500') || errorMsg.includes('Internal Server Error')) {
+                // TableScanner server error - often means it can't access Shock API
+                if (errorMsg.includes('shock-api') || errorMsg.includes('Failed to access database')) {
+                    errorMsg = `TableScanner service error: Cannot access database from KBase.\n\n` +
+                        `This usually means:\n` +
+                        `• Your token doesn't have permission to access this object\n` +
+                        `• The object is in a different environment than your token\n` +
+                        `• Try using a token from the correct environment (appdev vs prod)\n\n` +
+                        `Error details: ${errorMsg}`;
+                } else {
+                    errorMsg = `TableScanner service error: ${errorMsg}`;
+                }
             } else if (errorMsg.includes('Network') || errorMsg.includes('fetch')) {
                 errorMsg = `Network error: Unable to connect to database service. Please check your connection and try again.`;
             } else if (errorMsg.includes('Failed to load database')) {
-                // Already descriptive
+                // Already descriptive, but add context
+                errorMsg = `${errorMsg}\n\nThis may be a permissions issue. Verify your token has access to object "${trimmedBerdl}".`;
             } else {
                 errorMsg = `Failed to load database "${trimmedBerdl}": ${errorMsg}`;
             }
@@ -744,8 +766,16 @@ export class TableRenderer {
                     }, 50);
                 });
             }
-        } catch {
-            this.showAlert('Failed to copy to clipboard', 'danger');
+        } catch (error: any) {
+            const errorMsg = error?.message || 'Failed to load table data';
+            logger.error('Failed to fetch table data', error);
+            this.showAlert(errorMsg, 'danger');
+            this.stateManager.update({
+                data: [],
+                headers: [],
+                columns: [],
+                error: errorMsg
+            });
         } finally {
             this.stateManager.update({ loading: false });
         }
@@ -1301,24 +1331,67 @@ export class TableRenderer {
 
             // Construct paths (client-side, relative to public/)
             const dbPath = `/data/${cleanFilename}.db`;
-            const configPath = `/config/${cleanFilename}.json`;
+
+            // Try to load config using mapping system first, then registry pattern matching
+            let config: any = null;
+            let configPath: string | null = null;
+            
+            // 1. Try mapping system (LocalDatabaseMappings)
+            const { LocalDbClient } = await import('../core/api/LocalDbClient');
+            configPath = LocalDbClient.getConfigPath(dbPath);
+            
+            // 2. If no mapping found, try registry pattern matching
+            if (!configPath) {
+                const tempUpa = `local/${cleanFilename}`;
+                const appConfig = this.registry.getAppConfig();
+                
+                // Check exact match first
+                let detectedType = this.registry.detectDataType({ dataType: tempUpa, type: cleanFilename });
+                
+                // If no exact match, try pattern matching manually
+                if (!detectedType && appConfig?.dataTypes) {
+                    for (const [typeId, ref] of Object.entries(appConfig.dataTypes)) {
+                        if (ref.matches) {
+                            for (const pattern of ref.matches) {
+                                if (this.matchConfigPattern(tempUpa, pattern) || this.matchConfigPattern(cleanFilename, pattern)) {
+                                    detectedType = typeId;
+                                    break;
+                                }
+                            }
+                            if (detectedType) break;
+                        }
+                    }
+                }
+                
+                if (detectedType) {
+                    const dataTypeRef = appConfig?.dataTypes?.[detectedType];
+                    if (dataTypeRef?.configUrl) {
+                        configPath = dataTypeRef.configUrl;
+                    }
+                }
+            }
+            
+            // 3. Fallback to filename-based config path
+            if (!configPath) {
+                configPath = `/config/${cleanFilename}.json`;
+            }
 
             // Try to load config if available (optional)
-            let config: any = null;
             try {
                 const configResponse = await fetch(configPath);
                 if (configResponse.ok) {
                     config = await configResponse.json();
                     this.registry.registerDataType(config);
-                    this.configManager.setCurrentDataType(config.id || cleanFilename);
+                    const configId = config.id || cleanFilename;
+                    this.configManager.setCurrentDataType(configId);
+                    logger.debug(`Loaded config for ${cleanFilename} from ${configPath}, config ID: ${configId}`);
                 }
-            } catch {
-                // Config is optional, just log a warning
-                console.warn(`No config file found at ${configPath}, using default settings`);
+            } catch (error) {
+                // Config is optional, but log for debugging
+                logger.warn(`No config file found at ${configPath}, using default settings`, error);
             }
 
             // Use LocalDbClient to load the database (client-side)
-            const { LocalDbClient } = await import('../core/api/LocalDbClient');
             const localDb = LocalDbClient.getInstance();
 
             // Create a temporary UPA for this database
@@ -1447,16 +1520,54 @@ export class TableRenderer {
                     configPath = LocalDbClient.getConfigPath(candidate);
                     if (configPath) break;
                 }
-                if (!configPath) configPath = `/config/${cleanName}.json`;
+                
+                // If no mapping found, try registry pattern matching
+                if (!configPath) {
+                    const tempUpa = `local/${cleanName}`;
+                    const appConfig = this.registry.getAppConfig();
+                    
+                    // Check exact match first
+                    let detectedType = this.registry.detectDataType({ dataType: tempUpa, type: cleanName });
+                    
+                    // If no exact match, try pattern matching manually
+                    if (!detectedType && appConfig?.dataTypes) {
+                        for (const [typeId, ref] of Object.entries(appConfig.dataTypes)) {
+                            if (ref.matches) {
+                                for (const pattern of ref.matches) {
+                                    if (this.matchConfigPattern(tempUpa, pattern) || this.matchConfigPattern(cleanName, pattern)) {
+                                        detectedType = typeId;
+                                        break;
+                                    }
+                                }
+                                if (detectedType) break;
+                            }
+                        }
+                    }
+                    
+                    if (detectedType) {
+                        const dataTypeRef = appConfig?.dataTypes?.[detectedType];
+                        if (dataTypeRef?.configUrl) {
+                            configPath = dataTypeRef.configUrl;
+                        }
+                    }
+                }
+                
+                // Fallback to filename-based config path
+                if (!configPath) {
+                    configPath = `/config/${cleanName}.json`;
+                }
 
                 const configResponse = await fetch(configPath);
                 if (configResponse.ok) {
                     config = await configResponse.json();
                     this.registry.registerDataType(config);
-                    this.configManager.setCurrentDataType(config.id || cleanName);
+                    const configId = config.id || cleanName;
+                    this.configManager.setCurrentDataType(configId);
+                    logger.debug(`Loaded config for ${cleanName} from ${configPath}, config ID: ${configId}`);
                 }
-            } catch {
-                // Config is optional
+            } catch (error) {
+                // Config is optional, but log for debugging
+                logger.warn(`No config file found, using default settings`, error);
             }
 
             const { LocalDbClient } = await import('../core/api/LocalDbClient');
@@ -1598,6 +1709,22 @@ export class TableRenderer {
         }
 
         return { tables: tableNames, columns };
+    }
+
+    /**
+     * Match a value against a config pattern (supports wildcards).
+     * Used for matching database identifiers to config patterns.
+     */
+    private matchConfigPattern(value: string, pattern: string): boolean {
+        if (pattern.includes('*')) {
+            // Convert glob pattern to regex
+            const regexPattern = pattern
+                .replace(/[.+?^${}()|[\]\\]/g, '\\$&') // Escape special chars
+                .replace(/\*/g, '.*'); // Convert * to .*
+            const regex = new RegExp(`^${regexPattern}$`);
+            return regex.test(value);
+        }
+        return value === pattern;
     }
 
     /**

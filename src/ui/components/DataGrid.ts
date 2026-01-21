@@ -429,7 +429,7 @@ export class DataGrid extends Component {
         const replacements: Array<{ node: Text; replacement: string }> = [];
         let node: Text | null;
         
-        while (node = walker.nextNode() as Text) {
+        while ((node = walker.nextNode() as Text)) {
             if (node.textContent) {
                 regex.lastIndex = 0;
                 if (regex.test(node.textContent)) {

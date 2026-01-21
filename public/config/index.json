@@ -3,13 +3,13 @@
         "name": "DataTables Viewer",
         "version": "3.1.0",
         "description": "Production-grade configurable data table renderer for research applications",
-        "environment": "local"
+        "environment": "appdev"
     },
     "apis": {
         "default": {
             "id": "default",
-            "name": "Local Server",
-            "url": "http://127.0.0.1:8000",
+            "name": "KBase AppDev TableScanner",
+            "url": "https://appdev.kbase.us/services/berdl_table_scanner",
             "type": "rest"
         },
         "prod": {
@@ -21,7 +21,7 @@
         "appdev": {
             "id": "appdev",
             "name": "KBase AppDev",
-            "url": "https://appdev.kbase.us/services",
+            "url": "https://appdev.kbase.us/services/berdl_table_scanner",
             "type": "rest"
         },
         "test_data": {
@@ -62,6 +62,7 @@
             "configUrl": "/config/berdl-tables.json",
             "matches": [
                 "berdl_tables",
+                "local/berdl_tables",
                 "test/test/1",
                 "berdl/*"
             ],

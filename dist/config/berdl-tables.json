@@ -599,6 +599,7 @@
                     "categories": [
                         "core"
                     ],
+                    "visible": true,
                     "sortable": true,
                     "width": "80px",
                     "pin": "left"
@@ -610,6 +611,7 @@
                     "categories": [
                         "core"
                     ],
+                    "visible": true,
                     "sortable": true,
                     "filterable": true,
                     "width": "120px"
@@ -621,6 +623,7 @@
                     "categories": [
                         "core"
                     ],
+                    "visible": true,
                     "sortable": true,
                     "filterable": true,
                     "copyable": true,
@@ -633,6 +636,7 @@
                     "categories": [
                         "pangenome"
                     ],
+                    "visible": true,
                     "sortable": true,
                     "filterable": true,
                     "width": "120px"
@@ -644,6 +648,7 @@
                     "categories": [
                         "pangenome"
                     ],
+                    "visible": true,
                     "sortable": true,
                     "filterable": true,
                     "align": "center",
@@ -665,6 +670,7 @@
                     "categories": [
                         "functional"
                     ],
+                    "visible": true,
                     "sortable": true,
                     "searchable": true,
                     "width": "250px"
@@ -676,6 +682,7 @@
                     "categories": [
                         "functional"
                     ],
+                    "visible": true,
                     "sortable": true,
                     "searchable": true,
                     "width": "250px"
@@ -687,6 +694,7 @@
                     "categories": [
                         "ontology"
                     ],
+                    "visible": true,
                     "width": "180px",
                     "transform": {
                         "type": "ontology",
@@ -704,6 +712,7 @@
                     "categories": [
                         "ontology"
                     ],
+                    "visible": true,
                     "width": "150px",
                     "transform": {
                         "type": "ontology",
@@ -721,6 +730,7 @@
                     "categories": [
                         "external"
                     ],
+                    "visible": true,
                     "width": "160px",
                     "transform": {
                         "type": "chain",
