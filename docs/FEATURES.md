@@ -75,9 +75,11 @@ Supported functions:
 - Modal display with organized layout
 
 ### Schema Explorer
-- Browse database structure
-- Search tables and columns
-- View table schemas
+- Browse database structure with live schema fetch
+- Search tables, columns, and data matches
+- View real SQL types with PK / Not-Null badges
+- Manual schema refresh per table
+- Works with remote TableScanner or local SQLite fallback
 - Click "Schema" button in sidebar
 
 ### Category Management

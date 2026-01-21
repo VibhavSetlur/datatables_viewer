@@ -10,6 +10,9 @@ export interface SchemaViewerOptions {
     createModal: (title: string, bodyHtml: string) => HTMLElement;
     switchTable: (name: string) => Promise<void>;
     fetchData: () => void;
+    getSchemaForTable: (tableName: string) => Promise<Array<{ column?: string; name?: string; type?: string; notnull?: boolean; pk?: boolean }>>;
+    getConfigColumns: (tableName: string) => any[];
+    getStateColumns: () => any[];
 }
 
 export class SchemaViewer {
@@ -19,11 +22,16 @@ export class SchemaViewer {
     private createModal: (title: string, bodyHtml: string) => HTMLElement;
     private switchTable: (name: string) => Promise<void>;
     private fetchData: () => void;
+    private getSchemaForTable: (tableName: string) => Promise<Array<{ column?: string; name?: string; type?: string; notnull?: boolean; pk?: boolean }>>;
+    private getConfigColumns: (tableName: string) => any[];
+    private getStateColumns: () => any[];
 
     private searchTerm: string = '';
     private searchResults: Array<{ table: any; columns: any[]; hasDataMatches?: boolean }> = [];
     private isSearchingData: boolean = false;
     private modal: HTMLElement | null = null;
+    private schemaCache: Record<string, any[]> = {};
+    private loadingTables: Set<string> = new Set();
 
     constructor(options: SchemaViewerOptions) {
         this.configManager = options.configManager;
@@ -32,6 +40,9 @@ export class SchemaViewer {
         this.createModal = options.createModal;
         this.switchTable = options.switchTable.bind(options.switchTable);
         this.fetchData = options.fetchData.bind(options.fetchData);
+        this.getSchemaForTable = options.getSchemaForTable;
+        this.getConfigColumns = options.getConfigColumns;
+        this.getStateColumns = options.getStateColumns;
     }
 
     private renderSchemaItem(c: any) {
@@ -40,10 +51,14 @@ export class SchemaViewer {
         if (c.filterable) badges.push({ l: 'Filterable', bg: '#d1fae5', fg: '#059669' });
         if (c.copyable) badges.push({ l: 'Copyable', bg: '#e2e8f0', fg: '#475569' });
         if (c.pin) badges.push({ l: 'Pinned', bg: '#ede9fe', fg: '#7c3aed' });
+        if (c.pk) badges.push({ l: 'Primary', bg: '#fee2e2', fg: '#b91c1c' });
+        if (c.notnull) badges.push({ l: 'Not Null', bg: '#fef9c3', fg: '#92400e' });
 
         const badgeHtml = badges.map(b =>
             `<span style="font-size:10px;padding:3px 8px;border-radius:4px;background:${b.bg};color:${b.fg};margin-right:6px;font-weight:500">${b.l}</span>`
         ).join('');
+
+        const typeLabel = (c.type || c.dataType || 'string').toString().toUpperCase();
 
         return `
             <div class="ts-schema-item">
@@ -51,7 +66,7 @@ export class SchemaViewer {
                 <div style="flex:1;min-width:0">
                     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;gap:12px">
                         <span class="ts-schema-name">${c.displayName || c.column}</span>
-                        <span class="ts-schema-type">${c.dataType || 'string'}</span>
+                        <span class="ts-schema-type">${typeLabel}</span>
                     </div>
                     ${c.description ? `<div class="ts-schema-desc">${c.description}</div>` : ''}
                     <div style="display:flex;align-items:center;margin-top:8px;flex-wrap:wrap;gap:4px">
@@ -230,10 +245,51 @@ export class SchemaViewer {
             `;
         };
 
+        const normalizeType = (type?: string): string => {
+            if (!type) return 'STRING';
+            const upper = type.toUpperCase();
+            if (upper.includes('INT')) return 'INTEGER';
+            if (upper.includes('REAL') || upper.includes('DOUBLE') || upper.includes('FLOAT')) return 'FLOAT';
+            if (upper.includes('CHAR') || upper.includes('TEXT') || upper.includes('CLOB')) return 'STRING';
+            if (upper.includes('BLOB')) return 'BLOB';
+            if (upper.includes('DATE') || upper.includes('TIME')) return 'DATETIME';
+            return upper;
+        };
+
+        const getMergedColumns = (tableName: string) => {
+            const config = this.configManager.getTableConfig(tableName);
+            const currentState = this.stateManager.getState();
+            const isLive = currentState.activeTableName === tableName;
+            const stateCols = isLive ? this.getStateColumns() : [];
+            const cachedSchema = this.schemaCache[tableName];
+
+            const sourceColumns = (cachedSchema && cachedSchema.length > 0)
+                ? cachedSchema
+                : (stateCols.length > 0 ? stateCols : (config.columns || []));
+
+            // If we already have enriched columns (with type), return as-is
+            if (cachedSchema && cachedSchema.length > 0) return cachedSchema;
+
+            const configMap = new Map((config.columns || []).map((c: any) => [c.column, c]));
+            return sourceColumns.map((c: any) => {
+                const colName = c.column || c.name;
+                const cfg = configMap.get(colName) || {};
+                const typeLabel = normalizeType(c.type || cfg.dataType || cfg.type);
+                return {
+                    ...cfg,
+                    ...c,
+                    column: colName,
+                    type: typeLabel,
+                    dataType: typeLabel
+                };
+            });
+        };
+
         const renderTableDetail = (name: string) => {
             const config = this.configManager.getTableConfig(name);
             const isLive = state.activeTableName === name;
-            const columns = isLive ? state.columns : (config.columns || []);
+            const columns = getMergedColumns(name);
+            const isLoading = this.loadingTables.has(name);
 
             const tableTitle = config?.name || name;
             const tableDesc = config?.settings?.description || 'No description available for this table.';
@@ -266,18 +322,71 @@ export class SchemaViewer {
                             <h4 style="margin:0;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--c-text-muted);display:flex;align-items:center;gap:8px">
                                 <i class="bi bi-list-columns-reverse"></i> Schema Definition
                             </h4>
-                            <div style="position:relative">
+                            <div style="display:flex;align-items:center;gap:8px">
+                                <button id="ts-refresh-schema" data-table="${name}" class="ts-btn-secondary" style="height:28px;padding:0 10px;font-size:11px">
+                                    <i class="bi bi-arrow-repeat"></i> Refresh schema
+                                </button>
+                                <div style="position:relative">
                                 <input type="text" id="ts-schema-filter" placeholder="Search columns..." style="background:var(--c-bg-input);border:1px solid var(--c-border-subtle);border-radius:var(--radius-sm);font-size:12px;padding:6px 12px 6px 32px;width:220px;outline:none;color:var(--c-text-primary)">
                                 <i class="bi bi-search" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--c-text-muted)"></i>
                             </div>
+                            </div>
                         </div>
                         <div id="ts-schema-items-container" style="max-height:55vh;overflow-y:auto">
-                            ${columns.length === 0 ? '<div style="padding:48px;text-align:center;color:var(--c-text-muted)"><i class="bi bi-info-circle" style="font-size:24px;display:block;margin-bottom:12px;opacity:0.5"></i>No column information available. Load this table to see details.</div>' :
-                    columns.map(c => this.renderSchemaItem(c)).join('')}
+                            ${isLoading ? '<div style="padding:48px;text-align:center;color:var(--c-text-muted)"><i class="bi bi-hourglass-split" style="font-size:24px;display:block;margin-bottom:12px;opacity:0.5"></i>Loading schema...</div>' :
+                    columns.length === 0
+                        ? '<div style="padding:48px;text-align:center;color:var(--c-text-muted)"><i class="bi bi-info-circle" style="font-size:24px;display:block;margin-bottom:12px;opacity:0.5"></i>No schema information yet. Click "Refresh schema" to fetch live schema.</div>'
+                        : columns.map(c => this.renderSchemaItem(c)).join('')}
                         </div>
                     </div>
                 </div>
              `;
+        };
+
+        const ensureSchema = async (tableName: string) => {
+            if (!tableName || this.schemaCache[tableName] || this.loadingTables.has(tableName)) return;
+            this.loadingTables.add(tableName);
+            updateView(tableName);
+            try {
+                const rawSchema = await this.getSchemaForTable(tableName);
+                const configColumns = this.getConfigColumns(tableName);
+                const configMap = new Map(configColumns.map((c: any) => [c.column, c]));
+
+                const normalized = rawSchema.map(col => {
+                    const column = col.column || col.name;
+                    const cfg = configMap.get(column) || {};
+                    const type = normalizeType(col.type || cfg.dataType || cfg.type);
+                    return {
+                        ...cfg,
+                        column,
+                        displayName: cfg.displayName || column,
+                        type,
+                        dataType: type,
+                        description: cfg.description,
+                        sortable: cfg.sortable !== false,
+                        filterable: cfg.filterable !== false,
+                        copyable: cfg.copyable,
+                        pin: cfg.pin,
+                        pk: col.pk,
+                        notnull: col.notnull
+                    };
+                });
+
+                // If no schema returned, fall back to config columns (but keep type formatting)
+                this.schemaCache[tableName] = normalized.length > 0
+                    ? normalized
+                    : configColumns.map((c: any) => ({
+                        ...c,
+                        column: c.column,
+                        type: normalizeType(c.dataType || c.type),
+                        dataType: normalizeType(c.dataType || c.type)
+                    }));
+            } catch (error) {
+                logger.warn(`[SchemaViewer] Failed to load schema for table ${tableName}`, error);
+            } finally {
+                this.loadingTables.delete(tableName);
+                updateView(tableName);
+            }
         };
 
         const updateView = (target: string, searchQuery: string = this.searchTerm) => {
@@ -431,6 +540,7 @@ export class SchemaViewer {
                             });
                         } else {
                             updateView(target, searchQuery || this.searchTerm);
+                            void ensureSchema(target);
                         }
                     }
                 });
@@ -449,24 +559,37 @@ export class SchemaViewer {
                 });
             }
 
-            const exportBtn = this.modal.querySelector('#ts-export-current');
-            exportBtn?.addEventListener('click', () => {
-                const table = (exportBtn as HTMLElement).dataset.table;
-                if (!table) return;
-                const currentState = this.stateManager.getState();
-                const config = this.configManager.getTableConfig(table);
-                const cols = (currentState.activeTableName === table) ? currentState.columns : (config.columns || []);
-                const schemaData = JSON.stringify(config || { tableName: table, columns: cols }, null, 2);
-                const blob = new Blob([schemaData], { type: 'application/json' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `${table}_schema.json`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-            });
+            if (this.modal) {
+                const exportBtn = this.modal.querySelector('#ts-export-current');
+                exportBtn?.addEventListener('click', () => {
+                    const table = (exportBtn as HTMLElement).dataset.table;
+                    if (!table) return;
+                    const currentState = this.stateManager.getState();
+                    const config = this.configManager.getTableConfig(table);
+                    const cols = this.schemaCache[table]?.length
+                        ? this.schemaCache[table]
+                        : ((currentState.activeTableName === table) ? currentState.columns : (config.columns || []));
+                    const schemaData = JSON.stringify(config || { tableName: table, columns: cols }, null, 2);
+                    const blob = new Blob([schemaData], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `${table}_schema.json`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                });
+
+                const refreshBtn = this.modal.querySelector('#ts-refresh-schema');
+                refreshBtn?.addEventListener('click', () => {
+                    const table = (refreshBtn as HTMLElement).dataset.table;
+                    if (table) {
+                        delete this.schemaCache[table];
+                        void ensureSchema(table);
+                    }
+                });
+            }
         };
 
         const layout = `
@@ -486,5 +609,10 @@ export class SchemaViewer {
         }
 
         bindEvents();
+
+        // Load initial schema if a table is selected
+        if (initialTable) {
+            void ensureSchema(initialTable);
+        }
     }
 }

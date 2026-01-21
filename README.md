@@ -10,14 +10,15 @@ Production-grade, configurable data table viewer for research applications with 
 
 DataTables Viewer is a high-performance table viewer designed for researchers working with SQLite databases (20-200MB). It features:
 
-- 🚀 **Fast Query Performance** - Client-side SQLite via `sql.js` or TableScanner service with caching
-- 📊 **Flexible Deployment** - Static frontend + optional TableScanner service
-- 🔍 **Advanced Filtering** - Multiple operators, aggregations, column statistics
-- 📁 **Local Database Support** - Client-side SQLite via `sql.js` for testing (no server needed)
-- 🎨 **Rich Transformers** - Links, badges, heatmaps, sequences, ontologies
-- ⌨️ **Keyboard Navigation** - Full keyboard support
-- 🌙 **Dark Mode** - Light, dark, and system themes
-- 📤 **Export** - CSV, JSON, TSV export
+-  **Fast Query Performance** - Client-side SQLite via `sql.js` or TableScanner service with caching
+-  **Flexible Deployment** - Static frontend + optional TableScanner service
+-  **Advanced Filtering** - Multiple operators, aggregations, column statistics
+-  **Local Database Support** - Client-side SQLite via `sql.js` for testing (no server needed)
+-  **Rich Transformers** - Links, badges, heatmaps, sequences, ontologies
+- ⌨ **Keyboard Navigation** - Full keyboard support
+-  **Dark Mode** - Light, dark, and system themes
+-  **Export** - CSV, JSON, TSV export
+-  **Schema Explorer** - Live schema fetch per table with real SQL types, PK/Not-Null badges, search, and manual refresh
 
 ## Quick Start
 

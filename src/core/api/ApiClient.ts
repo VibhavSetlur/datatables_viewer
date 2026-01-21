@@ -68,6 +68,46 @@ export class ApiClient {
         this.localDb = LocalDbClient.getInstance();
     }
 
+    /**
+     * Get schema for a specific table.
+     * Tries remote TableScanner first, then falls back to LocalDbClient.
+     */
+    public async getTableSchema(
+        berdlTableId: string,
+        tableName: string
+    ): Promise<Array<{ name: string; type: string; notnull?: boolean; pk?: boolean }>> {
+        // Local databases: prefer LocalDbClient
+        if (LocalDbClient.isLocalDb(berdlTableId)) {
+            const localSchema = await this.localDb.getTableSchema(tableName);
+            return localSchema;
+        }
+
+        // Remote: TableScanner schema endpoint
+        try {
+            const schema = await this.request(
+                `/schema/${berdlTableId}/tables/${tableName}`,
+                'GET',
+                undefined,
+                true
+            );
+            // TableScanner returns { columns: [...] }
+            if (schema && Array.isArray((schema as any).columns)) {
+                return (schema as any).columns;
+            }
+            // Some deployments may return array directly
+            if (Array.isArray(schema)) return schema as any;
+        } catch (error) {
+            console.warn('[ApiClient] Remote schema fetch failed, falling back to local if available', error);
+        }
+
+        // Fallback to LocalDbClient if reachable
+        if (LocalDbClient.isLocalDb(berdlTableId)) {
+            return this.localDb.getTableSchema(tableName);
+        }
+
+        return [];
+    }
+
     private getDefaultUrl(env: string): string {
         // Check for environment variable first (for static deployment)
         // Vite exposes env vars prefixed with VITE_

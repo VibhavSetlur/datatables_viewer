@@ -119,6 +119,13 @@ curl -H "Authorization: Bearer $TOKEN" \
      https://appdev.kbase.us/services/berdl_table_scanner/schema/your-database/tables/your-table
 ```
 
+### Verify Schema Viewer (UI)
+1. Open the viewer and load a database.
+2. Click **Schema** in the sidebar.
+3. Select a table; the schema should fetch and show real SQL types with PK/Not-Null badges.
+4. Click **Refresh schema** to re-fetch and confirm types persist.
+5. Use the search box to filter columns and verify type labels remain correct.
+
 **Get Statistics:**
 ```bash
 curl -H "Authorization: Bearer $TOKEN" \

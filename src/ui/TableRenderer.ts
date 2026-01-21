@@ -323,7 +323,16 @@ export class TableRenderer {
             client: this.client,
             createModal: this.createModal.bind(this),
             switchTable: this.switchTable.bind(this),
-            fetchData: this.fetchData.bind(this)
+            fetchData: this.fetchData.bind(this),
+            getSchemaForTable: async (tableName: string) => {
+                await this.loadTableSchema(tableName);
+                return this.getSchemaColumns(tableName);
+            },
+            getConfigColumns: (tableName: string) => {
+                const config = this.configManager.getTableConfig(tableName);
+                return config?.columns || [];
+            },
+            getStateColumns: () => this.stateManager.getState().columns
         });
 
         this.statsViewer = new StatisticsViewer({
@@ -900,36 +909,13 @@ export class TableRenderer {
             const state = this.stateManager.getState();
             if (!state.berdlTableId) return;
 
-            let schema: Array<{ name: string; type: string; notnull: boolean; pk: boolean }> = [];
+            let schema: Array<{ name: string; type: string; notnull?: boolean; pk?: boolean }> = [];
 
-            // Try server first (check if available)
+            // Prefer API client (remote or local)
             try {
-                const serverPort = '3000';
-                const healthCheck = await fetch(`http://localhost:${serverPort}/health`, {
-                    signal: AbortSignal.timeout(500)
-                });
-
-                if (healthCheck.ok) {
-                    const dbName = state.berdlTableId.replace('local/', '');
-                    const response = await fetch(`http://localhost:${serverPort}/schema/${dbName}/tables/${tableName}`);
-                    if (response.ok) {
-                        const data = await response.json();
-                        schema = data.columns || [];
-                    }
-                }
-            } catch {
-                // Server not available, continue to fallback
-            }
-
-            // Fallback to LocalDbClient if server didn't provide schema
-            if (schema.length === 0) {
-                try {
-                    const { LocalDbClient } = await import('../core/api/LocalDbClient');
-                    const localDb = LocalDbClient.getInstance();
-                    schema = await localDb.getTableSchema(tableName);
-                } catch (err) {
-                    logger.warn('[TableRenderer] Failed to load schema', err);
-                }
+                schema = await this.client.getTableSchema(state.berdlTableId, tableName);
+            } catch (err) {
+                logger.warn('[TableRenderer] Failed to load schema from ApiClient', err);
             }
 
             // Cache schema
@@ -938,8 +924,8 @@ export class TableRenderer {
                 schema.forEach(col => {
                     this.columnSchemas[tableName][col.name] = {
                         type: col.type,
-                        notnull: col.notnull,
-                        pk: col.pk
+                        notnull: !!col.notnull,
+                        pk: !!col.pk
                     };
                 });
             }
@@ -953,6 +939,20 @@ export class TableRenderer {
      */
     public getColumnType(tableName: string, columnName: string): string {
         return this.columnSchemas[tableName]?.[columnName]?.type || 'TEXT';
+    }
+
+    /**
+     * Return cached schema columns for a table as an array.
+     */
+    public getSchemaColumns(tableName: string): Array<{ column: string; type: string; notnull?: boolean; pk?: boolean }> {
+        const schema = this.columnSchemas[tableName];
+        if (!schema) return [];
+        return Object.entries(schema).map(([name, info]) => ({
+            column: name,
+            type: info.type,
+            notnull: info.notnull,
+            pk: info.pk
+        }));
     }
 
     private switchApi(apiId: string) {
