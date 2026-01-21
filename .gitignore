@@ -1,6 +1,7 @@
 # Data files (never commit)
 data/
 public/data/
+!public/data/.gitkeep
 server/data/
 *.db
 *.db-journal
