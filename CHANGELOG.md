@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [3.0.0] - 2026-01-08
 
+## [3.0.1] - 2026-01-21
+
+### Fixed
+
+- **Build & CI stability** - Ensure the `data/` directory always exists in builds (including GitHub Actions) by tracking a `.gitkeep` placeholder and updating `.gitignore` rules so the `public/data` symlink target is present without committing large `.db` files
+
 ### Added
 
 #### Architecture & Backend
