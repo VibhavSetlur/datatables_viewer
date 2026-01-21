@@ -49,5 +49,8 @@
         "src",
         "tests",
         "vitest.config.ts"
+    ],
+    "exclude": [
+        "src/core/api/archived"
     ]
 }

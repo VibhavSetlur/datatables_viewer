@@ -172,9 +172,10 @@ export class TableRenderer {
             onReset: () => this.reset(),
             onShowSchema: (table) => this.showDatabaseSchema(table),
             onShowStats: (table) => this.showColumnStatistics(table),
-            onLoadDbPath: (dbPath) => this.loadDatabaseFromPath(dbPath),
+            onUploadDb: (file) => this.handleUploadDb(file),
         });
         this.sidebar.mount();
+
 
         // Toolbar
         this.toolbar = new Toolbar({
@@ -190,6 +191,17 @@ export class TableRenderer {
                 // The grid will re-render automatically via state subscription to apply highlighting
             },
             onRefresh: () => this.softRefresh(),
+            onTestConnection: async () => {
+                this.stateManager.update({ loading: true });
+                try {
+                    const result = await this.client.testConnection();
+                    this.showAlert(`Connection Successful! Service Status: ${result.status}`, 'success');
+                } catch (error: any) {
+                    this.showAlert(`Connection Failed: ${error.message}`, 'danger');
+                } finally {
+                    this.stateManager.update({ loading: false });
+                }
+            },
             onSearchNext: () => {
                 if (this.grid) {
                     this.grid.navigateToNextMatch();
@@ -288,7 +300,7 @@ export class TableRenderer {
                         advancedFilters: advancedFilters.length > 0 ? advancedFilters : undefined,
                         currentPage: 0
                     });
-                    
+
                     // Trigger re-render of filter chips
                     this.sidebar.renderFilterChips();
                 } else {
@@ -302,7 +314,7 @@ export class TableRenderer {
                         advancedFilters: advancedFilters.length > 0 ? advancedFilters : undefined,
                         currentPage: 0
                     });
-                    
+
                     // Trigger re-render of filter chips
                     this.sidebar.renderFilterChips();
                 }
@@ -337,6 +349,7 @@ export class TableRenderer {
 
         this.statsViewer = new StatisticsViewer({
             stateManager: this.stateManager,
+            client: this.client,
             createModal: this.createModal.bind(this),
             showAlert: this.showAlert.bind(this)
         });
@@ -407,9 +420,8 @@ export class TableRenderer {
             this.switchApi('test_data');
         } else {
             this.switchApi('default');
-            // Check if this is a local database (doesn't need token)
-            const { LocalDbClient } = await import('../core/api/LocalDbClient');
-            const isLocal = LocalDbClient.isLocalDb(trimmedBerdl);
+            // Local (uploaded) databases don't need token
+            const isLocal = ApiClient.isLocalDb(trimmedBerdl);
 
             if (!isLocal && !token) {
                 this.showAlert('Auth token required for remote databases', 'danger');
@@ -422,44 +434,7 @@ export class TableRenderer {
 
         try {
             // Try to load tables
-            let res: any;
-            let errorMessage = '';
-            let triedFallback = false;
-
-            try {
-                res = await this.client.listTables(trimmedBerdl);
-            } catch (primaryError: any) {
-                errorMessage = primaryError.message || 'Failed to load database';
-
-                // Check if this might be a local database and try fallback
-                const { LocalDbClient } = await import('../core/api/LocalDbClient');
-                const isLocal = LocalDbClient.isLocalDb(trimmedBerdl);
-
-                if (!isLocal && trimmedBerdl.startsWith('local/')) {
-                    // Try as local database file
-                    const dbName = trimmedBerdl.replace('local/', '');
-                    try {
-                        await this.loadDatabaseFromFile(dbName);
-                        return; // Successfully loaded via file
-                    } catch (fileError: any) {
-                        triedFallback = true;
-                        errorMessage = `Remote API failed: ${primaryError.message}. Local file also failed: ${fileError.message}`;
-                    }
-                } else if (isLocal) {
-                    // Already a local database, try direct file load
-                    const dbName = trimmedBerdl.replace('local/', '');
-                    try {
-                        await this.loadDatabaseFromFile(dbName);
-                        return; // Successfully loaded via file
-                    } catch (fileError: any) {
-                        triedFallback = true;
-                        errorMessage = `Failed to load local database: ${fileError.message}`;
-                    }
-                }
-
-                // If we get here, all attempts failed
-                throw new Error(errorMessage);
-            }
+            const res = await this.client.listTables(trimmedBerdl);
 
             // Check if response is valid
             if (!res) {
@@ -486,7 +461,7 @@ export class TableRenderer {
 
             // Extract schema info for config resolution
             let schemaInfo = this.extractSchemaInfo(res, tables);
-            
+
             // If schema not in response, try fetching it
             if (Object.keys(schemaInfo.columns).length === 0) {
                 const fetchedSchema = await this.fetchSchemaInfo(trimmedBerdl);
@@ -494,7 +469,7 @@ export class TableRenderer {
                     schemaInfo = fetchedSchema;
                 }
             }
-            
+
             // Resolve config with schema-based fallback
             const { getConfigResolver } = await import('../core/config/ConfigResolver');
             const resolver = getConfigResolver();
@@ -526,9 +501,7 @@ export class TableRenderer {
                 ? initialTable : tables[0].name;
 
             // Show success message
-            const successMsg = triedFallback
-                ? `Loaded database "${trimmedBerdl}" (using fallback method)`
-                : `Loaded database "${trimmedBerdl}" - ${tables.length} table${tables.length !== 1 ? 's' : ''} found`;
+            const successMsg = `Loaded database \"${trimmedBerdl}\" - ${tables.length} table${tables.length !== 1 ? 's' : ''} found`;
             this.showAlert(successMsg, 'success');
 
             await this.switchTable(targetTable);
@@ -687,7 +660,7 @@ export class TableRenderer {
             // Advanced filters take precedence and handle parsed operators correctly
             const colFilter: Record<string, any> = {};
             const advancedFilterColumns = new Set(state.advancedFilters?.map(f => f.column) || []);
-            
+
             for (const [col, value] of Object.entries(state.columnFilters)) {
                 // Skip columns that have advanced filters (they're already handled)
                 if (!advancedFilterColumns.has(col) && value !== undefined && value !== null && value !== '') {
@@ -901,7 +874,7 @@ export class TableRenderer {
 
         if (this.categoryManager) {
             this.categoryManager.setColumns(cols);
-            
+
             // Preserve existing visible columns - only initialize if empty
             // This prevents resetting column selections when filters are applied
             const currentState = this.stateManager.getState();
@@ -913,14 +886,14 @@ export class TableRenderer {
                 // Only clean up columns that no longer exist in the current column list
                 const existingVisible = new Set(currentState.visibleColumns);
                 const newColumnNames = new Set(cols.map(c => c.column));
-                
+
                 // Remove columns that no longer exist (cleanup only)
                 existingVisible.forEach(col => {
                     if (!newColumnNames.has(col)) {
                         existingVisible.delete(col);
                     }
                 });
-                
+
                 // Keep existing visible columns (don't reset them)
                 this.stateManager.update({ visibleColumns: existingVisible });
             }
@@ -1063,7 +1036,7 @@ export class TableRenderer {
         this.updateLoadingOverlay(state);
         this.syncStateToUrl();
         if (state.error) this.showAlert(state.error, 'danger');
-        
+
         // Update search navigation after data changes
         if (this.toolbar && this.grid) {
             // Small delay to ensure grid has finished rendering
@@ -1315,354 +1288,55 @@ export class TableRenderer {
     }
 
     /**
-     * Load database from a file (client-side only, for URL parameter support)
-     * @param dbFilename - Database filename without .db extension
+     * Handle file upload - uploads to server and loads data
      */
-    public async loadDatabaseFromFile(dbFilename: string): Promise<void> {
+    public async handleUploadDb(file: File): Promise<void> {
         try {
             this.stateManager.update({ loading: true, error: null });
 
-            // Validate filename
-            if (!dbFilename || dbFilename.trim() === '') {
-                throw new Error('Database filename is required');
-            }
-
-            const cleanFilename = dbFilename.trim();
-
-            // Construct paths (client-side, relative to public/)
-            const dbPath = `/data/${cleanFilename}.db`;
-
-            // Try to load config using mapping system first, then registry pattern matching
-            let config: any = null;
-            let configPath: string | null = null;
-            
-            // 1. Try mapping system (LocalDatabaseMappings)
-            const { LocalDbClient } = await import('../core/api/LocalDbClient');
-            configPath = LocalDbClient.getConfigPath(dbPath);
-            
-            // 2. If no mapping found, try registry pattern matching
-            if (!configPath) {
-                const tempUpa = `local/${cleanFilename}`;
-                const appConfig = this.registry.getAppConfig();
-                
-                // Check exact match first
-                let detectedType = this.registry.detectDataType({ dataType: tempUpa, type: cleanFilename });
-                
-                // If no exact match, try pattern matching manually
-                if (!detectedType && appConfig?.dataTypes) {
-                    for (const [typeId, ref] of Object.entries(appConfig.dataTypes)) {
-                        if (ref.matches) {
-                            for (const pattern of ref.matches) {
-                                if (this.matchConfigPattern(tempUpa, pattern) || this.matchConfigPattern(cleanFilename, pattern)) {
-                                    detectedType = typeId;
-                                    break;
-                                }
-                            }
-                            if (detectedType) break;
-                        }
-                    }
-                }
-                
-                if (detectedType) {
-                    const dataTypeRef = appConfig?.dataTypes?.[detectedType];
-                    if (dataTypeRef?.configUrl) {
-                        configPath = dataTypeRef.configUrl;
-                    }
-                }
-            }
-            
-            // 3. Fallback to filename-based config path
-            if (!configPath) {
-                configPath = `/config/${cleanFilename}.json`;
-            }
-
-            // Try to load config if available (optional)
-            try {
-                const configResponse = await fetch(configPath);
-                if (configResponse.ok) {
-                    config = await configResponse.json();
-                    this.registry.registerDataType(config);
-                    const configId = config.id || cleanFilename;
-                    this.configManager.setCurrentDataType(configId);
-                    logger.debug(`Loaded config for ${cleanFilename} from ${configPath}, config ID: ${configId}`);
-                }
-            } catch (error) {
-                // Config is optional, but log for debugging
-                logger.warn(`No config file found at ${configPath}, using default settings`, error);
-            }
-
-            // Use LocalDbClient to load the database (client-side)
-            const localDb = LocalDbClient.getInstance();
-
-            // Create a temporary UPA for this database
-            const tempUpa = `local/${cleanFilename}`;
-
-            // Try to load the database file
-            try {
-                await localDb.loadDatabase(dbPath);
-            } catch (dbError: any) {
-                // Provide specific error message for file not found
-                if (dbError.message.includes('404') || dbError.message.includes('Failed to load database')) {
-                    throw new Error(`Database file not found: ${dbPath}. Please ensure the file exists in the /data/ directory.`);
-                }
-                throw new Error(`Failed to load database file: ${dbError.message}`);
-            }
-
-            // Get table list
-            let tablesResult: any;
-            try {
-                tablesResult = await localDb.listTablesFromDb(dbPath, config);
-            } catch (tableError: any) {
-                throw new Error(`Failed to read database structure: ${tableError.message}`);
-            }
-
-            const tables = tablesResult.tables || [];
-
-            if (tables.length === 0) {
-                throw new Error(`Database "${cleanFilename}" contains no tables. The database may be empty or corrupted.`);
-            }
-
-            this.stateManager.update({
-                availableTables: tables,
-                berdlTableId: tempUpa
-            });
-
-            this.sidebar.updateTables(tables);
-
-            // Load the first table
-            const targetTable = tables[0].name;
-            await this.switchTable(targetTable);
-
-            this.showAlert(`Successfully loaded database "${cleanFilename}" - ${tables.length} table${tables.length !== 1 ? 's' : ''} found`, 'success');
-        } catch (error: any) {
-            // Provide detailed error message
-            let errorMsg = error.message || 'Failed to load database';
-
-            // Enhance error messages
-            if (errorMsg.includes('not found') || errorMsg.includes('404')) {
-                errorMsg = `Database file not found: "${dbFilename}". Please check that the file exists at /data/${dbFilename}.db`;
-            } else if (errorMsg.includes('No tables found')) {
-                errorMsg = `Database "${dbFilename}" contains no tables. The database may be empty or corrupted.`;
-            } else if (!errorMsg.includes('Failed to load')) {
-                errorMsg = `Failed to load database "${dbFilename}": ${errorMsg}`;
-            }
-
-            this.showAlert(errorMsg, 'danger');
-            this.stateManager.update({
-                availableTables: [],
-                activeTableName: null,
-                data: [],
-                columns: [],
-                visibleColumns: new Set(),
-                loading: false,
-                error: errorMsg
-            });
-            this.sidebar.updateTables([]);
-            throw error;
-        } finally {
-            this.stateManager.update({ loading: false });
-        }
-    }
-
-    /**
-     * Load a local database from a user-provided path/URL.
-     *
-     * Notes:
-     * - Browsers cannot read arbitrary local filesystem paths directly.
-     * - In dev, Vite can serve absolute filesystem paths via `/@fs/...`.
-     * - In production, the DB must be hosted by the web server (typically under `/data/...`).
-     */
-    public async loadDatabaseFromPath(dbPathOrUrl: string): Promise<void> {
-        try {
-            this.stateManager.update({ loading: true, error: null });
-
-            const raw = (dbPathOrUrl || '').trim();
-            if (!raw) throw new Error('Database path is required');
-            if (raw.toLowerCase().startsWith('file://')) {
-                throw new Error('file:// paths are not supported in the browser. In dev use an absolute path (Vite /@fs), or host the DB under /data/ in production.');
-            }
-
-            const withoutHash = raw.split('#')[0];
-            const withoutQuery = withoutHash.split('?')[0];
-            const baseName = (withoutQuery.split('/').pop() || 'database').trim();
-            const cleanName = baseName.replace(/\.(db|sqlite)$/i, '') || 'database';
-
-            const isHttpUrl = /^https?:\/\//i.test(raw);
-            let fetchPath = raw;
-            if (!isHttpUrl && !fetchPath.startsWith('/')) fetchPath = `/${fetchPath}`;
-
-            // Dev convenience: allow absolute filesystem paths (Linux/macOS/WSL) via Vite /@fs
-            if (import.meta.env.DEV && fetchPath.startsWith('/') && !fetchPath.startsWith('/@fs/')) {
-                const looksLikeAbsoluteFsPath =
-                    fetchPath.startsWith('/home/') ||
-                    fetchPath.startsWith('/Users/') ||
-                    fetchPath.startsWith('/mnt/') ||
-                    fetchPath.startsWith('/var/') ||
-                    fetchPath.startsWith('/tmp/');
-                if (looksLikeAbsoluteFsPath) {
-                    fetchPath = `/@fs${fetchPath}`;
-                }
-            }
-
-            // Load optional config based on mapping or filename convention
-            let config: any = null;
-            try {
-                const { LocalDbClient } = await import('../core/api/LocalDbClient');
-                const mappingKeyCandidates = [
-                    raw,
-                    withoutQuery,
-                    fetchPath,
-                    fetchPath.replace(/^\/@fs/, ''),
-                ];
-
-                let configPath: string | null = null;
-                for (const candidate of mappingKeyCandidates) {
-                    configPath = LocalDbClient.getConfigPath(candidate);
-                    if (configPath) break;
-                }
-                
-                // If no mapping found, try registry pattern matching
-                if (!configPath) {
-                    const tempUpa = `local/${cleanName}`;
-                    const appConfig = this.registry.getAppConfig();
-                    
-                    // Check exact match first
-                    let detectedType = this.registry.detectDataType({ dataType: tempUpa, type: cleanName });
-                    
-                    // If no exact match, try pattern matching manually
-                    if (!detectedType && appConfig?.dataTypes) {
-                        for (const [typeId, ref] of Object.entries(appConfig.dataTypes)) {
-                            if (ref.matches) {
-                                for (const pattern of ref.matches) {
-                                    if (this.matchConfigPattern(tempUpa, pattern) || this.matchConfigPattern(cleanName, pattern)) {
-                                        detectedType = typeId;
-                                        break;
-                                    }
-                                }
-                                if (detectedType) break;
-                            }
-                        }
-                    }
-                    
-                    if (detectedType) {
-                        const dataTypeRef = appConfig?.dataTypes?.[detectedType];
-                        if (dataTypeRef?.configUrl) {
-                            configPath = dataTypeRef.configUrl;
-                        }
-                    }
-                }
-                
-                // Fallback to filename-based config path
-                if (!configPath) {
-                    configPath = `/config/${cleanName}.json`;
-                }
-
-                const configResponse = await fetch(configPath);
-                if (configResponse.ok) {
-                    config = await configResponse.json();
-                    this.registry.registerDataType(config);
-                    const configId = config.id || cleanName;
-                    this.configManager.setCurrentDataType(configId);
-                    logger.debug(`Loaded config for ${cleanName} from ${configPath}, config ID: ${configId}`);
-                }
-            } catch (error) {
-                // Config is optional, but log for debugging
-                logger.warn(`No config file found, using default settings`, error);
-            }
-
-            const { LocalDbClient } = await import('../core/api/LocalDbClient');
-            const localDb = LocalDbClient.getInstance();
-
-            // Load database and list tables
-            await localDb.loadDatabase(fetchPath);
-            const tablesResult = await localDb.listTablesFromDb(fetchPath, config || {});
-            const tables = tablesResult.tables || [];
-
-            if (tables.length === 0) {
-                throw new Error(`Database "${cleanName}" contains no tables. The database may be empty or corrupted.`);
-            }
-
-            const tempUpa = `local/${cleanName}`;
-            this.stateManager.update({
-                availableTables: tables,
-                berdlTableId: tempUpa,
-            });
-            this.sidebar.updateTables(tables);
-
-            await this.switchTable(tables[0].name);
-            this.showAlert(`Successfully loaded database "${cleanName}" - ${tables.length} table${tables.length !== 1 ? 's' : ''} found`, 'success');
-        } catch (error: any) {
-            const msg = error?.message || 'Failed to load database';
-            this.showAlert(msg, 'danger');
-            this.stateManager.update({
-                availableTables: [],
-                activeTableName: null,
-                data: [],
-                columns: [],
-                visibleColumns: new Set(),
-                loading: false,
-                error: msg,
-            });
-            this.sidebar.updateTables([]);
-        } finally {
-            this.stateManager.update({ loading: false });
-        }
-    }
-
-    /**
-     * Load database from a File object (for upload)
-     */
-    public async loadDatabaseFromFileObject(file: File): Promise<void> {
-        try {
-            this.stateManager.update({ loading: true, error: null });
-
-            if (!file.name.endsWith('.db') && !file.name.endsWith('.sqlite')) {
-                this.showAlert('Please select a valid SQLite database file (.db or .sqlite)', 'warning');
+            // Validate file extension
+            if (!file.name.endsWith('.db') && !file.name.endsWith('.sqlite') && !file.name.endsWith('.sqlite3')) {
+                this.showAlert('Please select a valid SQLite database file (.db, .sqlite, or .sqlite3)', 'warning');
                 this.stateManager.update({ loading: false });
                 return;
             }
 
-            const buffer = await file.arrayBuffer();
+            // Upload to server
+            this.showAlert(`Uploading ${file.name}...`, 'info');
 
-            // Get the LocalDbClient
-            const { LocalDbClient } = await import('../core/api/LocalDbClient');
-            const localDb = LocalDbClient.getInstance();
+            const uploadResult = await this.client.uploadDatabase(file);
+            const handle = uploadResult.handle;
 
-            // Load from buffer
-            await localDb.loadDatabaseFromBuffer(buffer, file.name);
+            // Update the berdl input field and state
+            this.sidebar.setBerdlId(handle);
+            this.stateManager.update({ berdlTableId: handle });
 
-            const localUpa = `local/${file.name.replace(/\.(db|sqlite)$/, '')}`;
+            // Now load the tables
+            const res = await this.client.listTables(handle);
+            const tables = res.tables || [];
 
-            // Get table list
-            let tablesResult: any;
-            try {
-                // Pass empty config for now, or could try to find a matching config in the future
-                tablesResult = await localDb.listTablesFromDb(file.name);
-            } catch (tableError: any) {
-                throw new Error(`Failed to read database structure: ${tableError.message}`);
+            if (tables.length === 0) {
+                this.showAlert(`Database uploaded but contains no tables.`, 'warning');
+                this.stateManager.update({
+                    availableTables: [],
+                    loading: false
+                });
+                this.sidebar.updateTables([]);
+                return;
             }
 
-            const tables = tablesResult.tables || [];
-
-            this.stateManager.update({
-                berdlTableId: localUpa,
-                availableTables: tables,
-                activeTableName: null,
-                loading: false
-            });
-
+            this.stateManager.update({ availableTables: tables });
             this.sidebar.updateTables(tables);
 
-            if (tables.length > 0) {
-                await this.switchTable(tables[0].name);
-                this.showAlert(`Loaded local file: ${file.name}`, 'success');
-            } else {
-                this.showAlert(`Database loaded but contains no tables.`, 'warning');
-            }
+            // Load the first table
+            await this.switchTable(tables[0].name);
+            this.showAlert(`Successfully uploaded and loaded "${file.name}" - ${tables.length} table${tables.length !== 1 ? 's' : ''} found`, 'success');
 
         } catch (error: any) {
-            logger.error('Failed to load uploaded database', error);
-            this.showAlert(`Failed to load file: ${error.message}`, 'danger');
+            logger.error('Failed to upload database', error);
+            this.showAlert(`Failed to upload: ${error.message}`, 'danger');
+            this.stateManager.update({ loading: false, error: error.message });
+        } finally {
             this.stateManager.update({ loading: false });
         }
     }
@@ -1696,7 +1370,7 @@ export class TableRenderer {
             for (const table of tables) {
                 const tableName = table.name || table;
                 if (table.columns && Array.isArray(table.columns)) {
-                    columns[tableName] = table.columns.map((c: any) => 
+                    columns[tableName] = table.columns.map((c: any) =>
                         typeof c === 'string' ? c : c.name || c.column
                     );
                 } else if (table.column_names && Array.isArray(table.column_names)) {
@@ -1711,21 +1385,7 @@ export class TableRenderer {
         return { tables: tableNames, columns };
     }
 
-    /**
-     * Match a value against a config pattern (supports wildcards).
-     * Used for matching database identifiers to config patterns.
-     */
-    private matchConfigPattern(value: string, pattern: string): boolean {
-        if (pattern.includes('*')) {
-            // Convert glob pattern to regex
-            const regexPattern = pattern
-                .replace(/[.+?^${}()|[\]\\]/g, '\\$&') // Escape special chars
-                .replace(/\*/g, '.*'); // Convert * to .*
-            const regex = new RegExp(`^${regexPattern}$`);
-            return regex.test(value);
-        }
-        return value === pattern;
-    }
+
 
     /**
      * Fetch schema information from API if available.

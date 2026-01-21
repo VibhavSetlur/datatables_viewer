@@ -13,7 +13,7 @@ export interface SidebarOptions extends ComponentOptions {
     onReset: () => void;
     onShowSchema: (tableName: string) => void;
     onShowStats: (tableName: string) => void;
-    onLoadDbPath?: (dbPath: string) => void;
+    onUploadDb?: (file: File) => void;
 }
 
 export class Sidebar extends Component {
@@ -155,13 +155,13 @@ export class Sidebar extends Component {
                             <div style="height: 1px; background: var(--c-border-subtle); flex: 1;"></div>
                         </div>
                         <div class="ts-field" style="margin-top: 12px;">
-                            <label class="ts-label">Local DB path / URL</label>
-                            <input type="text" class="ts-input" id="ts-local-db-path"
-                                placeholder="e.g. /data/my.db">
+                            <label class="ts-label">Upload SQLite Database</label>
+                            <input type="file" class="ts-input" id="ts-upload-db-file" accept=".db,.sqlite,.sqlite3" style="display:none">
+                            <button class="ts-btn-secondary" id="ts-upload-db" style="height: 34px; width: 100%;">
+                                <i class="bi bi-upload"></i> Upload Database
+                            </button>
+                            <div id="ts-upload-info" style="margin-top:8px;font-size:12px;color:var(--c-text-muted);display:none"></div>
                         </div>
-                        <button class="ts-btn-secondary" id="ts-load-local-db" style="height: 34px; width: 100%; margin-top: 8px;">
-                            <i class="bi bi-folder2-open"></i> Load Local DB
-                        </button>
                         <div id="ts-loading-indicator" style="display:none;margin-top:12px;padding:12px;background:var(--c-bg-surface);border-radius:var(--radius-sm);border:1px solid var(--c-border-subtle)">
                             <div style="display:flex;align-items:center;gap:10px;color:var(--c-text-secondary);font-size:13px">
                                 <span class="ts-spinner" style="width:16px;height:16px"></span>
@@ -264,8 +264,9 @@ export class Sidebar extends Component {
             aggregationsInfo: '#ts-aggregations-info',
             export: '#ts-export',
             reset: '#ts-reset',
-            localDbPath: '#ts-local-db-path',
-            loadLocalDb: '#ts-load-local-db'
+            uploadDbFile: '#ts-upload-db-file',
+            uploadDbBtn: '#ts-upload-db',
+            uploadInfo: '#ts-upload-info'
         });
     }
 
@@ -292,24 +293,28 @@ export class Sidebar extends Component {
             if (e.key === 'Enter') this.dom.loadBtn.click();
         });
 
-        // Local DB path load
-        const loadLocalDb = () => {
-            const rawPath = (this.dom.localDbPath as HTMLInputElement | undefined)?.value?.trim() || '';
-            if (!rawPath || !this.options.onLoadDbPath) return;
+        // Upload DB button
+        this.dom.uploadDbBtn?.addEventListener('click', () => {
+            (this.dom.uploadDbFile as HTMLInputElement)?.click();
+        });
 
-            // Best-effort update of the "Object ID / UPA" field for visibility
-            const base = rawPath.split('?')[0].split('#')[0].split('/').pop() || rawPath;
-            const name = base.replace(/\.(db|sqlite)$/i, '');
-            if (this.dom.berdl && name) {
-                (this.dom.berdl as HTMLInputElement).value = `local/${name}`;
+        this.dom.uploadDbFile?.addEventListener('change', (e: Event) => {
+            const input = e.target as HTMLInputElement;
+            const file = input.files?.[0];
+            if (!file) return;
+
+            // Show selected file info
+            if (this.dom.uploadInfo) {
+                this.dom.uploadInfo.textContent = `Selected: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`;
+                this.dom.uploadInfo.style.display = 'block';
             }
 
-            this.options.onLoadDbPath(rawPath);
-        };
+            if (this.options.onUploadDb) {
+                this.options.onUploadDb(file);
+            }
 
-        this.dom.loadLocalDb?.addEventListener('click', loadLocalDb);
-        this.dom.localDbPath?.addEventListener('keypress', (e: KeyboardEvent) => {
-            if (e.key === 'Enter') loadLocalDb();
+            // Reset the input so the same file can be selected again
+            input.value = '';
         });
 
         // Table Select
@@ -795,13 +800,13 @@ export class Sidebar extends Component {
                     const filterToRemove = state.advancedFilters?.[parseInt(advFilterIdx)];
                     const newFilters = [...(state.advancedFilters || [])];
                     newFilters.splice(parseInt(advFilterIdx), 1);
-                    
+
                     // Also clear the corresponding column filter if it exists
                     const newColumnFilters = { ...state.columnFilters };
                     if (filterToRemove?.column) {
                         delete newColumnFilters[filterToRemove.column];
                     }
-                    
+
                     this.stateManager.update({
                         columnFilters: newColumnFilters,
                         advancedFilters: newFilters.length > 0 ? newFilters : undefined,
@@ -852,6 +857,12 @@ export class Sidebar extends Component {
 
     public getBerdlId(): string {
         return (this.dom.berdl as HTMLInputElement)?.value || '';
+    }
+
+    public setBerdlId(value: string): void {
+        if (this.dom.berdl) {
+            (this.dom.berdl as HTMLInputElement).value = value;
+        }
     }
 
     // Compat methods for renderer subscription

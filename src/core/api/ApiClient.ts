@@ -2,10 +2,10 @@
  * KBase TableScanner API Client
  * 
  * TypeScript implementation of the KBase Client.
+ * All database operations now go through the server API (no client-side SQLite).
  */
 
 import type { ApiConfig } from '../../types/schema';
-import { LocalDbClient } from './LocalDbClient';
 import {
     type AdvancedFilter,
     type Aggregation,
@@ -30,6 +30,13 @@ interface CacheEntry<T> {
     timestamp: number;
 }
 
+interface UploadResponse {
+    handle: string;
+    filename: string;
+    size_bytes: number;
+    message: string;
+}
+
 // Re-export types that external code may need
 export type {
     AdvancedFilter,
@@ -37,6 +44,7 @@ export type {
     ColumnMetadata,
     QueryMetadata,
     TableDataResponse,
+    UploadResponse,
 };
 
 // Use ApiTableDataRequest for API calls
@@ -49,7 +57,6 @@ export class ApiClient {
     private customHeaders: Record<string, string>;
     private cache: Map<string, CacheEntry<any>>;
     private cacheTTL: number;
-    private localDb: LocalDbClient;
 
     constructor(options: ClientOptions = {}) {
         this.environment = options.environment || 'appdev';
@@ -65,27 +72,25 @@ export class ApiClient {
         this.token = options.token || null;
         this.cache = new Map();
         this.cacheTTL = 300000; // 5 minutes
-        this.localDb = LocalDbClient.getInstance();
+    }
+
+    /**
+     * Check if a database ID is a local/uploaded database.
+     */
+    public static isLocalDb(berdlTableId: string): boolean {
+        return berdlTableId.startsWith('local:') || berdlTableId.startsWith('local/');
     }
 
     /**
      * Get schema for a specific table.
-     * Tries remote TableScanner first, then falls back to LocalDbClient.
      */
     public async getTableSchema(
         berdlTableId: string,
         tableName: string
     ): Promise<Array<{ name: string; type: string; notnull?: boolean; pk?: boolean }>> {
-        // Local databases: prefer LocalDbClient
-        if (LocalDbClient.isLocalDb(berdlTableId)) {
-            const localSchema = await this.localDb.getTableSchema(tableName);
-            return localSchema;
-        }
-
-        // Remote: TableScanner schema endpoint
         try {
             const schema = await this.request(
-                `/schema/${berdlTableId}/tables/${tableName}`,
+                `/object/${berdlTableId}/tables/${tableName}/schema`,
                 'GET',
                 undefined,
                 true
@@ -97,12 +102,7 @@ export class ApiClient {
             // Some deployments may return array directly
             if (Array.isArray(schema)) return schema as any;
         } catch (error) {
-            console.warn('[ApiClient] Remote schema fetch failed, falling back to local if available', error);
-        }
-
-        // Fallback to LocalDbClient if reachable
-        if (LocalDbClient.isLocalDb(berdlTableId)) {
-            return this.localDb.getTableSchema(tableName);
+            console.warn('[ApiClient] Schema fetch failed', error);
         }
 
         return [];
@@ -136,8 +136,8 @@ export class ApiClient {
         };
         if (this.token) {
             // TableScanner API expects "Bearer <token>" format
-            const authValue = this.token.startsWith('Bearer ') 
-                ? this.token 
+            const authValue = this.token.startsWith('Bearer ')
+                ? this.token
                 : `Bearer ${this.token}`;
             (headers as any)['Authorization'] = authValue;
         }
@@ -237,7 +237,7 @@ export class ApiClient {
                 const text = await response.text().catch(() => '');
                 errorMsg = text || `${errorMsg}: ${response.statusText}`;
             }
-            
+
             // Create error with additional context
             const error = new Error(errorMsg);
             (error as any).status = response.status;
@@ -254,28 +254,73 @@ export class ApiClient {
 
     // Public Methods
 
-    public async listTables(berdlTableId: string): Promise<any> {
-        // Local SQLite database mode - ALWAYS use LocalDbClient for local databases
-        // Local databases are client-side files and cannot be accessed via remote API
-        if (LocalDbClient.isLocalDb(berdlTableId)) {
-            // Use LocalDbClient for client-side SQLite (no server needed)
-            return this.localDb.listTables(berdlTableId);
+    /**
+     * Upload a SQLite database file to the server.
+     * Returns a handle that can be used as berdl_table_id.
+     */
+    public async uploadDatabase(file: File): Promise<UploadResponse> {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const url = `${this.baseUrl}/upload`;
+        const headers: HeadersInit = {
+            'Accept': 'application/json',
+            ...this.customHeaders
+        };
+        if (this.token) {
+            const authValue = this.token.startsWith('Bearer ')
+                ? this.token
+                : `Bearer ${this.token}`;
+            (headers as any)['Authorization'] = authValue;
+        }
+        // Note: Don't set Content-Type for FormData - browser sets it with boundary
+
+        const response = await fetch(url, {
+            method: 'POST',
+            headers,
+            body: formData
+        });
+
+        if (!response.ok) {
+            let errorMsg = `Upload failed: HTTP ${response.status}`;
+            try {
+                const data = await response.json();
+                errorMsg = data.detail || data.message || errorMsg;
+            } catch {
+                // Ignore JSON parse error
+            }
+            throw new Error(errorMsg);
         }
 
-        // Use remote TableScanner service for non-local databases (KBase objects)
+        return response.json();
+    }
+
+    public async listTables(berdlTableId: string): Promise<any> {
+        // All databases now go through the API
         return this.request(`/object/${berdlTableId}/tables`, 'GET', undefined, true);
     }
 
+    /**
+     * Test connection to the API server.
+     */
+    public async testConnection(): Promise<{ status: string; version?: string; detail?: string }> {
+        try {
+            // Try the health endpoint first
+            return await this.request('/health', 'GET', undefined, false);
+        } catch (error) {
+            // Fallback to root endpoint
+            try {
+                return await this.request('/', 'GET', undefined, false);
+            } catch (e: any) {
+                throw new Error(`Connection failed: ${e.message}`);
+            }
+        }
+    }
+
+
 
     public async getTableData(req: TableDataRequest): Promise<TableDataResponse> {
-        // Local SQLite database mode - ALWAYS use LocalDbClient for local databases
-        // Local databases are client-side files and cannot be accessed via remote API
-        if (LocalDbClient.isLocalDb(req.berdl_table_id)) {
-            // Use LocalDbClient for client-side SQLite (no server needed)
-            return this.localDb.getTableData(req.berdl_table_id, req);
-        }
-
-        // Use remote TableScanner service for non-local databases
+        // All databases now go through the API
         const body = {
             ...req,
             limit: req.limit || DEFAULT_LIMIT,
@@ -299,5 +344,11 @@ export class ApiClient {
             return null;
         }
     }
-}
 
+    /**
+     * Get statistics for a specific table.
+     */
+    public async getTableStatistics(berdlTableId: string, tableName: string): Promise<any> {
+        return this.request(`/object/${berdlTableId}/tables/${tableName}/stats`, 'GET', undefined, true);
+    }
+}

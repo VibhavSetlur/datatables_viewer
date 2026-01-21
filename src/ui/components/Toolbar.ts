@@ -1,8 +1,10 @@
 import { Component, type ComponentOptions } from '../Component';
 
+
 export interface ToolbarOptions extends ComponentOptions {
     onSearch: (term: string) => void;
     onRefresh: () => void;
+    onTestConnection?: () => void;
     onSearchNext?: () => void;
     onSearchPrev?: () => void;
     getSearchMatchInfo?: () => { current: number; total: number };
@@ -41,6 +43,9 @@ export class Toolbar extends Component {
             </div>
             <div class="ts-spacer" style="flex:1"></div>
             <div class="ts-toolbar-actions">
+                <button class="ts-tb-btn" id="ts-test-connection" title="Test API Connection" style="margin-right: 8px;">
+                    <i class="bi bi-lightning-charge"></i> Test Connection
+                </button>
                 <button class="ts-tb-btn" id="ts-refresh" title="Refresh Data">
                     <i class="bi bi-arrow-clockwise"></i> Refresh
                 </button>
@@ -55,6 +60,7 @@ export class Toolbar extends Component {
             searchPrev: '#ts-search-prev',
             searchNext: '#ts-search-next',
             searchInfo: '#ts-search-info',
+            testConn: '#ts-test-connection',
             refresh: '#ts-refresh',
             settings: '#ts-settings-btn'
         });
@@ -103,7 +109,14 @@ export class Toolbar extends Component {
             this.updateSearchNav();
         });
 
+
         this.dom.refresh?.addEventListener('click', () => this.options.onRefresh());
+
+        this.dom.testConn?.addEventListener('click', () => {
+            if (this.options.onTestConnection) {
+                this.options.onTestConnection();
+            }
+        });
 
         // Initial update
         setTimeout(() => this.updateSearchNav(), 100);
@@ -116,7 +129,7 @@ export class Toolbar extends Component {
         const searchInput = this.dom.search as HTMLInputElement;
         const searchTerm = searchInput?.value?.trim() || '';
         const navContainer = this.container.querySelector('.ts-search-nav') as HTMLElement;
-        
+
         if (!navContainer) return;
 
         // Show/hide navigation based on search term

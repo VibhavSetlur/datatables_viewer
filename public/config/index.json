@@ -3,13 +3,19 @@
         "name": "DataTables Viewer",
         "version": "3.1.0",
         "description": "Production-grade configurable data table renderer for research applications",
-        "environment": "appdev"
+        "environment": "local"
     },
     "apis": {
         "default": {
             "id": "default",
-            "name": "KBase AppDev TableScanner",
-            "url": "https://appdev.kbase.us/services/berdl_table_scanner",
+            "name": "Local TableScanner",
+            "url": "http://127.0.0.1:8000",
+            "type": "rest"
+        },
+        "local": {
+            "id": "local",
+            "name": "Local TableScanner",
+            "url": "http://127.0.0.1:8000",
             "type": "rest"
         },
         "prod": {
@@ -42,9 +48,14 @@
             "autoLoad": true,
             "schemaMatch": {
                 "enabled": true,
-                "requiredTables": ["Genes"],
+                "requiredTables": [
+                    "Genes"
+                ],
                 "requiredColumns": {
-                    "Genes": ["ID", "Database_ID"]
+                    "Genes": [
+                        "ID",
+                        "Database_ID"
+                    ]
                 },
                 "minMatchScore": 0.7
             }
@@ -70,10 +81,19 @@
             "autoLoad": true,
             "schemaMatch": {
                 "enabled": true,
-                "requiredTables": ["genome", "contigs"],
+                "requiredTables": [
+                    "genome",
+                    "contigs"
+                ],
                 "requiredColumns": {
-                    "genome": ["genome_id", "genome_name"],
-                    "contigs": ["contig_id", "genome_id"]
+                    "genome": [
+                        "genome_id",
+                        "genome_name"
+                    ],
+                    "contigs": [
+                        "contig_id",
+                        "genome_id"
+                    ]
                 },
                 "minMatchScore": 0.6
             }
@@ -86,9 +106,14 @@
             "autoLoad": false,
             "schemaMatch": {
                 "enabled": true,
-                "requiredTables": ["Model"],
+                "requiredTables": [
+                    "Model"
+                ],
                 "requiredColumns": {
-                    "Model": ["id", "name"]
+                    "Model": [
+                        "id",
+                        "name"
+                    ]
                 },
                 "minMatchScore": 0.7
             }

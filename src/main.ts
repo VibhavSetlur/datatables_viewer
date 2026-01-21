@@ -19,23 +19,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         await renderer.init();
 
-        // If database parameter is provided, load it (client-side)
+        // If database parameter is provided, set it for initial load
         if (dbParam) {
-            try {
-                await renderer.loadDatabaseFromFile(dbParam);
-            } catch (error: any) {
-                logger.error('Failed to load database from URL parameter', error);
-                appContainer.innerHTML = `
-                    <div class="ts-alert ts-alert-danger">
-                        <i class="bi bi-x-circle-fill"></i> 
-                        Failed to load database: ${error.message}
-                        <br><br>
-                        <small>Usage: ?db=filename (without .db extension)</small>
-                        <br>
-                        <small>Database file should be at: /data/${dbParam}.db</small>
-                    </div>
-                `;
-            }
+            logger.info(`Database parameter detected: ${dbParam}`);
+            // Note: Client-side database loading is no longer supported.
+            // Use the upload feature or provide a KBase object reference.
         }
 
         // Expose for debugging (only in development)
