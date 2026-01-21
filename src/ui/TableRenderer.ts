@@ -6,6 +6,7 @@
 import { ApiClient } from '../core/api/ApiClient';
 import { DataTypeRegistry } from '../core/config/DataTypeRegistry';
 import { ConfigManager, type TableColumnConfig } from '../core/config/ConfigManager';
+import { ConfigResolver, getConfigResolver } from '../core/config/ConfigResolver';
 import { StateManager, type AppState } from '../core/state/StateManager';
 import { logger } from '../utils/logger';
 import { CategoryManager } from '../core/managers/CategoryManager';
@@ -29,6 +30,7 @@ export class TableRenderer {
     private container: HTMLElement;
     private configUrl: string | null;
     private configManager!: ConfigManager;
+    private configResolver: ConfigResolver;
     private registry: DataTypeRegistry;
     private client!: ApiClient;
     private stateManager: StateManager;
@@ -51,6 +53,7 @@ export class TableRenderer {
         this.container = options.container;
         this.configUrl = options.configUrl || null;
         this.client = options.client || new ApiClient();
+        this.configResolver = getConfigResolver();
         this.registry = DataTypeRegistry.getInstance();
         this.stateManager = new StateManager();
         this.stateManager.subscribe(this.onStateChange.bind(this));
@@ -1327,6 +1330,42 @@ export class TableRenderer {
 
             this.stateManager.update({ availableTables: tables });
             this.sidebar.updateTables(tables);
+
+            // RESOLVE CONFIGURATION:
+            // Extract schema info for config matching
+            const schemaInfo = this.extractSchemaInfo(res, tables);
+
+            // Try fallback fetch if schema info is missing/incomplete
+            if (schemaInfo.tables.length === 0 && handle) {
+                const fetchedSchema = await this.fetchSchemaInfo(handle);
+                if (fetchedSchema) {
+                    schemaInfo.tables = fetchedSchema.tables;
+                    schemaInfo.columns = fetchedSchema.columns;
+                }
+            }
+
+            // Resolve config using the ConfigResolver
+            logger.info('[TableRenderer] Resolving config for uploaded database:', { handle, schemaInfo });
+            const resolveResult = await this.configResolver.resolve(handle, {
+                objectType: res.object_type,
+                schema: schemaInfo
+            });
+
+            logger.info('[TableRenderer] Config resolved:', resolveResult);
+
+            if (resolveResult.config) {
+                // Register the resolved config (this handles pattern & schema matches)
+                this.configManager.getRegistry().registerDataType(resolveResult.config);
+
+                // Force sets the config to be used for this handle
+                // If it was a schema match, the ID might be different from the handle
+                // But we want to associate this handle with that config ID
+                if (resolveResult.source === 'schema_match' || resolveResult.source === 'default') {
+                    // For schema/default matches, we need to map this specific handle to the config
+                    // Since handle is unique (local:uuid), we can just use the config directly
+                    await this.configManager.setCurrentDataType(resolveResult.config.id);
+                }
+            }
 
             // Load the first table
             await this.switchTable(tables[0].name);
