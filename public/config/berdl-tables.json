@@ -706,7 +706,7 @@
                     "categories": [
                         "sequence"
                     ],
-                    "visible": false,
+                    "visible": true,
                     "sortable": true,
                     "width": "120px"
                 },

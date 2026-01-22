@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  datatables-viewer:
+    build: .
+    container_name: datatables-viewer
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/app/data:ro
+    restart: unless-stopped
+    environment:
+      - VITE_API_URL=http://localhost:8000

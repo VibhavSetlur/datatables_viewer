@@ -97,7 +97,7 @@ Transform cell values for display:
 - **Heatmap**: Color gradients based on values
 - **Boolean**: Icons for true/false
 - **Sequence**: DNA/protein sequence display
-- **Ontology**: GO terms and ontology lookups
+- **Ontology**: GO terms, EC numbers, Pfam domains, and Gene Cards (UniProt/KEGG) with descriptions
 
 ### Keyboard Navigation
 - `?` - Show keyboard help

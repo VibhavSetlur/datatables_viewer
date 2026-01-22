@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [3.0.0] - 2026-01-08
 
+## [3.1.0] - 2026-01-22
+
+### Added
+- **Rich Gene Cards** - Enhanced UI for UniProt and KEGG columns with hoverable cards containing descriptions and metadata
+- **Expanded Ontology Support** - Transformers now support UniProt and KEGG Entry lookups with vertical layout for multiple items
+- **UniProt API Integration** - Direct fetching of protein and gene names from UniProt REST API
+- **Improved KEGG Lookup** - Support for generic KEGG entries beyond just orthologs
+
 ## [3.0.1] - 2026-01-21
 
 ### Fixed

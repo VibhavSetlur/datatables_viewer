@@ -14,7 +14,7 @@ DataTables Viewer is a high-performance table viewer designed for researchers wo
 -  **Flexible Deployment** - Static frontend + optional TableScanner service
 -  **Advanced Filtering** - Multiple operators, aggregations, column statistics
 -  **Local Database Support** - Client-side SQLite via `sql.js` for testing (no server needed)
--  **Rich Transformers** - Links, badges, heatmaps, sequences, ontologies
+-  **Rich Transformers** - Links, badges, heatmaps, sequences, ontologies, and Gene Cards for UniProt/KEGG
 - ⌨ **Keyboard Navigation** - Full keyboard support
 -  **Dark Mode** - Light, dark, and system themes
 -  **Export** - CSV, JSON, TSV export

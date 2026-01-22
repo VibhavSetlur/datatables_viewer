@@ -784,7 +784,10 @@ export class Transformers {
             } else if (type === 'cog') {
                 termId = termId.replace(/^COG:/i, '').trim();
             } else if (type === 'kegg' || type === 'ko') {
+                // Keep just the ID, strip prefix if strictly formatted, but allow flexibility
                 termId = termId.replace(/^KEGG:/i, '').replace(/^ko:/i, '').trim();
+            } else if (type === 'uniprot') {
+                termId = termId.replace(/^UniProtKB:/i, '').trim();
             }
         }
 
@@ -907,10 +910,17 @@ export class Transformers {
                         }
                         break;
                     case 'KEGG':
-                        const keggData = await Transformers.lookupKEGGOrtholog(termId);
+                        const keggData = await Transformers.lookupKEGGEntry(termId);
                         if (keggData) {
                             name = keggData.name;
                             description = keggData.description;
+                        }
+                        break;
+                    case 'UniProt':
+                        const uniprotData = await Transformers.lookupUniProt(termId);
+                        if (uniprotData) {
+                            name = uniprotData.name;
+                            description = uniprotData.description;
                         }
                         break;
                     case 'Pfam':
@@ -1264,10 +1274,16 @@ export class Transformers {
                     if (go) name = go.name;
                     break;
 
-                // KEGG Orthologs
+                // KEGG Orthologs / Entries
                 case 'kegg':
-                    const kegg = await Transformers.lookupKEGGOrtholog(termId);
+                    const kegg = await Transformers.lookupKEGGEntry(termId);
                     if (kegg) name = kegg.name;
+                    break;
+
+                // UniProt
+                case 'uniprot':
+                    const uniprot = await Transformers.lookupUniProt(termId);
+                    if (uniprot) name = uniprot.name;
                     break;
 
                 // Pfam Domains
@@ -1392,14 +1408,17 @@ export class Transformers {
     }
 
     /**
-     * Lookup KEGG Ortholog name
+     * Lookup KEGG Entry name (Orthologs, Genes, etc.)
      * Uses KEGG REST API
      */
-    private static async lookupKEGGOrtholog(koId: string): Promise<{ name: string, description?: string } | null> {
+    private static async lookupKEGGEntry(keggId: string): Promise<{ name: string, description?: string } | null> {
         try {
-            // Normalize KO ID format (K11904 or KEGG:K11904)
-            const normalizedId = koId.replace(/^KEGG:/i, '').replace(/^ko:/i, '');
+            // Normalize ID: remove common prefixes to get the raw identifier
+            // K11904 -> K11904, KEGG:K11904 -> K11904
+            let normalizedId = keggId.replace(/^KEGG:/i, '').replace(/^ko:/i, '').trim();
+
             const response = await fetch(`https://rest.kegg.jp/get/${normalizedId}`);
+            // If 404, maybe it needs a prefix or is invalid? KEGG API is usually robust with IDs
             if (!response.ok) return null;
             const text = await response.text();
 
@@ -1409,23 +1428,55 @@ export class Transformers {
 
             const defMatch = text.match(/^DEFINITION\s+(.+?)(?:\n|$)/m);
             if (defMatch) {
-                // Use DEFINITION as the primary name (e.g. "alcohol dehydrogenase")
+                // Use DEFINITION as the primary name
                 name = defMatch[1].trim();
             }
 
             const nameMatch = text.match(/^NAME\s+(.+?)(?:\n|$)/m);
             if (nameMatch) {
-                // Use NAME (symbols) as secondary description or if primary is missing
                 const symbols = nameMatch[1].trim();
                 if (!name) {
                     name = symbols;
                 } else {
+                    // Use NAME as secondary info if we have a definition
                     description = symbols;
                 }
             }
 
             if (name) return { name, description };
             return null;
+        } catch {
+            return null;
+        }
+    }
+
+    /**
+     * Lookup UniProt Protein name
+     * Uses UniProt REST API
+     */
+    private static async lookupUniProt(uniprotId: string): Promise<{ name: string, description?: string } | null> {
+        try {
+            // Clean ID
+            const cleanId = uniprotId.replace(/^UniProtKB:/i, '').trim();
+
+            // UniProt REST API
+            const response = await fetch(`https://rest.uniprot.org/uniprotkb/${cleanId}.json`);
+            if (!response.ok) return null;
+
+            const data = await response.json();
+
+            // Logic to extract the best name
+            // Recommended name > Submitted name > ORF name
+            let recName = data.proteinDescription?.recommendedName?.fullName?.value;
+            let subName = data.proteinDescription?.submissionNames?.[0]?.fullName?.value;
+
+            const name = recName || subName || "Unknown Protein";
+            const genName = data.genes?.[0]?.geneName?.value;
+
+            return {
+                name: name,
+                description: genName ? `Gene: ${genName}` : undefined
+            };
         } catch {
             return null;
         }

@@ -125,11 +125,13 @@
                     "filterable": true,
                     "width": "100px",
                     "transform": {
-                        "type": "link",
+                        "type": "ontology",
                         "options": {
+                            "ontologyType": "uniprot",
                             "urlTemplate": "https://www.uniprot.org/uniprotkb/{value}",
-                            "target": "_blank",
-                            "icon": "bi-link-45deg"
+                            "style": "badge",
+                            "layout": "vertical",
+                            "delimiter": ";"
                         }
                     }
                 },
@@ -165,10 +167,13 @@
                     "sortable": true,
                     "width": "90px",
                     "transform": {
-                        "type": "link",
+                        "type": "ontology",
                         "options": {
+                            "ontologyType": "kegg",
                             "urlTemplate": "https://www.genome.jp/entry/{value}",
-                            "target": "_blank"
+                            "style": "badge",
+                            "layout": "vertical",
+                            "delimiter": ";"
                         }
                     }
                 },
@@ -548,7 +553,7 @@
                     "categories": [
                         "core"
                     ],
-                    "visible": false
+                    "visible": true
                 }
             ]
         },
