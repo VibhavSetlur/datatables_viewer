@@ -46,7 +46,9 @@ const DEFAULT_GLOBAL_SETTINGS: Required<GlobalSettings> = {
         decimals: 2,
         thousandsSeparator: ',',
         decimalSeparator: '.'
-    }
+    },
+    defaultSource: '',
+    autoLoad: false
 };
 
 const DEFAULT_TABLE_SETTINGS: Required<TableSettings> = {
