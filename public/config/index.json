@@ -3,13 +3,13 @@
         "name": "DataTables Viewer",
         "version": "3.1.0",
         "description": "Production-grade configurable data table renderer for research applications",
-        "environment": "default"
+        "environment": "local"
     },
     "apis": {
         "default": {
             "id": "default",
-            "name": "KBase TableScanner",
-            "url": "https://appdev.kbase.us/services/berdl_table_scanner",
+            "name": "Local TableScanner",
+            "url": "http://127.0.0.1:8000",
             "type": "rest"
         },
         "local": {

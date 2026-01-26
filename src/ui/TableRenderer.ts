@@ -357,6 +357,7 @@ export class TableRenderer {
         } catch (e: any) {
             this.showAlert(`Failed to load database "${db}": ${e.message}`, 'danger');
             this.stateManager.update({ loading: false, error: e.message });
+            throw e;
         }
     }
 
