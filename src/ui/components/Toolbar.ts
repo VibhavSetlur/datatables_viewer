@@ -7,6 +7,7 @@ export interface ToolbarOptions extends ComponentOptions {
     onTestConnection?: () => void;
     onSearchNext?: () => void;
     onSearchPrev?: () => void;
+    onShare?: () => void;
     getSearchMatchInfo?: () => { current: number; total: number };
 }
 
@@ -43,7 +44,10 @@ export class Toolbar extends Component {
             </div>
             <div class="ts-spacer" style="flex:1"></div>
             <div class="ts-toolbar-actions">
-                <button class="ts-tb-btn" id="ts-test-connection" title="Test API Connection" style="margin-right: 8px;">
+                <button class="ts-tb-btn" id="ts-share" title="Copy shareable link">
+                    <i class="bi bi-share"></i> Share
+                </button>
+                <button class="ts-tb-btn" id="ts-test-connection" title="Test API Connection" style="margin-left: 8px;">
                     <i class="bi bi-lightning-charge"></i> Test Connection
                 </button>
                 <button class="ts-tb-btn" id="ts-refresh" title="Refresh Data">
@@ -60,6 +64,7 @@ export class Toolbar extends Component {
             searchPrev: '#ts-search-prev',
             searchNext: '#ts-search-next',
             searchInfo: '#ts-search-info',
+            share: '#ts-share',
             testConn: '#ts-test-connection',
             refresh: '#ts-refresh',
             settings: '#ts-settings-btn'
@@ -111,6 +116,12 @@ export class Toolbar extends Component {
 
 
         this.dom.refresh?.addEventListener('click', () => this.options.onRefresh());
+
+        this.dom.share?.addEventListener('click', () => {
+            if (this.options.onShare) {
+                this.options.onShare();
+            }
+        });
 
         this.dom.testConn?.addEventListener('click', () => {
             if (this.options.onTestConnection) {

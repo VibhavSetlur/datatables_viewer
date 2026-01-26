@@ -29,12 +29,6 @@
             "name": "KBase AppDev",
             "url": "https://appdev.kbase.us/services/berdl_table_scanner",
             "type": "rest"
-        },
-        "test_data": {
-            "id": "test_data",
-            "name": "Test Data (Local)",
-            "url": "/config/test-data.json",
-            "type": "json_server"
         }
     },
     "dataTypes": {
@@ -59,15 +53,6 @@
                 },
                 "minMatchScore": 0.7
             }
-        },
-        "test_data": {
-            "configUrl": "/config/test-data.json",
-            "matches": [
-                "test_data",
-                "test/test/test"
-            ],
-            "priority": 10,
-            "autoLoad": true
         },
         "berdl_tables": {
             "configUrl": "/config/berdl-tables.json",
@@ -128,6 +113,8 @@
         "theme": "system",
         "density": "normal",
         "showRowNumbers": true,
+        "defaultSource": "76990/7/2",
+        "autoLoad": false,
         "locale": "en-US",
         "dateFormat": "YYYY-MM-DD",
         "numberFormat": {

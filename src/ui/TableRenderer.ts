@@ -18,6 +18,7 @@ import { StatisticsViewer } from './components/StatisticsViewer';
 import { Transformers } from '../utils/transformers';
 import { exportManager } from '../core/managers/ExportManager';
 import { registerDefaultShortcuts } from '../core/managers/KeyboardManager';
+import { getUrlStateManager, type UrlStateFragment } from '../core/state/UrlStateManager';
 import '../style.css';
 
 export interface RendererOptions {
@@ -47,6 +48,9 @@ export class TableRenderer {
     private density: 'compact' | 'normal' | 'comfortable' = 'normal';
     private dom: Record<string, HTMLElement> = {};
     private columnSchemas: Record<string, Record<string, { type: string; notnull: boolean; pk: boolean }>> = {}; // tableName -> columnName -> schema
+    private urlStateManager = getUrlStateManager();
+    private initialUrlState: UrlStateFragment | null = null;
+    private urlSyncEnabled = false; // Prevent URL sync during initial load
 
     constructor(options: RendererOptions) {
         if (!options.container) throw new Error('Container required');
@@ -89,12 +93,270 @@ export class TableRenderer {
                 showRowNumbers: settings.showRowNumbers !== false
             });
 
+            // Parse URL state BEFORE rendering layout
             this.loadStateFromUrl();
             this.renderLayout();
             this.initComponents();
 
+            // After components are initialized, handle URL state or default source
+            // Use requestAnimationFrame to ensure DOM is fully rendered
+            await new Promise<void>(resolve => {
+                requestAnimationFrame(() => {
+                    this.handleInitialLoad(settings).then(resolve);
+                });
+            });
+
         } catch (e: any) {
             this.container.innerHTML = `<div class="ts-alert ts-alert-danger"><i class="bi bi-x-circle-fill"></i> ${e.message}</div>`;
+        }
+    }
+
+    /**
+     * Handle initial data loading from URL state or default configuration.
+     * Prioritizes URL parameters over config defaults.
+     */
+    private async handleInitialLoad(settings: Record<string, any>) {
+        const urlState = this.initialUrlState;
+        const hasUrlDb = urlState?.db;
+        const defaultSource = settings.defaultSource as string | undefined;
+        const autoLoad = settings.autoLoad as boolean | undefined;
+
+        // Determine which source to use
+        let sourceToLoad: string | null = null;
+        let isFromUrl = false;
+
+        if (hasUrlDb) {
+            // URL takes priority
+            sourceToLoad = urlState.db!;
+            isFromUrl = true;
+        } else if (defaultSource) {
+            // Fall back to config default
+            sourceToLoad = defaultSource;
+        }
+
+        // Pre-fill the Object ID field
+        if (sourceToLoad) {
+            this.sidebar.setBerdlId(sourceToLoad);
+        }
+
+        // Check if we should auto-load
+        const token = this.sidebar.getToken();
+        const isLocalDb = sourceToLoad ? ApiClient.isLocalDb(sourceToLoad) : false;
+        const hasValidAuth = token || isLocalDb;
+
+        if (isFromUrl && !hasValidAuth) {
+            // Shared link without token - show auth modal
+            this.showAuthModal(sourceToLoad!, urlState);
+        } else if (sourceToLoad && hasValidAuth && (autoLoad || isFromUrl)) {
+            // Auto-load if:
+            // 1. From URL (always try to load shared links)
+            // 2. autoLoad is true in config
+            await this.loadObjectFromUrl(sourceToLoad, urlState);
+        }
+    }
+
+    /**
+     * Show authentication modal when a shared link is opened without token.
+     * The modal blocks UI and prompts for token entry.
+     */
+    private showAuthModal(db: string, urlState: UrlStateFragment | null) {
+        // Store URL state for use after authentication
+        this.pendingUrlState = urlState;
+        this.pendingDb = db;
+
+        // Create modal overlay
+        const modalHtml = `
+            <div class="ts-auth-modal-overlay" id="ts-auth-modal">
+                <div class="ts-auth-modal">
+                    <div class="ts-auth-modal-header">
+                        <i class="bi bi-shield-lock"></i>
+                        <h3>Authentication Required</h3>
+                    </div>
+                    <div class="ts-auth-modal-body">
+                        <p>This shared link requires authentication to access:</p>
+                        <div class="ts-auth-modal-db">
+                            <i class="bi bi-database"></i>
+                            <code>${db}</code>
+                        </div>
+                        <div class="ts-field" style="margin-top: 16px;">
+                            <label class="ts-label">KBase Auth Token</label>
+                            <input type="password" class="ts-input" id="ts-auth-modal-token" 
+                                placeholder="Enter your authentication token...">
+                        </div>
+                        <div class="ts-auth-modal-error" id="ts-auth-modal-error" style="display: none;">
+                            <i class="bi bi-exclamation-triangle"></i>
+                            <span id="ts-auth-modal-error-text"></span>
+                        </div>
+                    </div>
+                    <div class="ts-auth-modal-footer">
+                        <button class="ts-btn-secondary" id="ts-auth-modal-home">
+                            <i class="bi bi-house"></i> Go to Home
+                        </button>
+                        <button class="ts-btn-primary" id="ts-auth-modal-submit">
+                            <i class="bi bi-box-arrow-in-right"></i> Load Data
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // Insert modal into DOM
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+        // Bind events
+        const modal = document.getElementById('ts-auth-modal')!;
+        const tokenInput = document.getElementById('ts-auth-modal-token') as HTMLInputElement;
+        const submitBtn = document.getElementById('ts-auth-modal-submit')!;
+        const homeBtn = document.getElementById('ts-auth-modal-home')!;
+        const errorDiv = document.getElementById('ts-auth-modal-error')!;
+        const errorText = document.getElementById('ts-auth-modal-error-text')!;
+
+        // Focus token input
+        setTimeout(() => tokenInput.focus(), 100);
+
+        // Handle Enter key
+        tokenInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                submitBtn.click();
+            }
+        });
+
+        // Handle submit
+        submitBtn.addEventListener('click', async () => {
+            const token = tokenInput.value.trim();
+            if (!token) {
+                errorDiv.style.display = 'flex';
+                errorText.textContent = 'Please enter your authentication token.';
+                tokenInput.focus();
+                return;
+            }
+
+            // Show loading state
+            submitBtn.innerHTML = '<i class="bi bi-arrow-clockwise spin"></i> Loading...';
+            (submitBtn as HTMLButtonElement).disabled = true;
+            errorDiv.style.display = 'none';
+
+            try {
+                // Set token in sidebar and client
+                this.sidebar.setToken(token);
+                this.client.setToken(token);
+
+                // Attempt to load with the saved URL state
+                await this.loadObjectFromUrl(this.pendingDb!, this.pendingUrlState);
+
+                // Success - close modal
+                modal.remove();
+                this.pendingUrlState = null;
+                this.pendingDb = null;
+
+            } catch (e: any) {
+                // Show error in modal
+                errorDiv.style.display = 'flex';
+                errorText.textContent = e.message || 'Failed to load data. Please check your token.';
+                submitBtn.innerHTML = '<i class="bi bi-arrow-repeat"></i> Retry';
+                (submitBtn as HTMLButtonElement).disabled = false;
+                tokenInput.focus();
+                tokenInput.select();
+            }
+        });
+
+        // Handle home button
+        homeBtn.addEventListener('click', () => {
+            // Clear URL parameters and go to clean home
+            this.urlStateManager.clearUrl();
+            modal.remove();
+            this.pendingUrlState = null;
+            this.pendingDb = null;
+            // Clear the Object ID field
+            this.sidebar.setBerdlId('');
+        });
+    }
+
+    // Properties to store pending URL state for auth flow
+    private pendingUrlState: UrlStateFragment | null = null;
+    private pendingDb: string | null = null;
+
+    /**
+     * Load data from URL parameters, applying filters/sort/page from URL state.
+     */
+    private async loadObjectFromUrl(db: string, urlState: UrlStateFragment | null) {
+        // Set token and trigger load
+        const token = this.sidebar.getToken();
+        this.client.setToken(token || '');
+        this.stateManager.update({ berdlTableId: db, loading: true, error: null });
+
+        try {
+            const res = await this.client.listTables(db);
+            const tables = res.tables || [];
+
+            if (tables.length === 0) {
+                this.showAlert(`No tables found in database "${db}"`, 'warning');
+                this.stateManager.update({ loading: false });
+                return;
+            }
+
+            // Resolve config
+            let schemaInfo = this.extractSchemaInfo(res, tables);
+            if (Object.keys(schemaInfo.columns).length === 0) {
+                const fetchedSchema = await this.fetchSchemaInfo(db);
+                if (fetchedSchema) schemaInfo = fetchedSchema;
+            }
+
+            const resolveResult = await this.configResolver.resolve(db, {
+                objectType: res.object_type || res.type,
+                schema: schemaInfo.tables.length > 0 ? schemaInfo : undefined,
+            });
+
+            if (resolveResult.config) {
+                this.registry.registerDataType(resolveResult.config);
+                this.configManager.setCurrentDataType(resolveResult.config.id);
+            }
+
+            this.stateManager.update({ availableTables: tables });
+            this.sidebar.updateTables(tables);
+
+            // Determine which table to load
+            const targetTable = urlState?.table && tables.find((t: any) => t.name === urlState.table)
+                ? urlState.table
+                : tables[0].name;
+
+            // Apply URL state to state manager before switching table
+            if (urlState) {
+                const stateUpdate: Partial<AppState> = {};
+                if (urlState.page !== undefined) stateUpdate.currentPage = urlState.page;
+                if (urlState.sortColumn) stateUpdate.sortColumn = urlState.sortColumn;
+                if (urlState.sortOrder) stateUpdate.sortOrder = urlState.sortOrder;
+                if (urlState.searchValue) stateUpdate.searchValue = urlState.searchValue;
+                if (urlState.columnFilters) stateUpdate.columnFilters = urlState.columnFilters;
+                if (urlState.advancedFilters) stateUpdate.advancedFilters = urlState.advancedFilters;
+
+                if (Object.keys(stateUpdate).length > 0) {
+                    this.stateManager.update(stateUpdate);
+                }
+            }
+
+            await this.switchTable(targetTable);
+
+            // Apply visible columns from URL after table loads (columns are now available)
+            if (urlState?.visibleColumns && urlState.visibleColumns.size > 0) {
+                this.stateManager.update({ visibleColumns: urlState.visibleColumns });
+                this.sidebar.renderControlList();
+            }
+
+            // Apply search to toolbar if present
+            if (urlState?.searchValue) {
+                this.toolbar.setSearch(urlState.searchValue);
+            }
+
+            this.showAlert(`Loaded database "${db}" - ${tables.length} table${tables.length !== 1 ? 's' : ''} found`, 'success');
+
+            // Enable URL sync now that we have valid data
+            this.urlSyncEnabled = true;
+            this.syncStateToUrl();
+
+        } catch (e: any) {
+            this.showAlert(`Failed to load database "${db}": ${e.message}`, 'danger');
+            this.stateManager.update({ loading: false, error: e.message });
         }
     }
 
@@ -219,7 +481,8 @@ export class TableRenderer {
             },
             getSearchMatchInfo: () => {
                 return this.grid ? this.grid.getSearchMatchInfo() : { current: 0, total: 0 };
-            }
+            },
+            onShare: () => this.copyShareableUrl()
         });
         this.toolbar.mount();
 
@@ -1143,20 +1406,76 @@ export class TableRenderer {
         });
     }
 
+    /**
+     * Sync current application state to URL.
+     * Uses UrlStateManager for comprehensive state serialization.
+     */
     private syncStateToUrl() {
+        // Don't sync URL during initial load or when auth modal is showing
+        if (!this.urlSyncEnabled) return;
+
         const state = this.stateManager.getState();
-        const params = new URLSearchParams();
-        if (state.activeTableName) params.set('table', state.activeTableName);
-        if (state.sortColumn) params.set('sort', `${state.sortColumn}:${state.sortOrder}`);
-        if (state.currentPage > 0) params.set('page', String(state.currentPage + 1));
-        const newUrl = params.toString() ? `?${params.toString()}` : window.location.pathname;
-        window.history.replaceState({}, '', newUrl);
+        // Only sync if we have a valid database loaded
+        if (!state.berdlTableId) return;
+
+        this.urlStateManager.syncToUrl({
+            berdlTableId: state.berdlTableId,
+            activeTableName: state.activeTableName,
+            currentPage: state.currentPage,
+            sortColumn: state.sortColumn,
+            sortOrder: state.sortOrder,
+            searchValue: state.searchValue,
+            columnFilters: state.columnFilters,
+            advancedFilters: state.advancedFilters,
+            visibleColumns: state.visibleColumns,
+            columns: state.columns
+        });
     }
 
+    /**
+     * Parse URL parameters into initial state.
+     * Called early in init() before components are mounted.
+     */
     private loadStateFromUrl() {
-        const params = new URLSearchParams(window.location.search);
-        const table = params.get('table');
-        if (table) (this as any)._initialTable = table;
+        this.initialUrlState = this.urlStateManager.parseFromUrl();
+
+        // Store initial table for backward compatibility with existing logic
+        if (this.initialUrlState?.table) {
+            (this as any)._initialTable = this.initialUrlState.table;
+        }
+    }
+
+    /**
+     * Build and copy a shareable URL to clipboard.
+     */
+    public async copyShareableUrl(): Promise<void> {
+        const state = this.stateManager.getState();
+        const url = this.urlStateManager.buildShareableUrl({
+            berdlTableId: state.berdlTableId,
+            activeTableName: state.activeTableName,
+            currentPage: state.currentPage,
+            sortColumn: state.sortColumn,
+            sortOrder: state.sortOrder,
+            searchValue: state.searchValue,
+            columnFilters: state.columnFilters,
+            advancedFilters: state.advancedFilters,
+            visibleColumns: state.visibleColumns,
+            columns: state.columns
+        });
+
+        try {
+            await navigator.clipboard.writeText(url);
+            this.showAlert('Link copied to clipboard!', 'success');
+        } catch {
+            // Fallback for older browsers
+            const input = document.createElement('input');
+            input.value = url;
+            document.body.appendChild(input);
+            input.select();
+            document.execCommand('copy');
+            document.body.removeChild(input);
+            this.showAlert('Link copied to clipboard!', 'success');
+        }
     }
 
     private async loadConfiguration() {

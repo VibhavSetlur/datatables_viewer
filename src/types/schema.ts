@@ -150,7 +150,7 @@ export interface ColumnSchema {
 
     /** Filter type override (inferred from dataType by default) */
     filterType?: FilterType;
-    
+
     /** Query features configuration */
     queryFeatures?: {
         /** Enable advanced filtering */
@@ -505,6 +505,10 @@ export interface GlobalSettings {
         thousandsSeparator?: string;
         decimalSeparator?: string;
     };
+    /** Default database/UPA to pre-fill in the Object ID field */
+    defaultSource?: string;
+    /** Whether to automatically load data on page init (requires valid token) */
+    autoLoad?: boolean;
 }
 
 /**

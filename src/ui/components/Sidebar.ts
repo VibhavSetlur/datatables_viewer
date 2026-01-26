@@ -139,12 +139,13 @@ export class Sidebar extends Component {
                     <div id="ts-source-body">
                         <div class="ts-field">
                             <label class="ts-label">Auth Token <span style="color:red">*</span></label>
-                            <input type="password" class="ts-input" id="ts-token" placeholder="Enter KBase token...">
+                            <input type="password" class="ts-input" id="ts-token" 
+                                placeholder="Enter KBase token..." autocomplete="off">
                         </div>
                         <div class="ts-field">
                             <label class="ts-label">Object ID / UPA</label>
                             <input type="text" class="ts-input" id="ts-berdl" 
-                                placeholder="e.g., 76990/7/2" value="76990/7/2">
+                                placeholder="e.g., 76990/7/2" value="">
                         </div>
                         <button class="ts-btn-primary" id="ts-load" style="height: 34px; width: 100%;">
                             <i class="bi bi-lightning-charge-fill"></i> Load Data
@@ -855,6 +856,16 @@ export class Sidebar extends Component {
         return (this.dom.token as HTMLInputElement)?.value || '';
     }
 
+    public setToken(value: string): void {
+        if (this.dom.token) {
+            (this.dom.token as HTMLInputElement).value = value;
+            // Also save to localStorage for persistence
+            if (value) {
+                localStorage.setItem('kbase_token', value);
+            }
+        }
+    }
+
     public getBerdlId(): string {
         return (this.dom.berdl as HTMLInputElement)?.value || '';
     }
@@ -862,6 +873,43 @@ export class Sidebar extends Component {
     public setBerdlId(value: string): void {
         if (this.dom.berdl) {
             (this.dom.berdl as HTMLInputElement).value = value;
+        }
+    }
+
+    /**
+     * Highlight the token field to indicate it's required.
+     * Used when a shared link is opened without authentication.
+     */
+    public highlightTokenField(): void {
+        if (this.dom.token) {
+            const tokenInput = this.dom.token as HTMLInputElement;
+            tokenInput.classList.add('ts-input-required');
+            tokenInput.focus();
+
+            // Add visual pulse animation
+            tokenInput.style.animation = 'pulse-border 1.5s ease-in-out 2';
+
+            // Remove animation after it completes
+            setTimeout(() => {
+                tokenInput.style.animation = '';
+            }, 3000);
+        }
+
+        // Ensure the data source section is expanded
+        if (this.dom.sourceBody) {
+            this.dom.sourceBody.style.display = 'block';
+            this.dom.sourceArrow?.classList.remove('collapsed');
+        }
+    }
+
+    /**
+     * Clear the token field highlighting.
+     */
+    public clearTokenHighlight(): void {
+        if (this.dom.token) {
+            const tokenInput = this.dom.token as HTMLInputElement;
+            tokenInput.classList.remove('ts-input-required');
+            tokenInput.style.animation = '';
         }
     }
 
