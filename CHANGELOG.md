@@ -5,7 +5,16 @@ All notable changes to DataTables Viewer will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.0.0] - 2026-01-08
+## [3.1.1] - 2026-01-27
+
+### Added
+- **URL State Unit Tests** - Added 33 comprehensive tests for `UrlStateManager` to verify bidirectional state synchronization, parameter parsing, and shareable URL generation.
+
+### Fixed
+- **URL Synchronization** - Resolved issue where the browser's address bar did not update after manually loading a database via the sidebar.
+- **Deep Linking Robustness** - Improved shareable URL generation to use absolute paths for more reliable state restoration across different environments.
+- **Strict Lint Compliance** - Resolved all structural ESLint and TypeScript warnings, including fixing scoped case declarations in ontology lookups.
+- **Type Safety** - Eliminated unsafe non-null assertions (!) in `TableRenderer` and `UrlStateManager` in favor of defensive type-narrowing and null-checks.
 
 ## [3.1.0] - 2026-01-22
 
@@ -72,6 +81,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Event Subscriptions** - Subscribe to all data, selection, and UI events
 - **State Access** - Plugins have full access to state manager
 - **Settings Persistence** - Plugin settings automatically saved to localStorage
+
+## [3.0.0] - 2026-01-08
+
+### Added
+- Initial Tier-1 production architecture
+- Centralized state management
+- Event-driven UI updates
+- Advanced configuration resolution system
 
 ## [2.5.0] - 2025-12
 
