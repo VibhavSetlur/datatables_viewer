@@ -1,6 +1,6 @@
 # DataTables Viewer
 
-**DataTables Viewer** is a high-performance, professional-grade platform for exploring, searching, and analyzing large-scale research datasets. It bridges the gap between raw database storage and interactive visualization, offering seamless integration with KBase and standard SQLite databases.
+**DataTables Viewer** is a high-performance data viewing platform for exploring, searching, and analyzing large-scale research datasets. It offers developer-friendly features for customizing table layouts and adding new functionality. It bridges the gap between raw database storage and interactive visualization, offering seamless integration with KBase and standard SQLite databases.
 
 [![Version](https://img.shields.io/badge/version-3.1.1-blue.svg)](CHANGELOG.md)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue.svg)](https://www.typescriptlang.org/)
