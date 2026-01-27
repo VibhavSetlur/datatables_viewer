@@ -9,31 +9,31 @@
 
 ---
 
-## 🚀 Key Features
+## Key Features
 
-### 🔍 Deep Exploration
+### Deep Exploration
 - **Advanced Filtering**: Support for 15+ operators (`regex`, `like`, `null` checks, etc.) and complex aggregations.
 - **Full-Text Search**: Optimized FTS5 search (via TableScanner) for lightning-fast keyword lookup across massive tables.
 - **Column Statistics**: One-click access to distribution metrics, including min, max, mean, median, and stddev.
 
-### 🔗 State & Sharing (v3.1.1)
+### State and Sharing (v3.1.1)
 - **Bidirectional URL Sync**: The browser address bar reflects your current view (database, table, filters, sort, page) in real-time.
 - **Deep Linking**: Generate shareable URLs that restore the **exact** application state, including authentication handling for private databases.
 - **State Persistence**: Automatic recovery of view settings across sessions.
 
-### 🧬 Bioinformatics Integration
+### Bioinformatics Integration
 - **Cell Transformers**: Rich visualization for complex data types (Heatmaps, Sequences, Badges, Links).
 - **Ontology Cards**: Interactive hover cards for GO, KEGG, Pfam, COG, EC, and UniProt terms with live metadata fetching.
 - **Gene Cards**: Deep integration with UniProt and KEGG REST APIs for real-time protein/gene property lookup.
 
-### 🛠 Architecture
+### Architecture
 - **Dual Engine**: High-performance client-side SQLite via `sql.js` for local data; high-concurrency TableScanner API for remote/shared databases.
 - **Extensible Plugin System**: Decoupled architecture allowing custom transformers, keyboard shortcuts, and UI extensions.
 - **Production-Ready**: Zero linting warnings, 100% type safety, and 60+ unit tests covering core logic.
 
 ---
 
-## 🏁 Quick Start
+## Quick Start
 
 ### Development Environment
 ```bash
@@ -53,7 +53,7 @@ npm run dev
 
 ---
 
-## 📑 Project Structure
+## Project Structure
 
 ```text
 src/
@@ -69,7 +69,7 @@ src/
 
 ---
 
-## 📦 Scripts
+## Scripts
 
 | Command | Action |
 |:---|:---|
@@ -81,7 +81,7 @@ src/
 
 ---
 
-## 📖 Documentation
+## Documentation
 
 - **[Quick Start Guide](docs/QUICK_START.md)** - Get running in 5 minutes.
 - **[Deployment Manual](DEPLOYMENT.md)** - Guide for static and service-based hosting.
@@ -91,7 +91,7 @@ src/
 
 ---
 
-## 🤝 Contributing & Support
+## Contributing and Support
 
 We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details on our workflow and coding standards.
 
