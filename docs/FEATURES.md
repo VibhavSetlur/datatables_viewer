@@ -147,10 +147,20 @@ Transform cell values for display:
 - Schema validation
 - Version control friendly
 
-### URL Parameters
-- `?db=filename` - Load database
-- Automatic config loading
-- Error handling
+### URL Parameters & State Management
+- `?db=filename` - Load specific database
+- `?table=name` - Load specific table
+- `?page=N` - Jump to specific page
+- `?sort=col:dir` - Apply sorting
+- `?search=query` - Apply global search
+- `?filters=json` - Apply complex or advanced filters
+- `?cols=a,b,c` - Set visible columns
+
+### Shareable State & Deep Linking
+- **Bidirectional Sync**: UI changes are immediately reflected in the URL address bar.
+- **State Restoration**: Share a link to restore the exact view, filters, and sort order.
+- **Auth Flow Persistence**: If a shared link requires a token, the application prompts for it and then restores the requested state.
+- **History Management**: Uses non-polluting `replaceState` to maintain clean browser history.
 
 ### Environment Variables
 - `VITE_API_URL` - API service URL
