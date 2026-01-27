@@ -39,7 +39,8 @@ export default tseslint.config(
             // TypeScript-specific rules
             '@typescript-eslint/no-unused-vars': ['warn', {
                 argsIgnorePattern: '^_',
-                varsIgnorePattern: '^_'
+                varsIgnorePattern: '^_',
+                caughtErrorsIgnorePattern: '^_'
             }],
             '@typescript-eslint/no-explicit-any': 'off',
             '@typescript-eslint/explicit-function-return-type': 'off',
@@ -83,7 +84,8 @@ export default tseslint.config(
             '*.cjs',
             'vite.config.ts',
             'vitest.config.ts',
-            'archive/**'
+            'archive/**',
+            'src/core/api/archived/**'
         ]
     }
 );

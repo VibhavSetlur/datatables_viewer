@@ -117,7 +117,7 @@ export class TableRenderer {
      */
     private async handleInitialLoad(settings: Record<string, any>) {
         const urlState = this.initialUrlState;
-        const hasUrlDb = urlState?.db;
+
         const defaultSource = settings.defaultSource as string | undefined;
         const autoLoad = settings.autoLoad as boolean | undefined;
 
@@ -125,9 +125,9 @@ export class TableRenderer {
         let sourceToLoad: string | null = null;
         let isFromUrl = false;
 
-        if (hasUrlDb) {
+        if (urlState && urlState.db) {
             // URL takes priority
-            sourceToLoad = urlState.db!;
+            sourceToLoad = urlState.db;
             isFromUrl = true;
         } else if (defaultSource) {
             // Fall back to config default
@@ -144,9 +144,9 @@ export class TableRenderer {
         const isLocalDb = sourceToLoad ? ApiClient.isLocalDb(sourceToLoad) : false;
         const hasValidAuth = token || isLocalDb;
 
-        if (isFromUrl && !hasValidAuth) {
+        if (isFromUrl && !hasValidAuth && sourceToLoad) {
             // Shared link without token - show auth modal
-            this.showAuthModal(sourceToLoad!, urlState);
+            this.showAuthModal(sourceToLoad, urlState);
         } else if (sourceToLoad && hasValidAuth && (autoLoad || isFromUrl)) {
             // Auto-load if:
             // 1. From URL (always try to load shared links)
@@ -204,12 +204,14 @@ export class TableRenderer {
         document.body.insertAdjacentHTML('beforeend', modalHtml);
 
         // Bind events
-        const modal = document.getElementById('ts-auth-modal')!;
+        const modal = document.getElementById('ts-auth-modal');
         const tokenInput = document.getElementById('ts-auth-modal-token') as HTMLInputElement;
-        const submitBtn = document.getElementById('ts-auth-modal-submit')!;
-        const homeBtn = document.getElementById('ts-auth-modal-home')!;
-        const errorDiv = document.getElementById('ts-auth-modal-error')!;
-        const errorText = document.getElementById('ts-auth-modal-error-text')!;
+        const submitBtn = document.getElementById('ts-auth-modal-submit');
+        const homeBtn = document.getElementById('ts-auth-modal-home');
+        const errorDiv = document.getElementById('ts-auth-modal-error');
+        const errorText = document.getElementById('ts-auth-modal-error-text');
+
+        if (!modal || !tokenInput || !submitBtn || !homeBtn || !errorDiv || !errorText) return;
 
         // Focus token input
         setTimeout(() => tokenInput.focus(), 100);
@@ -242,7 +244,9 @@ export class TableRenderer {
                 this.client.setToken(token);
 
                 // Attempt to load with the saved URL state
-                await this.loadObjectFromUrl(this.pendingDb!, this.pendingUrlState);
+                if (this.pendingDb) {
+                    await this.loadObjectFromUrl(this.pendingDb, this.pendingUrlState);
+                }
 
                 // Success - close modal
                 modal.remove();
@@ -768,10 +772,14 @@ export class TableRenderer {
                 ? initialTable : tables[0].name;
 
             // Show success message
-            const successMsg = `Loaded database \"${trimmedBerdl}\" - ${tables.length} table${tables.length !== 1 ? 's' : ''} found`;
+            const successMsg = `Loaded database "${trimmedBerdl}" - ${tables.length} table${tables.length !== 1 ? 's' : ''} found`;
             this.showAlert(successMsg, 'success');
 
             await this.switchTable(targetTable);
+
+            // Enable URL sync now that we have valid data loaded
+            this.urlSyncEnabled = true;
+            this.syncStateToUrl();
 
         } catch (e: any) {
             // Provide detailed error message

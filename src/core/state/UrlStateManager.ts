@@ -193,13 +193,14 @@ export class UrlStateManager {
 
         // Visible columns - only include if not all columns are visible
         if (state.visibleColumns && state.visibleColumns.size > 0) {
+            const visibleCols = state.visibleColumns;
             const allColumns = state.columns || [];
             const allVisible = allColumns.length > 0 &&
-                allColumns.every(c => state.visibleColumns!.has(c.column));
+                allColumns.every(c => visibleCols.has(c.column));
 
             // Only add cols param if some columns are hidden (to keep URL shorter)
-            if (!allVisible && state.visibleColumns.size < allColumns.length) {
-                params.set(URL_PARAMS.COLS, Array.from(state.visibleColumns).join(','));
+            if (!allVisible && visibleCols.size < allColumns.length) {
+                params.set(URL_PARAMS.COLS, Array.from(visibleCols).join(','));
             }
         }
 
@@ -256,12 +257,13 @@ export class UrlStateManager {
 
         // Include visible columns if not all are visible
         if (state.visibleColumns && state.visibleColumns.size > 0) {
+            const visibleCols = state.visibleColumns;
             const allColumns = state.columns || [];
             const allVisible = allColumns.length > 0 &&
-                allColumns.every(c => state.visibleColumns!.has(c.column));
+                allColumns.every(c => visibleCols.has(c.column));
 
-            if (!allVisible && state.visibleColumns.size < allColumns.length) {
-                params.set(URL_PARAMS.COLS, Array.from(state.visibleColumns).join(','));
+            if (!allVisible && visibleCols.size < allColumns.length) {
+                params.set(URL_PARAMS.COLS, Array.from(visibleCols).join(','));
             }
         }
 

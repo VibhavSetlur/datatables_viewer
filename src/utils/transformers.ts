@@ -902,62 +902,70 @@ export class Transformers {
                 name = options.map[termId];
             } else {
                 switch (options.ontologyType) {
-                    case 'GO':
+                    case 'GO': {
                         const goData = await Transformers.lookupGO(termId);
                         if (goData) {
                             name = goData.name;
                             description = goData.description;
                         }
                         break;
-                    case 'KEGG':
+                    }
+                    case 'KEGG': {
                         const keggData = await Transformers.lookupKEGGEntry(termId);
                         if (keggData) {
                             name = keggData.name;
                             description = keggData.description;
                         }
                         break;
-                    case 'UniProt':
+                    }
+                    case 'UniProt': {
                         const uniprotData = await Transformers.lookupUniProt(termId);
                         if (uniprotData) {
                             name = uniprotData.name;
                             description = uniprotData.description;
                         }
                         break;
-                    case 'Pfam':
+                    }
+                    case 'Pfam': {
                         const pfamData = await Transformers.lookupPfamDomain(termId);
                         if (pfamData) {
                             name = pfamData.name;
                             description = pfamData.description;
                         }
                         break;
-                    case 'COG':
+                    }
+                    case 'COG': {
                         const cogData = await Transformers.lookupCOG(termId);
                         if (cogData) {
                             name = cogData.name;
                             description = cogData.description;
                         }
                         break;
-                    case 'EC':
+                    }
+                    case 'EC': {
                         const ecData = await Transformers.lookupECNumber(termId);
                         if (ecData) {
                             name = ecData.name;
                             description = ecData.description;
                         }
                         break;
-                    case 'SO':
+                    }
+                    case 'SO': {
                         const soData = await Transformers.lookupSequenceOntology(termId);
                         if (soData) {
                             name = soData.name;
                             description = soData.description;
                         }
                         break;
-                    case 'UniRef':
+                    }
+                    case 'UniRef': {
                         const unirefData = await Transformers.lookupUniRef(termId);
                         if (unirefData) {
                             name = unirefData.name;
                             description = unirefData.description;
                         }
                         break;
+                    }
                     case 'custom':
                         // If we have a lookup endpoint but NOT a table lookup (which should be pre-loaded)
                         if (options.lookupEndpoint) {
@@ -1269,52 +1277,60 @@ export class Transformers {
                     break;
 
                 // Gene Ontology (GO)
-                case 'go':
+                case 'go': {
                     const go = await Transformers.lookupGOTerm(termId);
                     if (go) name = go.name;
                     break;
+                }
 
                 // KEGG Orthologs / Entries
-                case 'kegg':
+                case 'kegg': {
                     const kegg = await Transformers.lookupKEGGEntry(termId);
                     if (kegg) name = kegg.name;
                     break;
+                }
 
                 // UniProt
-                case 'uniprot':
+                case 'uniprot': {
                     const uniprot = await Transformers.lookupUniProt(termId);
                     if (uniprot) name = uniprot.name;
                     break;
+                }
 
                 // Pfam Domains
-                case 'pfam':
+                case 'pfam': {
                     const pfam = await Transformers.lookupPfamDomain(termId);
                     if (pfam) name = pfam.name;
                     break;
+                }
 
                 // COG Categories
-                case 'cog':
+                case 'cog': {
                     const cog = await Transformers.lookupCOG(termId);
                     if (cog) name = cog.name;
                     break;
+                }
 
                 // EC Numbers (Enzyme Commission)
-                case 'ec':
+                case 'ec': {
                     const ec = await Transformers.lookupECNumber(termId);
                     if (ec) name = ec.name;
                     break;
+                }
 
                 // Sequence Ontology
-                case 'so':
+                case 'so': {
                     const so = await Transformers.lookupSequenceOntology(termId);
                     if (so) name = so.name;
                     break;
+                }
 
                 // UniProt Reference Clusters
-                case 'uniref':
+                case 'uniref': {
                     const uniref = await Transformers.lookupUniRef(termId);
                     if (uniref) name = uniref.name;
                     break;
+                }
 
                 // Custom API lookup
                 case 'custom':
@@ -1415,7 +1431,7 @@ export class Transformers {
         try {
             // Normalize ID: remove common prefixes to get the raw identifier
             // K11904 -> K11904, KEGG:K11904 -> K11904
-            let normalizedId = keggId.replace(/^KEGG:/i, '').replace(/^ko:/i, '').trim();
+            const normalizedId = keggId.replace(/^KEGG:/i, '').replace(/^ko:/i, '').trim();
 
             const response = await fetch(`https://rest.kegg.jp/get/${normalizedId}`);
             // If 404, maybe it needs a prefix or is invalid? KEGG API is usually robust with IDs
@@ -1467,8 +1483,8 @@ export class Transformers {
 
             // Logic to extract the best name
             // Recommended name > Submitted name > ORF name
-            let recName = data.proteinDescription?.recommendedName?.fullName?.value;
-            let subName = data.proteinDescription?.submissionNames?.[0]?.fullName?.value;
+            const recName = data.proteinDescription?.recommendedName?.fullName?.value;
+            const subName = data.proteinDescription?.submissionNames?.[0]?.fullName?.value;
 
             const name = recName || subName || "Unknown Protein";
             const genName = data.genes?.[0]?.geneName?.value;

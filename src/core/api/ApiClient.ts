@@ -307,7 +307,7 @@ export class ApiClient {
         try {
             // Try the health endpoint first
             return await this.request('/health', 'GET', undefined, false);
-        } catch (error) {
+        } catch (_error) {
             // Fallback to root endpoint
             try {
                 return await this.request('/', 'GET', undefined, false);
