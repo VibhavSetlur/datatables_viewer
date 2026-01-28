@@ -19,6 +19,7 @@ AUTHENTICATION_FIX.md
 TROUBLESHOOTING.md
 src/core/api/archived
 dist.tar.gz
+dist/
 
 # Dependencies
 node_modules/
