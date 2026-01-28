@@ -275,11 +275,35 @@ export class ApiClient {
         }
         // Note: Don't set Content-Type for FormData - browser sets it with boundary
 
-        const response = await fetch(url, {
-            method: 'POST',
-            headers,
-            body: formData
-        });
+        // Set up timeout with AbortController (90 seconds for large file uploads)
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 90000);
+
+        let response: Response;
+        try {
+            response = await fetch(url, {
+                method: 'POST',
+                headers,
+                body: formData,
+                signal: controller.signal
+            });
+        } catch (networkError: any) {
+            clearTimeout(timeoutId);
+            // Handle network errors (CORS, offline, timeout)
+            if (networkError.name === 'AbortError') {
+                throw new Error('Upload timed out after 90 seconds. The file may be too large or the server is slow.');
+            }
+            // Status 0 typically means CORS blocked or network failure
+            throw new Error(
+                'Network error: Unable to reach server.\n\n' +
+                'Possible causes:\n' +
+                '• File too large for server proxy (max ~100MB via nginx)\n' +
+                '• CORS not configured on server\n' +
+                '• Server is down or unreachable'
+            );
+        } finally {
+            clearTimeout(timeoutId);
+        }
 
         if (!response.ok) {
             let errorMsg = `Upload failed: HTTP ${response.status}`;
@@ -288,6 +312,14 @@ export class ApiClient {
                 errorMsg = data.detail || data.message || errorMsg;
             } catch {
                 // Ignore JSON parse error
+            }
+            // Provide user-friendly messages for common errors
+            if (response.status === 413) {
+                errorMsg = 'File too large. Maximum upload size is 500MB.';
+            } else if (response.status === 507) {
+                errorMsg = 'Server storage full. Please try again later.';
+            } else if (response.status === 0) {
+                errorMsg = 'Network error: Unable to reach server. Check your connection.';
             }
             throw new Error(errorMsg);
         }

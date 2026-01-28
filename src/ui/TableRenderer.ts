@@ -1632,8 +1632,9 @@ export class TableRenderer {
                 return;
             }
 
-            // Upload to server
-            this.showAlert(`Uploading ${file.name}...`, 'info');
+            // Upload to server - show file size for user awareness
+            const fileSizeMB = (file.size / 1024 / 1024).toFixed(1);
+            this.showAlert(`Uploading ${file.name} (${fileSizeMB} MB)...`, 'info');
 
             const uploadResult = await this.client.uploadDatabase(file);
             const handle = uploadResult.handle;
