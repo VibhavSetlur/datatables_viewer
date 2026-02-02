@@ -2,6 +2,7 @@ import { Component, type ComponentOptions } from '../Component';
 import { ConfigManager } from '../../core/config/ConfigManager';
 import { StateManager, type AppState } from '../../core/state/StateManager';
 import { CategoryManager } from '../../core/managers/CategoryManager';
+import type { DatabaseInfo } from '../../types/shared-types';
 
 export interface SidebarOptions extends ComponentOptions {
     configManager: ConfigManager;
@@ -9,11 +10,12 @@ export interface SidebarOptions extends ComponentOptions {
     onApiChange: (apiId: string) => void;
     onLoadData: () => void;
     onTableChange: (tableName: string) => void;
+    onDatabaseChange?: (dbName: string) => void;  // New: handle multi-database selection
     onExport: () => void;
     onReset: () => void;
     onShowSchema: (tableName: string) => void;
     onShowStats: (tableName: string) => void;
-    onUploadDb?: (file: File) => void;
+    onColumnVisibilityChange: (columns: any[]) => void;
 }
 
 export class Sidebar extends Component {
@@ -40,18 +42,6 @@ export class Sidebar extends Component {
 
             // Update loading indicator in data source section
             this.updateLoadingState(state);
-
-            // Collapse data source section only after data has loaded and is visible
-            // Wait for both tables to be available and data to be loaded
-            if (!state.loading && state.availableTables.length > 0 && state.data.length > 0 && state.activeTableName) {
-                // Small delay to ensure data is visible before collapsing
-                setTimeout(() => {
-                    if (this.dom.sourceBody && this.dom.sourceBody.style.display !== 'none') {
-                        this.dom.sourceBody.style.display = 'none';
-                        this.dom.sourceArrow.classList.add('collapsed');
-                    }
-                }, 500); // Slightly longer delay to ensure data is rendered
-            }
 
             if (state.activeTableName && state.availableTables.length > 0) {
                 this.updateTableInfo(state.activeTableName);
@@ -127,49 +117,14 @@ export class Sidebar extends Component {
             </header>
 
             <div class="ts-sidebar-body">
-                <!-- Connection -->
-                <section class="ts-section" id="ts-source-section" style="padding: 0 4px;">
-                    <div class="ts-section-header collapsible" id="ts-source-head">
-                        <span class="ts-section-title">Data Source</span>
-                        <div style="display:flex; align-items:center; gap:8px">
-                            <i class="bi bi-chevron-down ts-section-arrow" id="ts-source-arrow"></i>
-                            <i class="bi bi-database-fill-gear ts-text-muted"></i>
-                        </div>
+            <div class="ts-sidebar-body">
+
+                <!-- Database Selection (for multi-DB objects) -->
+                <section class="ts-section" id="ts-db-section" style="display:none; padding: 0 4px;">
+                    <div class="ts-section-header">
+                        <span class="ts-section-title">Active Database</span>
                     </div>
-                    <div id="ts-source-body">
-                        <div class="ts-field">
-                            <label class="ts-label">Auth Token <span style="color:red">*</span></label>
-                            <input type="password" class="ts-input" id="ts-token" 
-                                placeholder="Enter KBase token..." autocomplete="off">
-                        </div>
-                        <div class="ts-field">
-                            <label class="ts-label">Object ID / UPA</label>
-                            <input type="text" class="ts-input" id="ts-berdl" 
-                                placeholder="e.g., 76990/7/2" value="">
-                        </div>
-                        <button class="ts-btn-primary" id="ts-load" style="height: 34px; width: 100%;">
-                            <i class="bi bi-lightning-charge-fill"></i> Load Data
-                        </button>
-                        <div style="margin-top: 12px; display: flex; align-items: center; gap: 8px;">
-                            <div style="height: 1px; background: var(--c-border-subtle); flex: 1;"></div>
-                            <span style="font-size: 11px; color: var(--c-text-muted); text-transform: uppercase;">OR</span>
-                            <div style="height: 1px; background: var(--c-border-subtle); flex: 1;"></div>
-                        </div>
-                        <div class="ts-field" style="margin-top: 12px;">
-                            <label class="ts-label">Upload SQLite Database</label>
-                            <input type="file" class="ts-input" id="ts-upload-db-file" accept=".db,.sqlite,.sqlite3" style="display:none">
-                            <button class="ts-btn-secondary" id="ts-upload-db" style="height: 34px; width: 100%;">
-                                <i class="bi bi-upload"></i> Upload Database
-                            </button>
-                            <div id="ts-upload-info" style="margin-top:8px;font-size:12px;color:var(--c-text-muted);display:none"></div>
-                        </div>
-                        <div id="ts-loading-indicator" style="display:none;margin-top:12px;padding:12px;background:var(--c-bg-surface);border-radius:var(--radius-sm);border:1px solid var(--c-border-subtle)">
-                            <div style="display:flex;align-items:center;gap:10px;color:var(--c-text-secondary);font-size:13px">
-                                <span class="ts-spinner" style="width:16px;height:16px"></span>
-                                <span id="ts-loading-text">Loading data...</span>
-                            </div>
-                        </div>
-                    </div>
+                    <select class="ts-select" id="ts-database-select"></select>
                 </section>
 
                 <!-- Table Selection -->
@@ -240,14 +195,10 @@ export class Sidebar extends Component {
             </footer>
         `;
         this.cacheDom({
-            token: '#ts-token',
-            berdl: '#ts-berdl',
-            loadBtn: '#ts-load',
-            sourceHead: '#ts-source-head',
-            sourceBody: '#ts-source-body',
-            sourceArrow: '#ts-source-arrow',
-            loadingIndicator: '#ts-loading-indicator',
-            loadingText: '#ts-loading-text',
+            reset: '#ts-reset',
+            // Restored DOM elements
+            dbSection: '#ts-db-section',           // New: database section
+            databaseSelect: '#ts-database-select', // New: database dropdown
             navSection: '#ts-nav-section',
             tableSelect: '#ts-table-select',
             viewSchema: '#ts-view-schema',
@@ -263,65 +214,70 @@ export class Sidebar extends Component {
             aggregationsSection: '#ts-aggregations-section',
             aggregationsBtn: '#ts-aggregations-btn',
             aggregationsInfo: '#ts-aggregations-info',
-            export: '#ts-export',
-            reset: '#ts-reset',
-            uploadDbFile: '#ts-upload-db-file',
-            uploadDbBtn: '#ts-upload-db',
-            uploadInfo: '#ts-upload-info'
+            export: '#ts-export'
         });
     }
 
     protected bindEvents() {
-        // Load
-        this.dom.loadBtn?.addEventListener('click', () => {
-            // Explicitly open data source section when user clicks Load Data
-            if (this.dom.sourceBody) {
-                this.dom.sourceBody.style.display = 'block';
-                this.dom.sourceArrow.classList.remove('collapsed');
+        // Database Selection (for multi-DB objects)
+        this.dom.databaseSelect?.addEventListener('change', (e: Event) => {
+            const dbName = (e.target as HTMLSelectElement).value;
+            if (this.options.onDatabaseChange) {
+                this.options.onDatabaseChange(dbName);
             }
-            this.options.onLoadData();
-            // Keep source section open to show loading state
-            // It will collapse automatically when data loads (handled in state subscription)
         });
 
-        this.dom.sourceHead?.addEventListener('click', () => {
-            const isHidden = this.dom.sourceBody.style.display === 'none';
-            this.dom.sourceBody.style.display = isHidden ? 'block' : 'none';
-            this.dom.sourceArrow.classList.toggle('collapsed', !isHidden);
-        });
-
-        this.dom.berdl?.addEventListener('keypress', (e: KeyboardEvent) => {
-            if (e.key === 'Enter') this.dom.loadBtn.click();
-        });
-
-        // Upload DB button
-        this.dom.uploadDbBtn?.addEventListener('click', () => {
-            (this.dom.uploadDbFile as HTMLInputElement)?.click();
-        });
-
-        this.dom.uploadDbFile?.addEventListener('change', (e: Event) => {
-            const input = e.target as HTMLInputElement;
-            const file = input.files?.[0];
-            if (!file) return;
-
-            // Show selected file info
-            if (this.dom.uploadInfo) {
-                this.dom.uploadInfo.textContent = `Selected: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`;
-                this.dom.uploadInfo.style.display = 'block';
-            }
-
-            if (this.options.onUploadDb) {
-                this.options.onUploadDb(file);
-            }
-
-            // Reset the input so the same file can be selected again
-            input.value = '';
-        });
-
-        // Table Select
+        // Table Selection
         this.dom.tableSelect?.addEventListener('change', (e: Event) => {
             this.options.onTableChange((e.target as HTMLSelectElement).value);
         });
+
+        this.dom.viewSchema?.addEventListener('click', () => {
+            const state = this.stateManager.getState();
+            if (state.activeTableName) {
+                this.options.onShowSchema(state.activeTableName);
+            }
+        });
+
+        this.dom.viewStats?.addEventListener('click', () => {
+            const state = this.stateManager.getState();
+            if (state.activeTableName) {
+                this.options.onShowStats(state.activeTableName);
+            }
+        });
+
+        // Column Controls
+        this.dom.controlShowAll?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.toggleAllColumns();
+        });
+
+        this.dom.controlExpandAll?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.toggleAllCategories();
+        });
+
+        // Filters
+        this.dom.clearFilters?.addEventListener('click', () => {
+            this.stateManager.update({
+                columnFilters: {},
+                advancedFilters: undefined,
+                currentPage: 0
+            });
+            // Also notify DataGrid to reload
+            // (DataGrid subscribes to state, so it should handle this, 
+            // but we might need to trigger a fetch if it doesn't automatically)
+            // The TableRenderer listens to filter changes via state subscription? 
+            // Actually TableRenderer.fetchData() is called by the grid or manually. 
+            // Let's rely on TableRenderer observing the state change or just let the user click Refresh if needed?
+            // Better: The grid usually triggers a fetch on filter change. 
+            // If we update state directly, we might need to trigger the fetch.
+            // But for now, let's just update state.
+        });
+
+
+
+        // Export & Reset
 
         // Actions
         this.dom.export?.addEventListener('click', () => this.options.onExport());
@@ -503,6 +459,57 @@ export class Sidebar extends Component {
 
     }
 
+    private toggleAllColumns() {
+        const state = this.stateManager.getState();
+        if (state.columns.length === 0) return;
+
+        // Check if all are currently visible
+        // We check if the size of visibleColumns set matches the total number of columns
+        const allVisible = state.visibleColumns.size === state.columns.length;
+        const newVisible = !allVisible;
+
+        if (newVisible) {
+            // Show all: add all column names to the set
+            state.columns.forEach(c => state.visibleColumns.add(c.column));
+        } else {
+            // Hide all: clear the set
+            state.visibleColumns.clear();
+        }
+
+        // Push update
+        this.stateManager.update({ visibleColumns: state.visibleColumns });
+
+        // Update button text
+        if (this.dom.controlShowAll) {
+            this.dom.controlShowAll.textContent = newVisible ? 'Hide All' : 'Show All';
+        }
+    }
+
+    private toggleAllCategories() {
+        // Expand/Collapse all categories
+        const categoryHeaders = this.dom.controlList?.querySelectorAll('.ts-category-header');
+        if (!categoryHeaders) return;
+
+        // Check if any is collapsed, if so, expand all
+        let anyCollapsed = false;
+        categoryHeaders.forEach(el => {
+            if (el.classList.contains('collapsed')) anyCollapsed = true;
+        });
+
+        categoryHeaders.forEach(el => {
+            const content = el.nextElementSibling as HTMLElement;
+            if (anyCollapsed) {
+                el.classList.remove('collapsed');
+                el.querySelector('i')?.classList.replace('bi-chevron-right', 'bi-chevron-down');
+                if (content) content.style.display = 'block';
+            } else {
+                el.classList.add('collapsed');
+                el.querySelector('i')?.classList.replace('bi-chevron-down', 'bi-chevron-right');
+                if (content) content.style.display = 'none';
+            }
+        });
+    }
+
     private showAggregationsPanel() {
         const state = this.stateManager.getState();
         const columns = state.columns.map(c => ({
@@ -666,6 +673,58 @@ export class Sidebar extends Component {
     public updateTableInfo(name: string) {
         if (this.dom.tableSelect && (this.dom.tableSelect as HTMLSelectElement).value !== name) {
             (this.dom.tableSelect as HTMLSelectElement).value = name;
+        }
+    }
+
+    /**
+     * Update database dropdown for multi-database objects.
+     * Shows the dropdown only when there are multiple databases.
+     * @param databases - Array of DatabaseInfo from the API response
+     */
+    public updateDatabases(databases: DatabaseInfo[]) {
+        if (!this.dom.dbSection || !this.dom.databaseSelect) return;
+
+        // Only show database section if there are multiple databases
+        if (databases.length > 1) {
+            this.dom.dbSection.style.display = 'block';
+            this.dom.databaseSelect.innerHTML = '';
+
+            databases.forEach((db: DatabaseInfo) => {
+                const opt = document.createElement('option');
+                opt.value = db.db_name;
+                const rowCount = db.row_count != null ? db.row_count.toLocaleString() : '?';
+                opt.textContent = db.db_display_name || db.db_name;
+                if (db.row_count != null) {
+                    opt.textContent += ` (${rowCount} rows)`;
+                }
+                this.dom.databaseSelect.appendChild(opt);
+            });
+
+            // Update state with available databases
+            this.stateManager.update({
+                availableDatabases: databases,
+                activeDatabase: databases[0]?.db_name || null
+            });
+        } else {
+            // Single or no database - hide the section
+            this.dom.dbSection.style.display = 'none';
+            if (databases.length === 1) {
+                // Set single database as active without showing dropdown
+                this.stateManager.update({
+                    availableDatabases: databases,
+                    activeDatabase: databases[0]?.db_name || null
+                });
+            }
+        }
+    }
+
+    /**
+     * Set the currently selected database in the dropdown.
+     * @param dbName - Database name to select
+     */
+    public setActiveDatabase(dbName: string) {
+        if (this.dom.databaseSelect && (this.dom.databaseSelect as HTMLSelectElement).value !== dbName) {
+            (this.dom.databaseSelect as HTMLSelectElement).value = dbName;
         }
     }
 
@@ -838,19 +897,6 @@ export class Sidebar extends Component {
         return labels[operator] || operator;
     }
 
-    private toggleAllColumns() {
-        const state = this.stateManager.getState();
-        const allVisible = state.columns.every(c => state.visibleColumns.has(c.column));
-        const newVisible = new Set<string>(state.visibleColumns);
-
-        state.columns.forEach(c => {
-            if (allVisible) newVisible.delete(c.column);
-            else newVisible.add(c.column);
-        });
-
-        this.stateManager.update({ visibleColumns: newVisible });
-        this.renderControlList();
-    }
 
     public getToken(): string {
         return (this.dom.token as HTMLInputElement)?.value || '';

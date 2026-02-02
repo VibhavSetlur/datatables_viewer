@@ -1,37 +1,33 @@
 /**
- * Config Resolver
+ * Config Resolver (Simplified for KBase Integration)
  * 
- * Implements robust resolution logic to find the best available
- * configuration for a data source.
+ * Resolution flow:
+ * 1. KBase Workspace config (if configRef provided in app-config.json)
+ * 2. Default fallback config (default-config.json)
  * 
- * Resolution Priority:
- * 1. Pattern matching (UPA/object type patterns from index.json)
- * 2. Schema-based matching (compare table/column names)
- * 3. Default config (default-config.json)
- * 
- * @version 3.0.0
+ * @version 4.0.0
  */
 
 import type { DataTypeConfig, TableSchema } from '../../types/schema';
-import type { ResolveOptions, ResolveResult, SchemaInfo } from '../../types/config-api';
-import { DataTypeRegistry } from './DataTypeRegistry';
+import type { ResolveOptions, ResolveResult } from '../../types/config-api';
+
 import { logger } from '../../utils/logger';
+import type { ApiClient } from '../api/ApiClient';
 
 // =============================================================================
 // CONFIG RESOLVER CLASS
 // =============================================================================
 
 /**
- * ConfigResolver provides unified config resolution from static sources.
- * Uses pattern matching and schema-based matching to find the appropriate config.
+ * ConfigResolver provides unified config resolution.
+ * Simplified for KBase integration - loads from workspace or falls back to default.
  */
 export class ConfigResolver {
-    private registry: DataTypeRegistry;
-    private schemaMatchCache: Map<string, { configId: string; score: number; timestamp: number }> = new Map();
+
     private defaultConfigCache: DataTypeConfig | null = null;
+    private kbaseConfigCache: DataTypeConfig | null = null;
 
     constructor() {
-        this.registry = DataTypeRegistry.getInstance();
     }
 
     // =========================================================================
@@ -49,32 +45,37 @@ export class ConfigResolver {
         sourceRef: string,
         options: ResolveOptions = {}
     ): Promise<ResolveResult> {
-        // 1. Try pattern matching (UPA/object type patterns from index.json)
-        const staticConfig = this.findStaticConfig(sourceRef, options.objectType);
-        if (staticConfig) {
+        // 0. If forceDefault is true, skip other checks
+        if (options.forceDefault) {
+            const defaultConfig = await this.loadDefaultConfig();
+            if (defaultConfig) {
+                return {
+                    config: defaultConfig,
+                    source: 'default',
+                    sourceDetail: 'forced_default',
+                    fromCache: false
+                };
+            }
+            // Fallback to minimal if default fails
             return {
-                config: staticConfig,
-                source: 'static',
-                sourceDetail: `static:${staticConfig.id}`,
+                config: this.createDefaultConfig(sourceRef),
+                source: 'default',
+                sourceDetail: 'minimal_fallback',
+                fromCache: false
+            };
+        }
+
+        // 1. If KBase config was loaded (from app-config.json configRef), use it
+        if (this.kbaseConfigCache) {
+            return {
+                config: this.kbaseConfigCache,
+                source: 'remote',
+                sourceDetail: 'kbase_workspace',
                 fromCache: true,
             };
         }
 
-        // 2. Try schema-based matching if schema info is available
-        if (options.schema && options.schema.tables.length > 0) {
-            const schemaMatch = await this.findSchemaMatch(options.schema);
-            if (schemaMatch) {
-                return {
-                    config: schemaMatch.config,
-                    source: 'schema_match',
-                    sourceDetail: `schema_match:${schemaMatch.configId} (score: ${schemaMatch.score.toFixed(2)})`,
-                    fromCache: false,
-                    warning: `No pattern match found. Matched by schema similarity (${(schemaMatch.score * 100).toFixed(0)}% match).`,
-                };
-            }
-        }
-
-        // 3. Load default config (default-config.json)
+        // 2. Load default config (default-config.json)
         const defaultConfig = await this.loadDefaultConfig();
         if (defaultConfig) {
             return {
@@ -82,11 +83,11 @@ export class ConfigResolver {
                 source: 'default',
                 sourceDetail: 'default_config',
                 fromCache: false,
-                warning: `No configuration found for "${sourceRef}". Using default configuration. Consider adding a mapping in index.json.`,
+                warning: `Using default display configuration for "${sourceRef}".`,
             };
         }
 
-        // 4. Fallback to minimal generated config
+        // 3. Fallback to minimal generated config
         logger.warn(`[ConfigResolver] No config found for ${sourceRef}, using minimal fallback`);
         return {
             config: this.createDefaultConfig(sourceRef),
@@ -98,12 +99,91 @@ export class ConfigResolver {
     }
 
     /**
-     * Resolve table-specific configuration.
+     * Attempt to fetch configuration from the KBase Workspace.
+     * Currently a mock implementation that will fail safe for testing.
      * 
-     * @param sourceRef - Object reference
-     * @param tableName - Name of the table
-     * @param options - Resolution options
-     * @returns TableSchema or null if not found
+     * @param sourceRef The workspace object reference (UPA)
+     * @param client The API client to use for the call
+     */
+    public async resolveFromWorkspace(sourceRef: string, client: ApiClient): Promise<DataTypeConfig | null> {
+        // 1. Check Metadata for 'kn_config'
+        try {
+            logger.debug(`[ConfigResolver] Checking metadata for config: ${sourceRef}`);
+            const objInfo = await client.getWorkspaceObjectInfo(sourceRef);
+
+            // KBase Object Info Tuple: [0:objid, ... 10:metadata]
+            if (objInfo && objInfo[0] && objInfo[0][10]) {
+                const metadata = objInfo[0][10];
+                const rawConfig = metadata['kn_config'] || metadata['config'];
+
+                if (rawConfig) {
+                    try {
+                        const config = JSON.parse(rawConfig);
+                        logger.info(`[ConfigResolver] Found config in workspace metadata for ${sourceRef}`);
+                        return config as DataTypeConfig;
+                    } catch (e) {
+                        logger.warn(`[ConfigResolver] Failed to parse config from metadata for ${sourceRef}`, e);
+                    }
+                }
+            }
+        } catch (error) {
+            logger.warn(`[ConfigResolver] Failed to fetch object info for ${sourceRef}`, error);
+        }
+
+        // 2. Fallback: Check for linked config in app-config.json (Sidecar)
+        try {
+            // This replicates the logic previously in TableRenderer
+            logger.debug(`[ConfigResolver] Checking sidecar app-config.json for source: ${sourceRef}`);
+            const appConfig = await fetch('./app-config.json').then(r => r.ok ? r.json() : null).catch(() => null);
+            const configRef = appConfig?.configRef;
+
+            if (configRef) {
+                logger.info(`[ConfigResolver] Found configRef in sidecar: ${configRef}`);
+                const response = await client.getWorkspaceObject(configRef);
+
+                // Detailed logging for debugging
+                if (response && response.data) {
+                    logger.info(`[ConfigResolver] Successfully fetched config object from ${configRef}`);
+                    return response.data as DataTypeConfig;
+                } else {
+                    logger.warn(`[ConfigResolver] Fetched ${configRef} but got no data`);
+                }
+            } else {
+                logger.debug('[ConfigResolver] No configRef found in sidecar app-config.json');
+            }
+
+            return null;
+
+        } catch (error) {
+            logger.warn('[ConfigResolver] Error resolving from workspace (sidecar)', error);
+            return null;
+        }
+    }
+
+    /**
+     * Set the KBase workspace config (called after fetching from workspace API).
+     */
+    public setKBaseConfig(config: DataTypeConfig): void {
+        this.kbaseConfigCache = config;
+        logger.info('[ConfigResolver] KBase workspace config loaded');
+    }
+
+    /**
+     * Clear the KBase workspace config cache.
+     */
+    public clearKBaseConfig(): void {
+        this.kbaseConfigCache = null;
+    }
+
+    /**
+     * Check if KBase config is loaded.
+     */
+    public hasKBaseConfig(): boolean {
+        return this.kbaseConfigCache !== null;
+    }
+
+    /**
+     * Resolve table-specific configuration.
      */
     public async resolveTable(
         sourceRef: string,
@@ -114,114 +194,9 @@ export class ConfigResolver {
         return result.config.tables?.[tableName] ?? null;
     }
 
-    /**
-     * Resolve and register a config in the DataTypeRegistry.
-     * This is a convenience method for common usage patterns.
-     * 
-     * @param sourceRef - Object reference
-     * @param options - Resolution options
-     * @returns The resolved DataTypeConfig or null
-     */
-    public async resolveAndRegister(
-        sourceRef: string,
-        options: ResolveOptions = {}
-    ): Promise<DataTypeConfig | null> {
-        const result = await this.resolve(sourceRef, options);
-
-        if (result.config) {
-            // Ensure the config has an ID
-            if (!result.config.id) {
-                result.config.id = this.generateConfigId(sourceRef);
-            }
-
-            // Register in the data type registry
-            this.registry.registerDataType(result.config);
-
-            logger.debug(
-                `[ConfigResolver] Registered ${result.config.id} from ${result.source}`
-            );
-            return result.config;
-        }
-
-        return null;
-    }
-
-    /**
-     * Check if a static config exists for the given source.
-     */
-    public hasStaticConfig(sourceRef: string, objectType?: string): boolean {
-        return this.findStaticConfig(sourceRef, objectType) !== null;
-    }
-
-    /**
-     * Get resolution hints for a source reference.
-     * Useful for debugging and UI feedback.
-     */
-    public async getResolutionHints(
-        sourceRef: string
-    ): Promise<{
-        hasStaticConfig: boolean;
-        recommendedSource: 'static' | 'default';
-    }> {
-        const hasStatic = this.hasStaticConfig(sourceRef);
-
-        return {
-            hasStaticConfig: hasStatic,
-            recommendedSource: hasStatic ? 'static' : 'default',
-        };
-    }
-
     // =========================================================================
     // PRIVATE METHODS
     // =========================================================================
-
-    /**
-     * Find a matching static config by pattern matching.
-     */
-    private findStaticConfig(
-        sourceRef: string,
-        objectType?: string
-    ): DataTypeConfig | null {
-        const appConfig = this.registry.getAppConfig();
-        if (!appConfig?.dataTypes) {
-            return null;
-        }
-
-        // First, try exact match on sourceRef patterns
-        for (const [id, ref] of Object.entries(appConfig.dataTypes)) {
-            if (ref.matches?.some((pattern) => this.matchPattern(sourceRef, pattern))) {
-                const found = this.registry.getDataType(id);
-                if (found) return found;
-            }
-        }
-
-        // Then, try object type matching
-        if (objectType) {
-            for (const [id, ref] of Object.entries(appConfig.dataTypes)) {
-                if (ref.matches?.some((pattern) => this.matchPattern(objectType, pattern))) {
-                    const found = this.registry.getDataType(id);
-                    if (found) return found;
-                }
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * Match a value against a pattern (supports wildcards).
-     */
-    private matchPattern(value: string, pattern: string): boolean {
-        if (pattern.includes('*')) {
-            // Convert glob pattern to regex
-            const regexPattern = pattern
-                .replace(/[.+?^${}()|[\]\\]/g, '\\$&') // Escape special chars
-                .replace(/\*/g, '.*'); // Convert * to .*
-            const regex = new RegExp(`^${regexPattern}$`);
-            return regex.test(value);
-        }
-        return value === pattern;
-    }
 
     /**
      * Create a minimal default config.
@@ -246,105 +221,6 @@ export class ConfigResolver {
     }
 
     /**
-     * Find config by schema matching (table/column name comparison).
-     * Efficiently compares database schema against config schemas.
-     */
-    private async findSchemaMatch(
-        schema: SchemaInfo
-    ): Promise<{ config: DataTypeConfig; configId: string; score: number } | null> {
-        // Check cache first
-        const cacheKey = this.getSchemaCacheKey(schema);
-        const cached = this.schemaMatchCache.get(cacheKey);
-        if (cached && Date.now() - cached.timestamp < 300000) { // 5 min cache
-            const config = this.registry.getDataType(cached.configId);
-            if (config) {
-                return { config, configId: cached.configId, score: cached.score };
-            }
-        }
-
-        const appConfig = this.registry.getAppConfig();
-        if (!appConfig?.dataTypes) {
-            return null;
-        }
-
-        let bestMatch: { config: DataTypeConfig; configId: string; score: number } | null = null;
-        const dbTables = new Set(schema.tables.map(t => t.toLowerCase()));
-        const dbColumns = new Map<string, Set<string>>();
-        
-        // Normalize column names for comparison
-        for (const [table, cols] of Object.entries(schema.columns)) {
-            dbColumns.set(table.toLowerCase(), new Set(cols.map(c => c.toLowerCase())));
-        }
-
-        // Check each config with schema matching enabled
-        for (const [configId, ref] of Object.entries(appConfig.dataTypes)) {
-            const schemaMatch = (ref as any).schemaMatch;
-            if (!schemaMatch?.enabled) continue;
-
-            const config = this.registry.getDataType(configId);
-            if (!config?.tables) continue;
-
-            const requiredTables = schemaMatch.requiredTables || [];
-            const requiredColumns = schemaMatch.requiredColumns || {};
-            const minScore = schemaMatch.minMatchScore || 0.6;
-
-            // Calculate match score
-            let score = 0;
-            let totalChecks = 0;
-
-            // Check required tables
-            for (const reqTable of requiredTables) {
-                totalChecks++;
-                if (dbTables.has(reqTable.toLowerCase())) {
-                    score += 1;
-                    
-                    // Check required columns for this table
-                    const reqCols = requiredColumns[reqTable] || [];
-                    if (reqCols.length > 0) {
-                        const dbCols = dbColumns.get(reqTable.toLowerCase());
-                        if (dbCols) {
-                            const matchedCols = reqCols.filter((col: string) => 
-                                dbCols.has(col.toLowerCase())
-                            ).length;
-                            score += (matchedCols / reqCols.length) * 0.5; // Column match contributes 50% of table score
-                        }
-                    }
-                }
-            }
-
-            if (totalChecks === 0) continue;
-
-            const finalScore = score / totalChecks;
-            if (finalScore >= minScore && (!bestMatch || finalScore > bestMatch.score)) {
-                bestMatch = { config, configId, score: finalScore };
-            }
-        }
-
-        // Cache result
-        if (bestMatch) {
-            this.schemaMatchCache.set(cacheKey, {
-                configId: bestMatch.configId,
-                score: bestMatch.score,
-                timestamp: Date.now(),
-            });
-        }
-
-        return bestMatch;
-    }
-
-    /**
-     * Generate cache key from schema info.
-     */
-    private getSchemaCacheKey(schema: SchemaInfo): string {
-        const tables = schema.tables.sort().join(',');
-        const columns = Object.entries(schema.columns)
-            .sort(([a], [b]) => a.localeCompare(b))
-            .map(([table, cols]) => `${table}:${cols.sort().join(',')}`)
-            .join('|');
-        return `${tables}|${columns}`;
-    }
-
-    /**
      * Load default config from default-config.json.
      */
     private async loadDefaultConfig(): Promise<DataTypeConfig | null> {
@@ -353,9 +229,8 @@ export class ConfigResolver {
         }
 
         try {
-            const appConfig = this.registry.getAppConfig();
-            const defaultConfigUrl = (appConfig as any)?.defaultConfig?.configUrl || '/config/default-config.json';
-            
+            const defaultConfigUrl = './config/tables/default-config.json';
+
             const response = await fetch(defaultConfigUrl);
             if (response.ok) {
                 const config = await response.json();

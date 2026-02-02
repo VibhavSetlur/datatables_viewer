@@ -4,9 +4,9 @@
  */
 
 import { ApiClient } from '../core/api/ApiClient';
-import { DataTypeRegistry } from '../core/config/DataTypeRegistry';
-import { ConfigManager, type TableColumnConfig } from '../core/config/ConfigManager';
-import { ConfigResolver, getConfigResolver } from '../core/config/ConfigResolver';
+import { ConfigManager } from '../core/config/ConfigManager';
+import { type ResolvedColumnConfig as TableColumnConfig } from '../types/schema';
+
 import { StateManager, type AppState } from '../core/state/StateManager';
 import { logger } from '../utils/logger';
 import { CategoryManager } from '../core/managers/CategoryManager';
@@ -18,7 +18,6 @@ import { StatisticsViewer } from './components/StatisticsViewer';
 import { Transformers } from '../utils/transformers';
 import { exportManager } from '../core/managers/ExportManager';
 import { registerDefaultShortcuts } from '../core/managers/KeyboardManager';
-import { getUrlStateManager, type UrlStateFragment } from '../core/state/UrlStateManager';
 import '../style.css';
 
 export interface RendererOptions {
@@ -29,10 +28,9 @@ export interface RendererOptions {
 
 export class TableRenderer {
     private container: HTMLElement;
-    private configUrl: string | null;
+
     private configManager!: ConfigManager;
-    private configResolver: ConfigResolver;
-    private registry: DataTypeRegistry;
+
     private client!: ApiClient;
     private stateManager: StateManager;
     private categoryManager: CategoryManager | null = null;
@@ -48,17 +46,12 @@ export class TableRenderer {
     private density: 'compact' | 'normal' | 'comfortable' = 'normal';
     private dom: Record<string, HTMLElement> = {};
     private columnSchemas: Record<string, Record<string, { type: string; notnull: boolean; pk: boolean }>> = {}; // tableName -> columnName -> schema
-    private urlStateManager = getUrlStateManager();
-    private initialUrlState: UrlStateFragment | null = null;
-    private urlSyncEnabled = false; // Prevent URL sync during initial load
 
     constructor(options: RendererOptions) {
         if (!options.container) throw new Error('Container required');
         this.container = options.container;
-        this.configUrl = options.configUrl || null;
         this.client = options.client || new ApiClient();
-        this.configResolver = getConfigResolver();
-        this.registry = DataTypeRegistry.getInstance();
+
         this.stateManager = new StateManager();
         this.stateManager.subscribe(this.onStateChange.bind(this));
 
@@ -71,21 +64,18 @@ export class TableRenderer {
 
     public async init() {
         try {
-            await this.loadConfiguration();
-            const env = this.configManager.getEnvironment();
-            const apis = this.configManager.getApis();
-            const defaultApiId = this.configManager.getDefaultApiId();
+            // 1. Load basic app config (index.json) to bootstrap client
+            const appConfigResponse = await fetch('config/index.json');
+            if (!appConfigResponse.ok) throw new Error('Failed to load app configuration');
+            const appConfig = await appConfigResponse.json();
 
-            const currentApiId = defaultApiId || (apis.length > 0 ? apis[0].id : null);
+            // 2. Initialize ConfigManager with app config
+            this.configManager = new ConfigManager(appConfig);
 
-            if (currentApiId) {
-                const apiConfig = this.configManager.getApi(currentApiId);
-                if (apiConfig) this.client.updateConfig(apiConfig as any);
-            } else {
-                const apiUrl = this.configManager.getApiUrl();
-                if (apiUrl) this.client = new ApiClient({ environment: env, baseUrl: apiUrl });
-                else this.client.setEnvironment(env);
-            }
+            // 3. Initialize API Client
+            this.client = new ApiClient({
+                serviceUrls: this.configManager.getServiceUrls()
+            });
 
             const settings = this.configManager.getGlobalSettings();
             this.stateManager.update({
@@ -97,6 +87,8 @@ export class TableRenderer {
             this.loadStateFromUrl();
             this.renderLayout();
             this.initComponents();
+            // Update config source indicator now that DOM is rendered
+            this.updateConfigSourceIndicator();
 
             // After components are initialized, handle URL state or default source
             // Use requestAnimationFrame to ensure DOM is fully rendered
@@ -115,22 +107,44 @@ export class TableRenderer {
      * Handle initial data loading from URL state or default configuration.
      * Prioritizes URL parameters over config defaults.
      */
+    /**
+     * Handle initial data loading from URL state or default configuration.
+     * Prioritizes URL parameters over config defaults.
+     */
     private async handleInitialLoad(settings: Record<string, any>) {
-        const urlState = this.initialUrlState;
-
         const defaultSource = settings.defaultSource as string | undefined;
-        const autoLoad = settings.autoLoad as boolean | undefined;
+
+        // 1. Check URL Parameters for UPA/Ref
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlUpa = urlParams.get('upa') || urlParams.get('ref') || urlParams.get('object');
+
+        // 2. Try to fetch sidecar app-config.json (fallback/local dev)
+        let sidecarConfig: { upa?: string; token?: string } = {};
+        try {
+            sidecarConfig = await fetch('./app-config.json').then(r => {
+                if (r.ok) return r.json();
+                return {};
+            }).catch(() => ({}));
+        } catch {
+            // Ignore error
+        }
+
+        const sidecarUpa = sidecarConfig.upa;
+        const sidecarToken = sidecarConfig.token;
+
+        // Apply sidecar token if provided (override cookie)
+        if (sidecarToken) {
+            this.sidebar.setToken(sidecarToken);
+            this.client.setToken(sidecarToken);
+        }
 
         // Determine which source to use
         let sourceToLoad: string | null = null;
-        let isFromUrl = false;
-
-        if (urlState && urlState.db) {
-            // URL takes priority
-            sourceToLoad = urlState.db;
-            isFromUrl = true;
+        if (urlUpa) {
+            sourceToLoad = urlUpa;
+        } else if (sidecarUpa) {
+            sourceToLoad = sidecarUpa;
         } else if (defaultSource) {
-            // Fall back to config default
             sourceToLoad = defaultSource;
         }
 
@@ -139,151 +153,23 @@ export class TableRenderer {
             this.sidebar.setBerdlId(sourceToLoad);
         }
 
-        // Check if we should auto-load
-        const token = this.sidebar.getToken();
-        const isLocalDb = sourceToLoad ? ApiClient.isLocalDb(sourceToLoad) : false;
-        const hasValidAuth = token || isLocalDb;
-
-        if (isFromUrl && !hasValidAuth && sourceToLoad) {
-            // Shared link without token - show auth modal
-            this.showAuthModal(sourceToLoad, urlState);
-        } else if (sourceToLoad && hasValidAuth && (autoLoad || isFromUrl)) {
-            // Auto-load if:
-            // 1. From URL (always try to load shared links)
-            // 2. autoLoad is true in config
-            await this.loadObjectFromUrl(sourceToLoad, urlState);
+        // If we have a source, initialize the config manager with it
+        // This effectively "loads" the object configuration
+        if (sourceToLoad) {
+            await this.configManager.initialize(sourceToLoad, this.client);
+            // Then trigger actual data load
+            await this.loadObjectFromSidecar(sourceToLoad);
         }
     }
 
-    /**
-     * Show authentication modal when a shared link is opened without token.
-     * The modal blocks UI and prompts for token entry.
-     */
-    private showAuthModal(db: string, urlState: UrlStateFragment | null) {
-        // Store URL state for use after authentication
-        this.pendingUrlState = urlState;
-        this.pendingDb = db;
+    /* showAuthModal removed for KBase integration */
 
-        // Create modal overlay
-        const modalHtml = `
-            <div class="ts-auth-modal-overlay" id="ts-auth-modal">
-                <div class="ts-auth-modal">
-                    <div class="ts-auth-modal-header">
-                        <i class="bi bi-shield-lock"></i>
-                        <h3>Authentication Required</h3>
-                    </div>
-                    <div class="ts-auth-modal-body">
-                        <p>This shared link requires authentication to access:</p>
-                        <div class="ts-auth-modal-db">
-                            <i class="bi bi-database"></i>
-                            <code>${db}</code>
-                        </div>
-                        <div class="ts-field" style="margin-top: 16px;">
-                            <label class="ts-label">KBase Auth Token</label>
-                            <input type="password" class="ts-input" id="ts-auth-modal-token" 
-                                placeholder="Enter your authentication token...">
-                        </div>
-                        <div class="ts-auth-modal-error" id="ts-auth-modal-error" style="display: none;">
-                            <i class="bi bi-exclamation-triangle"></i>
-                            <span id="ts-auth-modal-error-text"></span>
-                        </div>
-                    </div>
-                    <div class="ts-auth-modal-footer">
-                        <button class="ts-btn-secondary" id="ts-auth-modal-home">
-                            <i class="bi bi-house"></i> Go to Home
-                        </button>
-                        <button class="ts-btn-primary" id="ts-auth-modal-submit">
-                            <i class="bi bi-box-arrow-in-right"></i> Load Data
-                        </button>
-                    </div>
-                </div>
-            </div>
-        `;
-
-        // Insert modal into DOM
-        document.body.insertAdjacentHTML('beforeend', modalHtml);
-
-        // Bind events
-        const modal = document.getElementById('ts-auth-modal');
-        const tokenInput = document.getElementById('ts-auth-modal-token') as HTMLInputElement;
-        const submitBtn = document.getElementById('ts-auth-modal-submit');
-        const homeBtn = document.getElementById('ts-auth-modal-home');
-        const errorDiv = document.getElementById('ts-auth-modal-error');
-        const errorText = document.getElementById('ts-auth-modal-error-text');
-
-        if (!modal || !tokenInput || !submitBtn || !homeBtn || !errorDiv || !errorText) return;
-
-        // Focus token input
-        setTimeout(() => tokenInput.focus(), 100);
-
-        // Handle Enter key
-        tokenInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                submitBtn.click();
-            }
-        });
-
-        // Handle submit
-        submitBtn.addEventListener('click', async () => {
-            const token = tokenInput.value.trim();
-            if (!token) {
-                errorDiv.style.display = 'flex';
-                errorText.textContent = 'Please enter your authentication token.';
-                tokenInput.focus();
-                return;
-            }
-
-            // Show loading state
-            submitBtn.innerHTML = '<i class="bi bi-arrow-clockwise spin"></i> Loading...';
-            (submitBtn as HTMLButtonElement).disabled = true;
-            errorDiv.style.display = 'none';
-
-            try {
-                // Set token in sidebar and client
-                this.sidebar.setToken(token);
-                this.client.setToken(token);
-
-                // Attempt to load with the saved URL state
-                if (this.pendingDb) {
-                    await this.loadObjectFromUrl(this.pendingDb, this.pendingUrlState);
-                }
-
-                // Success - close modal
-                modal.remove();
-                this.pendingUrlState = null;
-                this.pendingDb = null;
-
-            } catch (e: any) {
-                // Show error in modal
-                errorDiv.style.display = 'flex';
-                errorText.textContent = e.message || 'Failed to load data. Please check your token.';
-                submitBtn.innerHTML = '<i class="bi bi-arrow-repeat"></i> Retry';
-                (submitBtn as HTMLButtonElement).disabled = false;
-                tokenInput.focus();
-                tokenInput.select();
-            }
-        });
-
-        // Handle home button
-        homeBtn.addEventListener('click', () => {
-            // Clear URL parameters and go to clean home
-            this.urlStateManager.clearUrl();
-            modal.remove();
-            this.pendingUrlState = null;
-            this.pendingDb = null;
-            // Clear the Object ID field
-            this.sidebar.setBerdlId('');
-        });
-    }
-
-    // Properties to store pending URL state for auth flow
-    private pendingUrlState: UrlStateFragment | null = null;
-    private pendingDb: string | null = null;
 
     /**
-     * Load data from URL parameters, applying filters/sort/page from URL state.
+     * Load data from sidecar config (KBase mode).
+     * Now simplified to just load data, as config is initialized in handleInitialLoad
      */
-    private async loadObjectFromUrl(db: string, urlState: UrlStateFragment | null) {
+    private async loadObjectFromSidecar(db: string) {
         // Set token and trigger load
         const token = this.sidebar.getToken();
         this.client.setToken(token || '');
@@ -291,72 +177,65 @@ export class TableRenderer {
 
         try {
             const res = await this.client.listTables(db);
-            const tables = res.tables || [];
 
-            if (tables.length === 0) {
-                this.showAlert(`No tables found in database "${db}"`, 'warning');
-                this.stateManager.update({ loading: false });
-                return;
-            }
+            // Check for multi-database response
+            const databases = res.databases || [];
+            const hasMultipleDatabases = res.has_multiple_databases || databases.length > 1;
 
-            // Resolve config
-            let schemaInfo = this.extractSchemaInfo(res, tables);
-            if (Object.keys(schemaInfo.columns).length === 0) {
-                const fetchedSchema = await this.fetchSchemaInfo(db);
-                if (fetchedSchema) schemaInfo = fetchedSchema;
-            }
+            if (hasMultipleDatabases && databases.length > 0) {
+                // Multi-database object: populate database dropdown
+                this.sidebar.updateDatabases(databases);
 
-            const resolveResult = await this.configResolver.resolve(db, {
-                objectType: res.object_type || res.type,
-                schema: schemaInfo.tables.length > 0 ? schemaInfo : undefined,
-            });
+                // Load tables from the first database
+                const firstDb = databases[0];
+                const tables = firstDb.tables || [];
 
-            if (resolveResult.config) {
-                this.registry.registerDataType(resolveResult.config);
-                this.configManager.setCurrentDataType(resolveResult.config.id);
-            }
-
-            this.stateManager.update({ availableTables: tables });
-            this.sidebar.updateTables(tables);
-
-            // Determine which table to load
-            const targetTable = urlState?.table && tables.find((t: any) => t.name === urlState.table)
-                ? urlState.table
-                : tables[0].name;
-
-            // Apply URL state to state manager before switching table
-            if (urlState) {
-                const stateUpdate: Partial<AppState> = {};
-                if (urlState.page !== undefined) stateUpdate.currentPage = urlState.page;
-                if (urlState.sortColumn) stateUpdate.sortColumn = urlState.sortColumn;
-                if (urlState.sortOrder) stateUpdate.sortOrder = urlState.sortOrder;
-                if (urlState.searchValue) stateUpdate.searchValue = urlState.searchValue;
-                if (urlState.columnFilters) stateUpdate.columnFilters = urlState.columnFilters;
-                if (urlState.advancedFilters) stateUpdate.advancedFilters = urlState.advancedFilters;
-
-                if (Object.keys(stateUpdate).length > 0) {
-                    this.stateManager.update(stateUpdate);
+                if (tables.length === 0) {
+                    this.showAlert(`No tables found in first database "${firstDb.db_name}"`, 'warning');
+                    this.stateManager.update({ loading: false });
+                    return;
                 }
+
+                this.stateManager.update({
+                    availableTables: tables,
+                    activeDatabase: firstDb.db_name,
+                    availableDatabases: databases
+                });
+                this.sidebar.updateTables(tables);
+
+                const targetTable = tables[0].name;
+                await this.switchTable(targetTable);
+
+                this.showAlert(
+                    `Loaded object "${db}" - ${databases.length} databases found, showing "${firstDb.db_display_name || firstDb.db_name}"`,
+                    'success'
+                );
+            } else {
+                // Single-database object: original behavior
+                const tables = res.tables || [];
+
+                if (tables.length === 0) {
+                    this.showAlert(`No tables found in database "${db}"`, 'warning');
+                    this.stateManager.update({ loading: false });
+                    return;
+                }
+
+                // Set single database info if available
+                if (databases.length === 1) {
+                    this.stateManager.update({
+                        activeDatabase: databases[0].db_name,
+                        availableDatabases: databases
+                    });
+                }
+
+                this.stateManager.update({ availableTables: tables });
+                this.sidebar.updateTables(tables);
+
+                const targetTable = tables[0].name;
+                await this.switchTable(targetTable);
+
+                this.showAlert(`Loaded database "${db}" - ${tables.length} table${tables.length !== 1 ? 's' : ''} found`, 'success');
             }
-
-            await this.switchTable(targetTable);
-
-            // Apply visible columns from URL after table loads (columns are now available)
-            if (urlState?.visibleColumns && urlState.visibleColumns.size > 0) {
-                this.stateManager.update({ visibleColumns: urlState.visibleColumns });
-                this.sidebar.renderControlList();
-            }
-
-            // Apply search to toolbar if present
-            if (urlState?.searchValue) {
-                this.toolbar.setSearch(urlState.searchValue);
-            }
-
-            this.showAlert(`Loaded database "${db}" - ${tables.length} table${tables.length !== 1 ? 's' : ''} found`, 'success');
-
-            // Enable URL sync now that we have valid data
-            this.urlSyncEnabled = true;
-            this.syncStateToUrl();
 
         } catch (e: any) {
             this.showAlert(`Failed to load database "${db}": ${e.message}`, 'danger');
@@ -364,6 +243,7 @@ export class TableRenderer {
             throw e;
         }
     }
+
 
     private renderLayout() {
         this.container.innerHTML = `
@@ -396,6 +276,7 @@ export class TableRenderer {
                     </div>
                     <footer class="ts-footer">
                         <div class="ts-status" id="ts-status">Ready</div>
+                        <div class="ts-config-source" id="ts-config-source" title="Configuration source"></div>
                         <div class="ts-table-name" id="ts-table-name"></div>
                         <div class="ts-pager" id="ts-pager"></div>
                     </footer>
@@ -435,14 +316,22 @@ export class TableRenderer {
             container: this.container.querySelector('#ts-sidebar-container') as HTMLElement,
             configManager: this.configManager,
             stateManager: this.stateManager,
-            onApiChange: (id) => this.switchApi(id),
+            onApiChange: () => { },
             onLoadData: () => this.handleLoadData(),
             onTableChange: (name) => this.switchTable(name),
+            onDatabaseChange: (dbName) => this.handleDatabaseChange(dbName),  // New: multi-DB support
             onExport: () => this.exportCsv(),
             onReset: () => this.reset(),
             onShowSchema: (table) => this.showDatabaseSchema(table),
             onShowStats: (table) => this.showColumnStatistics(table),
-            onUploadDb: (file) => this.handleUploadDb(file),
+            onColumnVisibilityChange: (columns) => {
+                // Update visibility state
+                const visibleSet = new Set<string>();
+                columns.forEach(c => {
+                    if (c.visible) visibleSet.add(c.column);
+                });
+                this.stateManager.update({ visibleColumns: visibleSet });
+            }
         });
         this.sidebar.mount();
 
@@ -487,7 +376,9 @@ export class TableRenderer {
             getSearchMatchInfo: () => {
                 return this.grid ? this.grid.getSearchMatchInfo() : { current: 0, total: 0 };
             },
-            onShare: () => this.copyShareableUrl()
+            onShare: () => this.copyShareableUrl(),
+            // Hide Test Connection and Refresh buttons in KBase mode
+            kbaseMode: this.configSource === 'kbase_workspace'
         });
         this.toolbar.mount();
 
@@ -631,22 +522,19 @@ export class TableRenderer {
      *
      * Behavior:
      * - If no database is currently loaded (no berdlTableId or no available tables),
-     *   this will perform a full object load via `loadObject()`.
+     *   this will perform a full load via `loadObject()`.
      * - If a database is already loaded, this will only re-fetch table data
      *   using the current filters/sort/search via `fetchData()`, so existing
      *   column filters and advanced filters are preserved.
      */
     private handleLoadData() {
         const state = this.stateManager.getState();
-
         // If we don't have a loaded database yet (or the last load failed),
-        // perform a full load. This also covers error cases where berdlTableId
-        // is set but no tables were loaded.
+        // perform a full load.
         if (!state.berdlTableId || state.availableTables.length === 0) {
             this.loadObject();
             return;
         }
-
         // Database is already loaded – just refresh data with current filters.
         this.fetchData();
     }
@@ -687,23 +575,23 @@ export class TableRenderer {
 
         const trimmedBerdl = berdl.trim();
 
-        if (trimmedBerdl === 'test/test/test') {
-            this.switchApi('test_data');
-        } else {
-            this.switchApi('default');
-            // Local (uploaded) databases don't need token
-            const isLocal = ApiClient.isLocalDb(trimmedBerdl);
+        // Local (uploaded) databases don't need token
+        const isLocal = ApiClient.isLocalDb(trimmedBerdl);
 
-            if (!isLocal && !token) {
-                this.showAlert('Auth token required for remote databases', 'danger');
-                return;
-            }
+        if (!isLocal && !token) {
+            // Check if we have an implicit cookie session via ApiClient
+            // We can't check directly, so we'll just log a warning and let the request proceed.
+            // If it fails, the ApiClient will throw an error which we catch below.
+            logger.debug('[TableRenderer] No explicit token found, relying on KBase session cookie.');
         }
 
         this.client.setToken(token || '');
         this.stateManager.update({ berdlTableId: trimmedBerdl, loading: true, error: null });
 
         try {
+            // First initialize config (which now attempts to resolve from workspace)
+            await this.configManager.initialize(trimmedBerdl, this.client);
+
             // Try to load tables
             const res = await this.client.listTables(trimmedBerdl);
 
@@ -730,40 +618,6 @@ export class TableRenderer {
                 return;
             }
 
-            // Extract schema info for config resolution
-            let schemaInfo = this.extractSchemaInfo(res, tables);
-
-            // If schema not in response, try fetching it
-            if (Object.keys(schemaInfo.columns).length === 0) {
-                const fetchedSchema = await this.fetchSchemaInfo(trimmedBerdl);
-                if (fetchedSchema) {
-                    schemaInfo = fetchedSchema;
-                }
-            }
-
-            // Resolve config with schema-based fallback
-            const { getConfigResolver } = await import('../core/config/ConfigResolver');
-            const resolver = getConfigResolver();
-            const resolveResult = await resolver.resolve(trimmedBerdl, {
-                objectType: res.object_type || res.type,
-                schema: schemaInfo.tables.length > 0 ? schemaInfo : undefined,
-            });
-
-            // Show warning if config not found
-            if (resolveResult.warning) {
-                this.showAlert(resolveResult.warning, 'warning');
-            }
-
-            // Register and set config
-            if (resolveResult.config) {
-                this.registry.registerDataType(resolveResult.config);
-                this.configManager.setCurrentDataType(resolveResult.config.id);
-            } else {
-                // Fallback to detection
-                const detectedType = this.registry.detectDataType(res);
-                if (detectedType) this.configManager.setCurrentDataType(detectedType);
-            }
-
             this.stateManager.update({ availableTables: tables });
             this.sidebar.updateTables(tables);
 
@@ -777,52 +631,9 @@ export class TableRenderer {
 
             await this.switchTable(targetTable);
 
-            // Enable URL sync now that we have valid data loaded
-            this.urlSyncEnabled = true;
-            this.syncStateToUrl();
-
         } catch (e: any) {
-            // Provide detailed error message
-            let errorMsg = e.message || 'Failed to load database';
-
-            // Enhance error messages based on error type
-            if (errorMsg.includes('404') || errorMsg.includes('Not Found')) {
-                errorMsg = `Database or object "${trimmedBerdl}" not found. Please check the ID and try again.`;
-            } else if (errorMsg.includes('401') || errorMsg.includes('Unauthorized')) {
-                // Check if it's a Shock API access issue (TableScanner can't access the database)
-                if (errorMsg.includes('shock-api') || errorMsg.includes('Failed to access database')) {
-                    errorMsg = `TableScanner cannot access the database. This usually means:\n` +
-                        `1. Your token doesn't have permission to access object "${trimmedBerdl}"\n` +
-                        `2. The object exists in a different environment (prod vs appdev)\n` +
-                        `3. The token is expired or invalid\n\n` +
-                        `Original error: ${errorMsg}`;
-                } else {
-                    errorMsg = `Authentication failed. Please check your token and try again.\n\nDetails: ${errorMsg}`;
-                }
-            } else if (errorMsg.includes('403') || errorMsg.includes('Forbidden')) {
-                errorMsg = `Access denied to database "${trimmedBerdl}". Please check your permissions.\n\nDetails: ${errorMsg}`;
-            } else if (errorMsg.includes('500') || errorMsg.includes('Internal Server Error')) {
-                // TableScanner server error - often means it can't access Shock API
-                if (errorMsg.includes('shock-api') || errorMsg.includes('Failed to access database')) {
-                    errorMsg = `TableScanner service error: Cannot access database from KBase.\n\n` +
-                        `This usually means:\n` +
-                        `• Your token doesn't have permission to access this object\n` +
-                        `• The object is in a different environment than your token\n` +
-                        `• Try using a token from the correct environment (appdev vs prod)\n\n` +
-                        `Error details: ${errorMsg}`;
-                } else {
-                    errorMsg = `TableScanner service error: ${errorMsg}`;
-                }
-            } else if (errorMsg.includes('Network') || errorMsg.includes('fetch')) {
-                errorMsg = `Network error: Unable to connect to database service. Please check your connection and try again.`;
-            } else if (errorMsg.includes('Failed to load database')) {
-                // Already descriptive, but add context
-                errorMsg = `${errorMsg}\n\nThis may be a permissions issue. Verify your token has access to object "${trimmedBerdl}".`;
-            } else {
-                errorMsg = `Failed to load database "${trimmedBerdl}": ${errorMsg}`;
-            }
-
-            this.showAlert(errorMsg, 'danger');
+            // ... error handling (simplified for this update) ...
+            this.showAlert(`Failed to load database "${trimmedBerdl}": ${e.message}`, 'danger');
             this.stateManager.update({
                 availableTables: [],
                 activeTableName: null,
@@ -830,7 +641,7 @@ export class TableRenderer {
                 columns: [],
                 visibleColumns: new Set(),
                 loading: false,
-                error: errorMsg
+                error: e.message
             });
             this.sidebar.updateTables([]);
         } finally {
@@ -838,9 +649,61 @@ export class TableRenderer {
         }
     }
 
+
+    /**
+     * Handle database selection change (for multi-database objects).
+     * Fetches tables from the selected database and updates the table dropdown.
+     * @param dbName - The selected database name
+     */
+    private async handleDatabaseChange(dbName: string) {
+        const state = this.stateManager.getState();
+        if (!state.berdlTableId) {
+            this.showAlert('No object loaded', 'warning');
+            return;
+        }
+
+        this.stateManager.update({
+            activeDatabase: dbName,
+            loading: true,
+            error: null,
+            activeTableName: null,
+            availableTables: []
+        });
+
+        try {
+            // Fetch tables from the specific database using multi-DB endpoint
+            const res = await this.client.listTablesInDatabase(state.berdlTableId, dbName);
+            const tables = res.tables || [];
+
+            if (tables.length === 0) {
+                this.showAlert(`No tables found in database "${dbName}"`, 'warning');
+                this.stateManager.update({ loading: false });
+                return;
+            }
+
+            this.stateManager.update({ availableTables: tables });
+            this.sidebar.updateTables(tables);
+            this.sidebar.setActiveDatabase(dbName);
+
+            // Load first table by default
+            const targetTable = tables[0].name;
+            await this.switchTable(targetTable);
+
+            this.showAlert(`Switched to database "${dbName}" - ${tables.length} table(s)`, 'success');
+
+        } catch (e: any) {
+            this.showAlert(`Failed to load database "${dbName}": ${e.message}`, 'danger');
+            this.stateManager.update({ loading: false, error: e.message });
+        }
+    }
+
     private async switchTable(name: string) {
         this.stateManager.update({ activeTableName: name });
         const config = this.configManager.getTableConfig(name);
+        if (!config) {
+            logger.error(`[TableRenderer] Config not found for table: ${name}`);
+            return;
+        }
         this.categoryManager = new CategoryManager(config);
 
         // Force all categories to be visible initially
@@ -871,6 +734,7 @@ export class TableRenderer {
 
     private async loadTableDependencies(tableName: string) {
         const config = this.configManager.getTableConfig(tableName);
+        if (!config) return;
         const columns = config.columns || [];
 
         for (const col of columns) {
@@ -1032,13 +896,17 @@ export class TableRenderer {
 
     private processColumns(headers: string[], tableName: string) {
         const config = this.configManager.getTableConfig(tableName);
-        const configured = config.columns || [];
+        const configured = config?.columns || [];
         const cols: TableColumnConfig[] = [];
         const seen = new Set<string>();
 
         configured.forEach(c => {
             cols.push({
                 ...c,
+                dataType: c.dataType || 'string',
+                align: c.align || 'left',
+                searchable: c.searchable !== false,
+                copyable: c.copyable !== false,
                 visible: c.visible !== false,
                 sortable: c.sortable !== false,
                 filterable: c.filterable !== false,
@@ -1136,6 +1004,10 @@ export class TableRenderer {
                 cols.push({
                     column: h,
                     displayName: h.replace(/_/g, ' '),
+                    dataType: 'string', // Default
+                    align: 'left', // Default
+                    searchable: true,
+                    copyable: true,
                     visible: true,
                     sortable: true,
                     filterable: true,
@@ -1233,13 +1105,7 @@ export class TableRenderer {
         }));
     }
 
-    private switchApi(apiId: string) {
-        const apiConfig = this.configManager.getApi(apiId);
-        if (apiConfig) {
-            this.client.updateConfig(apiConfig as any);
-            this.reset();
-        }
-    }
+
 
     private softRefresh() {
         this.fetchData();
@@ -1417,60 +1283,29 @@ export class TableRenderer {
 
     /**
      * Sync current application state to URL.
-     * Uses UrlStateManager for comprehensive state serialization.
+     * ARCHIVED: URL sync is disabled in KBase mode (app runs inside iframe).
      */
     private syncStateToUrl() {
-        // Don't sync URL during initial load or when auth modal is showing
-        if (!this.urlSyncEnabled) return;
-
-        const state = this.stateManager.getState();
-        // Only sync if we have a valid database loaded
-        if (!state.berdlTableId) return;
-
-        this.urlStateManager.syncToUrl({
-            berdlTableId: state.berdlTableId,
-            activeTableName: state.activeTableName,
-            currentPage: state.currentPage,
-            sortColumn: state.sortColumn,
-            sortOrder: state.sortOrder,
-            searchValue: state.searchValue,
-            columnFilters: state.columnFilters,
-            advancedFilters: state.advancedFilters,
-            visibleColumns: state.visibleColumns,
-            columns: state.columns
-        });
+        // No-op in KBase mode - URL state is managed by the parent Narrative
+        logger.debug('[TableRenderer] URL sync disabled in KBase mode');
     }
 
     /**
      * Parse URL parameters into initial state.
-     * Called early in init() before components are mounted.
+     * ARCHIVED: URL parsing is disabled in KBase mode.
      */
     private loadStateFromUrl() {
-        this.initialUrlState = this.urlStateManager.parseFromUrl();
-
-        // Store initial table for backward compatibility with existing logic
-        if (this.initialUrlState?.table) {
-            (this as any)._initialTable = this.initialUrlState.table;
-        }
+        // No-op in KBase mode - state comes from app-config.json sidecar
+        logger.debug('[TableRenderer] URL state parsing disabled in KBase mode');
     }
 
     /**
      * Build and copy a shareable URL to clipboard.
+     * In KBase mode, shares the Narrative URL instead.
      */
     public async copyShareableUrl(): Promise<void> {
-        const state = this.stateManager.getState();
-        const url = this.urlStateManager.buildShareableUrl({
-            berdlTableId: state.berdlTableId,
-            activeTableName: state.activeTableName,
-            currentPage: state.currentPage,
-            sortColumn: state.sortColumn,
-            sortOrder: state.sortOrder,
-            searchValue: state.searchValue,
-            columnFilters: state.columnFilters,
-            advancedFilters: state.advancedFilters,
-            visibleColumns: state.visibleColumns,
-            columns: state.columns
-        });
+        // In KBase mode, just copy the current window location
+        const url = window.location.href;
 
         try {
             await navigator.clipboard.writeText(url);
@@ -1487,26 +1322,43 @@ export class TableRenderer {
         }
     }
 
-    private async loadConfiguration() {
-        const newConfigUrl = '/config/index.json';
-        try {
-            const res = await fetch(newConfigUrl);
-            if (res.ok) {
-                const appConfig = await res.json();
-                if (appConfig.dataTypes) {
-                    await this.registry.initialize(appConfig);
-                    this.configManager = new ConfigManager(appConfig);
-                    return;
-                }
-            }
-        } catch { /* Config endpoint not available, try legacy */ }
 
-        let config: any = {};
-        if (this.configUrl) {
-            try { const res = await fetch(this.configUrl); if (res.ok) config = await res.json(); } catch { /* Legacy config fetch failed */ }
-        }
-        if (!Object.keys(config).length && (window as any).DEFAULT_CONFIG) config = (window as any).DEFAULT_CONFIG;
-        this.configManager = new ConfigManager(config);
+    private configSource: 'kbase_workspace' | 'app_config' | 'default' | 'fallback' = 'fallback';
+
+
+    /**
+     * Update the config source indicator in the footer.
+     */
+    private updateConfigSourceIndicator() {
+        const indicator = this.container.querySelector('#ts-config-source');
+        if (!indicator) return;
+
+        const labels: Record<string, { text: string; class: string }> = {
+            'kbase_workspace': { text: '⬢ KBase', class: 'config-kbase' },
+            'app_config': { text: '⚙ Config', class: 'config-app' },
+            'default': { text: '◎ Default', class: 'config-default' },
+            'fallback': { text: '⚠ Fallback', class: 'config-fallback' }
+        };
+        const config = labels[this.configSource] || labels['fallback'];
+        indicator.textContent = config.text;
+        indicator.className = `ts-config-source ${config.class}`;
+    }
+
+    /**
+     * MOCK: Fetch configuration from a KBase Workspace object.
+     * 
+     * In a real implementation, this would:
+     * 1. Read 'configRef' from app-config.json (e.g., "76990/8/1")
+     * 2. Use the Workspace API to fetch that object containing the display config JSON
+     * 
+     * For now, returns null to fall back to static config.
+     */
+
+    /**
+     * Get the current config source for debugging/display purposes.
+     */
+    public getConfigSource(): string {
+        return this.configSource;
     }
 
     private showAlert(msg: string, type: string) {
@@ -1619,95 +1471,13 @@ export class TableRenderer {
     }
 
     /**
-     * Handle file upload - uploads to server and loads data
+     * Handle file upload - REMOVED for KBase integration
      */
     public async handleUploadDb(file: File): Promise<void> {
-        try {
-            this.stateManager.update({ loading: true, error: null });
-
-            // Validate file extension
-            if (!file.name.endsWith('.db') && !file.name.endsWith('.sqlite') && !file.name.endsWith('.sqlite3')) {
-                this.showAlert('Please select a valid SQLite database file (.db, .sqlite, or .sqlite3)', 'warning');
-                this.stateManager.update({ loading: false });
-                return;
-            }
-
-            // Upload to server - show file size for user awareness
-            const fileSizeMB = (file.size / 1024 / 1024).toFixed(1);
-            this.showAlert(`Uploading ${file.name} (${fileSizeMB} MB)...`, 'info');
-
-            const uploadResult = await this.client.uploadDatabase(file);
-            const handle = uploadResult.handle;
-
-            // Update the berdl input field and state
-            this.sidebar.setBerdlId(handle);
-            this.stateManager.update({ berdlTableId: handle });
-
-            // Now load the tables
-            const res = await this.client.listTables(handle);
-            const tables = res.tables || [];
-
-            if (tables.length === 0) {
-                this.showAlert(`Database uploaded but contains no tables.`, 'warning');
-                this.stateManager.update({
-                    availableTables: [],
-                    loading: false
-                });
-                this.sidebar.updateTables([]);
-                return;
-            }
-
-            this.stateManager.update({ availableTables: tables });
-            this.sidebar.updateTables(tables);
-
-            // RESOLVE CONFIGURATION:
-            // Extract schema info for config matching
-            const schemaInfo = this.extractSchemaInfo(res, tables);
-
-            // Try fallback fetch if schema info is missing/incomplete
-            if (schemaInfo.tables.length === 0 && handle) {
-                const fetchedSchema = await this.fetchSchemaInfo(handle);
-                if (fetchedSchema) {
-                    schemaInfo.tables = fetchedSchema.tables;
-                    schemaInfo.columns = fetchedSchema.columns;
-                }
-            }
-
-            // Resolve config using the ConfigResolver
-            logger.info('[TableRenderer] Resolving config for uploaded database:', { handle, schemaInfo });
-            const resolveResult = await this.configResolver.resolve(handle, {
-                objectType: res.object_type,
-                schema: schemaInfo
-            });
-
-            logger.info('[TableRenderer] Config resolved:', resolveResult);
-
-            if (resolveResult.config) {
-                // Register the resolved config (this handles pattern & schema matches)
-                this.configManager.getRegistry().registerDataType(resolveResult.config);
-
-                // Force sets the config to be used for this handle
-                // If it was a schema match, the ID might be different from the handle
-                // But we want to associate this handle with that config ID
-                if (resolveResult.source === 'schema_match' || resolveResult.source === 'default') {
-                    // For schema/default matches, we need to map this specific handle to the config
-                    // Since handle is unique (local:uuid), we can just use the config directly
-                    await this.configManager.setCurrentDataType(resolveResult.config.id);
-                }
-            }
-
-            // Load the first table
-            await this.switchTable(tables[0].name);
-            this.showAlert(`Successfully uploaded and loaded "${file.name}" - ${tables.length} table${tables.length !== 1 ? 's' : ''} found`, 'success');
-
-        } catch (error: any) {
-            logger.error('Failed to upload database', error);
-            this.showAlert(`Failed to upload: ${error.message}`, 'danger');
-            this.stateManager.update({ loading: false, error: error.message });
-        } finally {
-            this.stateManager.update({ loading: false });
-        }
+        console.warn('Upload not supported in KBase mode', file);
+        return;
     }
+
 
 
 
@@ -1719,39 +1489,6 @@ export class TableRenderer {
      * Extract schema information from API response for config matching.
      * Efficiently extracts table and column names for schema-based matching.
      */
-    private extractSchemaInfo(res: any, tables: any[]): { tables: string[]; columns: Record<string, string[]> } {
-        const tableNames = tables.map(t => t.name || t);
-        const columns: Record<string, string[]> = {};
-
-        // Try to get schema from response (TableScanner may include schemas field)
-        if (res.schemas && typeof res.schemas === 'object') {
-            // Schema format: {tableName: {column: type, ...}}
-            for (const [tableName, tableSchema] of Object.entries(res.schemas)) {
-                if (tableSchema && typeof tableSchema === 'object') {
-                    columns[tableName] = Object.keys(tableSchema);
-                }
-            }
-        }
-
-        // Fallback: extract from table objects if they have column info
-        if (Object.keys(columns).length === 0) {
-            for (const table of tables) {
-                const tableName = table.name || table;
-                if (table.columns && Array.isArray(table.columns)) {
-                    columns[tableName] = table.columns.map((c: any) =>
-                        typeof c === 'string' ? c : c.name || c.column
-                    );
-                } else if (table.column_names && Array.isArray(table.column_names)) {
-                    columns[tableName] = table.column_names;
-                } else if (table.schema && typeof table.schema === 'object') {
-                    // Schema embedded in table object
-                    columns[tableName] = Object.keys(table.schema);
-                }
-            }
-        }
-
-        return { tables: tableNames, columns };
-    }
 
 
 
@@ -1759,24 +1496,6 @@ export class TableRenderer {
      * Fetch schema information from API if available.
      * Used as fallback when schema is not in the tables response.
      */
-    private async fetchSchemaInfo(berdlTableId: string): Promise<{ tables: string[]; columns: Record<string, string[]> } | null> {
-        try {
-            const schema = await this.client.getSchema(berdlTableId);
-            if (schema) {
-                const tables = Object.keys(schema);
-                const columns: Record<string, string[]> = {};
-                for (const [tableName, tableSchema] of Object.entries(schema)) {
-                    if (tableSchema && typeof tableSchema === 'object') {
-                        columns[tableName] = Object.keys(tableSchema);
-                    }
-                }
-                return { tables, columns };
-            }
-        } catch {
-            // Schema endpoint not available
-        }
-        return null;
-    }
 
     private createModal(title: string, bodyHtml: string): HTMLElement {
         const existing = document.querySelector('.ts-modal-overlay');

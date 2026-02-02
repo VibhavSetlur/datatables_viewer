@@ -523,16 +523,16 @@ export interface DefaultConfigReference {
 
 /**
  * Root application configuration
+ * Simplified for KBase: app and dataTypes are now optional
  */
 export interface AppConfig {
-    /** Application metadata */
-    app: {
+    /** Application metadata (optional for KBase integration) */
+    app?: {
         name: string;
         version?: string;
         description?: string;
-        /** @deprecated Use apis.default instead */
+        /** @deprecated Use apis.tablescanner instead */
         apiUrl?: string;
-        environment?: 'local' | 'appdev' | 'prod';
     };
 
     /**
@@ -540,15 +540,22 @@ export interface AppConfig {
      */
     apis?: Record<string, ApiConfig>;
 
-    /** Data type manifest */
-    dataTypes: Record<string, DataTypeReference>;
+    /** Data type manifest (optional - config can come from KBase Workspace) */
+    dataTypes?: Record<string, DataTypeReference>;
 
     /** Default config for unmapped databases */
     defaultConfig?: DefaultConfigReference;
 
     /** Global default settings */
     defaults?: GlobalSettings;
+
+    /** Feature flags */
+    features?: Record<string, boolean | string[] | Record<string, any>>;
+
+    /** Plugin list */
+    plugins?: unknown[];
 }
+
 
 // =============================================================================
 // RUNTIME TYPES
@@ -575,6 +582,8 @@ export interface ResolvedColumnConfig extends Required<Pick<ColumnSchema,
 export interface ResolvedTableConfig {
     name: string;
     displayName: string;
+    description?: string;
+    icon?: string;
     settings: Required<TableSettings>;
     categories: CategorySchema[];
     columns: ResolvedColumnConfig[];

@@ -6,6 +6,7 @@
  */
 
 import type { ApiConfig } from '../../types/schema';
+import { logger } from '../../utils/logger';
 import {
     type AdvancedFilter,
     type Aggregation,
@@ -13,15 +14,19 @@ import {
     type ColumnMetadata,
     type QueryMetadata,
     type TableDataResponse,
+    type TableListResponse,
     DEFAULT_LIMIT,
     DEFAULT_OFFSET,
 } from '../../types/shared-types';
 
 interface ClientOptions {
     apiConfig?: ApiConfig;
+    /** Map of service IDs to URLs */
+    serviceUrls?: Record<string, string>;
     baseUrl?: string;
     token?: string;
-    environment?: 'appdev' | 'prod' | 'local';
+    /** @deprecated Use serviceUrls instead */
+    environment?: string;
     headers?: Record<string, string>;
 }
 
@@ -52,6 +57,7 @@ type TableDataRequest = ApiTableDataRequest;
 
 export class ApiClient {
     private baseUrl: string;
+    private serviceUrls: Record<string, string> = {};
     private token: string | null;
     private environment: string;
     private customHeaders: Record<string, string>;
@@ -60,12 +66,13 @@ export class ApiClient {
 
     constructor(options: ClientOptions = {}) {
         this.environment = options.environment || 'appdev';
+        this.serviceUrls = options.serviceUrls || {};
 
         if (options.apiConfig) {
             this.baseUrl = options.apiConfig.url;
             this.customHeaders = options.apiConfig.headers || {};
         } else {
-            this.baseUrl = options.baseUrl || this.getDefaultUrl(this.environment);
+            this.baseUrl = options.baseUrl || this.serviceUrls['tablescanner'] || this.getDefaultUrl(this.environment);
             this.customHeaders = options.headers || {};
         }
 
@@ -99,10 +106,9 @@ export class ApiClient {
             if (schema && Array.isArray((schema as any).columns)) {
                 return (schema as any).columns;
             }
-            // Some deployments may return array directly
             if (Array.isArray(schema)) return schema as any;
         } catch (error) {
-            console.warn('[ApiClient] Schema fetch failed', error);
+            logger.warn('[ApiClient] Schema fetch failed', error);
         }
 
         return [];
@@ -140,6 +146,12 @@ export class ApiClient {
                 ? this.token
                 : `Bearer ${this.token}`;
             (headers as any)['Authorization'] = authValue;
+        } else {
+            // Try to get token from kbase_session cookie
+            const cookieToken = this.getKBaseSessionCookie();
+            if (cookieToken) {
+                (headers as any)['Authorization'] = `Bearer ${cookieToken}`;
+            }
         }
         return headers;
     }
@@ -258,74 +270,44 @@ export class ApiClient {
      * Upload a SQLite database file to the server.
      * Returns a handle that can be used as berdl_table_id.
      */
-    public async uploadDatabase(file: File): Promise<UploadResponse> {
-        const formData = new FormData();
-        formData.append('file', file);
-
-        const url = `${this.baseUrl}/upload`;
-        const headers: HeadersInit = {
-            'Accept': 'application/json',
-            ...this.customHeaders
-        };
-        if (this.token) {
-            const authValue = this.token.startsWith('Bearer ')
-                ? this.token
-                : `Bearer ${this.token}`;
-            (headers as any)['Authorization'] = authValue;
+    /**
+     * Helper to get kbase_session cookie.
+     * Checks 'kbase_session' first, then 'kbase_session_backup'.
+     */
+    private getKBaseSessionCookie(): string | null {
+        if (typeof document === 'undefined') {
+            return null;
         }
-        // Note: Don't set Content-Type for FormData - browser sets it with boundary
 
-        // Set up timeout with AbortController (90 seconds for large file uploads)
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 90000);
-
-        let response: Response;
         try {
-            response = await fetch(url, {
-                method: 'POST',
-                headers,
-                body: formData,
-                signal: controller.signal
-            });
-        } catch (networkError: any) {
-            clearTimeout(timeoutId);
-            // Handle network errors (CORS, offline, timeout)
-            if (networkError.name === 'AbortError') {
-                throw new Error('Upload timed out after 90 seconds. The file may be too large or the server is slow.');
+            const cookies = document.cookie.split('; ').reduce((acc, cookie) => {
+                const [key, value] = cookie.split('=');
+                if (key && value) {
+                    acc[key.trim()] = value.trim();
+                }
+                return acc;
+            }, {} as Record<string, string>);
+
+            // 1. Try primary session cookie
+            if (cookies.kbase_session) {
+                logger.debug('[ApiClient] Found kbase_session cookie');
+                return cookies.kbase_session;
             }
-            // Status 0 typically means CORS blocked or network failure
-            throw new Error(
-                'Network error: Unable to reach server.\n\n' +
-                'Possible causes:\n' +
-                '• File too large for server proxy (max ~100MB via nginx)\n' +
-                '• CORS not configured on server\n' +
-                '• Server is down or unreachable'
-            );
-        } finally {
-            clearTimeout(timeoutId);
+
+            // 2. Try backup session cookie
+            if (cookies.kbase_session_backup) {
+                logger.debug('[ApiClient] Found kbase_session_backup cookie');
+                return cookies.kbase_session_backup;
+            }
+
+            logger.debug('[ApiClient] No KBase session cookies found');
+        } catch (error) {
+            logger.warn('[ApiClient] Error parsing cookies', error);
         }
 
-        if (!response.ok) {
-            let errorMsg = `Upload failed: HTTP ${response.status}`;
-            try {
-                const data = await response.json();
-                errorMsg = data.detail || data.message || errorMsg;
-            } catch {
-                // Ignore JSON parse error
-            }
-            // Provide user-friendly messages for common errors
-            if (response.status === 413) {
-                errorMsg = 'File too large. Maximum upload size is 500MB.';
-            } else if (response.status === 507) {
-                errorMsg = 'Server storage full. Please try again later.';
-            } else if (response.status === 0) {
-                errorMsg = 'Network error: Unable to reach server. Check your connection.';
-            }
-            throw new Error(errorMsg);
-        }
-
-        return response.json();
+        return null;
     }
+
 
     public async listTables(berdlTableId: string): Promise<any> {
         // All databases now go through the API
@@ -382,5 +364,123 @@ export class ApiClient {
      */
     public async getTableStatistics(berdlTableId: string, tableName: string): Promise<any> {
         return this.request(`/object/${berdlTableId}/tables/${tableName}/stats`, 'GET', undefined, true);
+    }
+
+    // ===== Multi-Database Support (v2.1) =====
+
+    /**
+     * List all databases in a workspace object.
+     * Use this for objects containing multiple pangenomes.
+     * @param berdlTableId - Workspace object reference (UPA format)
+     */
+    public async listDatabases(berdlTableId: string): Promise<TableListResponse> {
+        return this.request(`/object/${berdlTableId}/databases`, 'GET', undefined, true);
+    }
+
+    /**
+     * List tables in a specific database within a multi-database object.
+     * @param berdlTableId - Workspace object reference (UPA format)
+     * @param dbName - Database name within the object
+     */
+    public async listTablesInDatabase(berdlTableId: string, dbName: string): Promise<TableListResponse> {
+        return this.request(`/object/${berdlTableId}/db/${encodeURIComponent(dbName)}/tables`, 'GET', undefined, true);
+    }
+
+    /**
+     * Get table data from a specific database within a multi-database object.
+     * @param berdlTableId - Workspace object reference (UPA format)
+     * @param dbName - Database name within the object
+     * @param req - Table data request parameters
+     */
+    public async getTableDataFromDatabase(
+        berdlTableId: string,
+        dbName: string,
+        req: TableDataRequest
+    ): Promise<TableDataResponse> {
+        const params = new URLSearchParams({
+            limit: String(req.limit || DEFAULT_LIMIT),
+            offset: String(req.offset || DEFAULT_OFFSET),
+            kb_env: this.environment
+        });
+
+        if (req.sort_column) params.set('sort_column', req.sort_column);
+        if (req.sort_order) params.set('sort_order', req.sort_order);
+        if (req.search_value) params.set('search', req.search_value);
+
+        const path = `/object/${berdlTableId}/db/${encodeURIComponent(dbName)}/tables/${encodeURIComponent(req.table_name)}/data?${params.toString()}`;
+        return this.request(path, 'GET', undefined, true);
+    }
+
+    // ===== KBase Workspace JSON-RPC Bridge =====
+
+    /**
+     * Get the KBase Workspace service URL based on configuration.
+     */
+    private getWorkspaceUrl(): string {
+        if (this.serviceUrls['workspace']) {
+            return this.serviceUrls['workspace'];
+        }
+
+        // Fallback to legacy hardcoded logic if not configured
+        const urls: Record<string, string> = {
+            appdev: 'https://appdev.kbase.us/services/ws',
+            prod: 'https://kbase.us/services/ws',
+            local: 'https://appdev.kbase.us/services/ws'
+        };
+        return urls[this.environment] || urls.appdev;
+    }
+
+    /**
+     * Make a JSON-RPC call to the KBase Workspace service.
+     * @param method The Workspace method to call (e.g., 'get_objects2')
+     * @param params The parameters array for the method
+     * @returns The result from the Workspace service
+     */
+    public async workspaceRpc<T>(method: string, params: any[]): Promise<T> {
+        const wsUrl = this.getWorkspaceUrl();
+        const response = await fetch(wsUrl, {
+            method: 'POST',
+            headers: this.getHeaders(),
+            body: JSON.stringify({
+                version: '1.1',
+                method: `Workspace.${method}`,
+                params: params,
+                id: Date.now().toString()
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error(`Workspace RPC failed: ${response.status} ${response.statusText}`);
+        }
+
+        const result = await response.json();
+        if (result.error) {
+            throw new Error(result.error.message || 'Workspace RPC error');
+        }
+        return result.result[0];
+    }
+
+    /**
+     * Fetch a workspace object by reference (UPA).
+     * @param ref The object reference (e.g., '76990/7/2')
+     * @returns The object data
+     */
+    public async getWorkspaceObject(ref: string): Promise<any> {
+        const result = await this.workspaceRpc<{ data: any[] }>('get_objects2', [{
+            objects: [{ ref }]
+        }]);
+        return result.data[0].data;
+    }
+
+    /**
+     * Get workspace object info by reference.
+     * @param ref The object reference (e.g., '76990/7/2')
+     * @returns Object info array
+     */
+    public async getWorkspaceObjectInfo(ref: string): Promise<any[]> {
+        return this.workspaceRpc<any[]>('get_object_info3', [{
+            objects: [{ ref }],
+            includeMetadata: 1
+        }]);
     }
 }

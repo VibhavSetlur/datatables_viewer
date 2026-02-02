@@ -5,7 +5,7 @@
  * Stateless implementation - relies on external state for visibility source of truth.
  */
 
-import type { TableConfig, CategoryConfig } from '../config/ConfigManager';
+import type { ResolvedTableConfig as TableConfig, CategorySchema as CategoryConfig } from '../../types/schema';
 
 interface CategoryState extends CategoryConfig {
     visible: boolean; // Computed visibility based on current columns

@@ -7,11 +7,14 @@
  * @version 1.0.0
  */
 
-import type { TableColumnConfig } from '../config/ConfigManager';
+import type { ResolvedColumnConfig as TableColumnConfig } from '../../types/schema';
+import type { DatabaseInfo } from '../../types/shared-types';
 
 export interface AppState {
     // Data Source
     berdlTableId: string | null;
+    activeDatabase: string | null;        // Active database name (for multi-DB objects)
+    availableDatabases: DatabaseInfo[];   // List of databases in the object
     activeTableName: string | null;
     availableTables: any[];
 
@@ -68,6 +71,8 @@ export interface AppState {
 
 const INITIAL_STATE: AppState = {
     berdlTableId: null,
+    activeDatabase: null,
+    availableDatabases: [],
     activeTableName: null,
     availableTables: [],
 

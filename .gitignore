@@ -20,6 +20,8 @@ TROUBLESHOOTING.md
 src/core/api/archived
 dist.tar.gz
 dist/
+public/app-config.json
+.agent/
 
 # Dependencies
 node_modules/
@@ -64,3 +66,10 @@ lerna-debug.log*
 server/data/
 server/*.db
 server/*.db-journal
+
+# Local Development Configs
+public/app-config.json
+scripts/verify-build.ts
+tests/temp/
+*.db
+

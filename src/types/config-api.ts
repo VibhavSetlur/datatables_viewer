@@ -388,6 +388,9 @@ export interface ResolveOptions {
 
     /** Schema information for schema-based matching fallback */
     schema?: SchemaInfo;
+
+    /** Force resolution to use default/builtin only */
+    forceDefault?: boolean;
 }
 
 /**

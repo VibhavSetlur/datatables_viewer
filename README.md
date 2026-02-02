@@ -27,7 +27,7 @@
 - **Gene Cards**: Deep integration with UniProt and KEGG REST APIs for real-time protein/gene property lookup.
 
 ### Architecture
-- **Dual Engine**: High-performance client-side SQLite via `sql.js` for local data; high-concurrency TableScanner API for remote/shared databases.
+- **High Performance**: High-concurrency TableScanner API for remote/shared databases with efficient pagination and filtering.
 - **Extensible Plugin System**: Decoupled architecture allowing custom transformers, keyboard shortcuts, and UI extensions.
 - **Production-Ready**: Zero linting warnings, 100% type safety, and 60+ unit tests covering core logic.
 
@@ -48,7 +48,7 @@ npm run dev
 ```
 
 ### Loading Data
-- **Via UI**: Use the sidebar to upload a `.db` file or enter a KBase Object ID.
+- **Via UI**: Use the sidebar to enter a KBase Object ID or Database Name.
 - **Via URL**: Pass the `db` parameter directly: `?db=76990/7/2`.
 
 ---

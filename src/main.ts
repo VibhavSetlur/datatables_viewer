@@ -13,8 +13,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const dbParam = urlParams.get('db');
 
         const renderer = new TableRenderer({
-            container: appContainer,
-            configUrl: 'genome-data.config.json' // Relative to public/
+            container: appContainer
         });
 
         await renderer.init();

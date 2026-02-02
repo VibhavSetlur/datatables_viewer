@@ -12,6 +12,9 @@ export default defineConfig({
     // Serve the public directory for static assets
     publicDir: 'public',
 
+    // Enable relative paths for assets (important for KBase/Subpath deployments)
+    base: './',
+
     // Development server configuration
     server: {
         fs: {

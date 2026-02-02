@@ -9,6 +9,8 @@ export interface ToolbarOptions extends ComponentOptions {
     onSearchPrev?: () => void;
     onShare?: () => void;
     getSearchMatchInfo?: () => { current: number; total: number };
+    /** Hide standalone-only buttons (Test Connection, Refresh) in KBase mode */
+    kbaseMode?: boolean;
 }
 
 export class Toolbar extends Component {
@@ -47,12 +49,14 @@ export class Toolbar extends Component {
                 <button class="ts-tb-btn" id="ts-share" title="Copy shareable link">
                     <i class="bi bi-share"></i> Share
                 </button>
+                ${!this.options.kbaseMode ? `
                 <button class="ts-tb-btn" id="ts-test-connection" title="Test API Connection" style="margin-left: 8px;">
                     <i class="bi bi-lightning-charge"></i> Test Connection
                 </button>
                 <button class="ts-tb-btn" id="ts-refresh" title="Refresh Data">
                     <i class="bi bi-arrow-clockwise"></i> Refresh
                 </button>
+                ` : ''}
                 <button class="ts-tb-icon" id="ts-settings-btn" title="Settings">
                     <i class="bi bi-gear-fill"></i>
                 </button>

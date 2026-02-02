@@ -1450,6 +1450,52 @@ mark.highlight.active {
     min-width: 0;
 }
 
+/* Config Source Indicator */
+.ts-config-source {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    border-radius: var(--radius-sm);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    background: var(--c-bg-surface-alt);
+    color: var(--c-text-muted);
+    border: 1px solid var(--c-border-subtle);
+}
+
+.ts-config-source.config-kbase {
+    background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+    color: white;
+    border-color: #4f46e5;
+}
+
+.ts-config-source.config-app {
+    background: var(--c-accent-light);
+    color: var(--c-accent);
+    border-color: var(--c-accent);
+}
+
+.ts-config-source.config-default {
+    background: var(--c-bg-hover);
+    color: var(--c-text-secondary);
+    border-color: var(--c-border-strong);
+}
+
+.ts-config-source.config-fallback {
+    background: #fef3c7;
+    color: #92400e;
+    border-color: #f59e0b;
+}
+
+[data-theme="dark"] .ts-config-source.config-fallback {
+    background: #451a03;
+    color: #fbbf24;
+    border-color: #d97706;
+}
+
 .ts-table-name {
     display: flex;
     align-items: center;

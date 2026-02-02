@@ -2,110 +2,24 @@
     "app": {
         "name": "DataTables Viewer",
         "version": "3.1.0",
-        "description": "Production-grade configurable data table renderer for research applications",
-        "environment": "prod"
+        "description": "Production-grade configurable data table renderer for research applications"
     },
     "apis": {
-        "default": {
-            "id": "default",
-            "name": "AppDev TableScanner",
+        "tablescanner": {
+            "id": "tablescanner",
+            "name": "TableScanner Service",
             "url": "https://appdev.kbase.us/services/berdl_table_scanner",
             "type": "rest"
         },
-        "local": {
-            "id": "local",
-            "name": "Local TableScanner",
-            "url": "http://127.0.0.1:8000",
+        "workspace": {
+            "id": "workspace",
+            "name": "KBase Workspace",
+            "url": "https://appdev.kbase.us/services/ws",
             "type": "rest"
-        },
-        "prod": {
-            "id": "prod",
-            "name": "KBase Narrative API",
-            "url": "https://kbase.us/services",
-            "type": "rest"
-        },
-        "appdev": {
-            "id": "appdev",
-            "name": "KBase AppDev",
-            "url": "https://appdev.kbase.us/services/berdl_table_scanner",
-            "type": "rest"
-        }
-    },
-    "dataTypes": {
-        "genome_data_tables": {
-            "configUrl": "/config/genome-data-tables.json",
-            "matches": [
-                "KBaseFBA.GenomeDataLakeTables-*",
-                "KBase.GenomeDataTables-*"
-            ],
-            "priority": 1,
-            "autoLoad": true,
-            "schemaMatch": {
-                "enabled": true,
-                "requiredTables": [
-                    "Genes"
-                ],
-                "requiredColumns": {
-                    "Genes": [
-                        "ID",
-                        "Database_ID"
-                    ]
-                },
-                "minMatchScore": 0.7
-            }
-        },
-        "berdl_tables": {
-            "configUrl": "/config/berdl-tables.json",
-            "matches": [
-                "berdl_tables",
-                "local/berdl_tables",
-                "test/test/1",
-                "berdl/*"
-            ],
-            "priority": 5,
-            "autoLoad": true,
-            "schemaMatch": {
-                "enabled": true,
-                "requiredTables": [
-                    "genome",
-                    "genome_features"
-                ],
-                "requiredColumns": {
-                    "genome": [
-                        "id",
-                        "gtdb_taxonomy"
-                    ],
-                    "genome_features": [
-                        "id",
-                        "genome_id"
-                    ]
-                },
-                "minMatchScore": 0.6
-            }
-        },
-        "metabolic_models": {
-            "matches": [
-                "KBaseFBA.FBAModel-*"
-            ],
-            "priority": 2,
-            "autoLoad": false,
-            "schemaMatch": {
-                "enabled": true,
-                "requiredTables": [
-                    "Model"
-                ],
-                "requiredColumns": {
-                    "Model": [
-                        "id",
-                        "name"
-                    ]
-                },
-                "minMatchScore": 0.7
-            }
         }
     },
     "defaultConfig": {
-        "configUrl": "/config/default-config.json",
+        "configUrl": "./config/tables/default-config.json",
         "description": "Fallback configuration for unmapped databases"
     },
     "defaults": {
@@ -124,7 +38,6 @@
         }
     },
     "features": {
-        "remoteConfig": false,
         "schemaExplorer": true,
         "columnSearch": true,
         "exportFormats": [
@@ -135,8 +48,6 @@
         "cellExpansion": true,
         "rowSelection": true,
         "keyboardNavigation": true,
-        "contextMenu": false,
-        "columnReordering": false,
         "columnResizing": true
     },
     "plugins": []

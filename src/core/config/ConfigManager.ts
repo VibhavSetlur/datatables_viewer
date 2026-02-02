@@ -1,466 +1,317 @@
 /**
- * Config Manager - Enhanced Version
+ * Config Manager
  * 
- * Manages loading and serving configuration for different data types and tables.
- * Integrates with DataTypeRegistry for extensible type support.
+ * Manages configuration resolution using a Dual-Slot model:
+ * 1. Active Config (Workspace/Remote) - Primary
+ * 2. Fallback Config (Default/Local) - Secondary
  * 
- * Now supports remote config resolution via ConfigResolver.
+ * Also acts as the central registry for defaults, data type configurations,
+ * and service discovery, replacing the legacy DataTypeRegistry.
  * 
- * @version 3.1.0
+ * @version 5.0.0
  */
 
-import { DataTypeRegistry } from './DataTypeRegistry';
 import { getConfigResolver } from './ConfigResolver';
 import { logger } from '../../utils/logger';
 import type {
     AppConfig,
     DataTypeConfig,
     TableSchema,
-    ResolvedTableConfig
+    ResolvedTableConfig,
+    ResolvedColumnConfig,
+    TableSettings,
+    GlobalSettings,
+    ColumnSchema,
+    CategorySchema,
+    ColumnDataType,
+    TextAlign
 } from '../../types/schema';
-import type { ResolveOptions, ResolveResult } from '../../types/config-api';
+import type { ApiClient } from '../api/ApiClient';
 
 // =============================================================================
-// LEGACY INTERFACES (for backward compatibility)
+// CONSTANTS & DEFAULTS
 // =============================================================================
 
-export interface TransformerConfig {
-    type: string;
-    options?: Record<string, any>;
-    condition?: any;
-    fallback?: any;
-}
+const DEFAULT_GLOBAL_SETTINGS: Required<GlobalSettings> = {
+    pageSize: 50,
+    theme: 'light',
+    density: 'default',
+    showRowNumbers: true,
+    locale: 'en-US',
+    dateFormat: 'YYYY-MM-DD',
+    numberFormat: {
+        decimals: 2,
+        thousandsSeparator: ',',
+        decimalSeparator: '.'
+    },
+    defaultSource: '',
+    autoLoad: false
+};
 
-export interface TableColumnConfig {
-    column: string;
-    displayName?: string;
-    description?: string;
-    width?: string;
-    visible?: boolean;
-    sortable?: boolean;
-    filterable?: boolean;
-    transform?: TransformerConfig | TransformerConfig[];
-    categories?: string[];
-}
+const DEFAULT_TABLE_SETTINGS: Required<TableSettings> = {
+    pageSize: 50,
+    density: 'default',
+    showRowNumbers: true,
+    enableSelection: true,
+    enableExport: true,
+    enableColumnReorder: false,
+    enableColumnResize: true,
+    defaultSortColumn: '',
+    defaultSortOrder: 'asc'
+};
 
-export interface CategoryConfig {
-    id: string;
-    name: string;
-    icon?: string;
-    color?: string;
-    description?: string;
-    defaultVisible?: boolean;
-}
+const DEFAULT_COLUMN_CONFIG: Partial<ColumnSchema> = {
+    visible: true,
+    sortable: true,
+    filterable: true,
+    searchable: true,
+    copyable: false,
+    editable: false,
+    resizable: true,
+    dataType: 'string',
+    align: 'left',
+    width: 'auto'
+};
 
-export interface TableConfig {
-    name?: string;
-    columns?: TableColumnConfig[];
-    categories?: CategoryConfig[];
-    settings?: Record<string, any>;
-}
-
-export interface LegacyAppConfig {
-    name?: string;
-    description?: string;
-    apiUrl?: string;
-    environment?: 'local' | 'appdev' | 'prod';
-    defaultSettings?: Record<string, any>;
-    tables?: Record<string, TableConfig>;
-}
-
-// =============================================================================
-// CONFIG MANAGER
-// =============================================================================
+const DATA_TYPE_ALIGNMENTS: Partial<Record<ColumnDataType, TextAlign>> = {
+    number: 'right',
+    integer: 'right',
+    float: 'right',
+    percentage: 'right',
+    currency: 'right',
+    filesize: 'right',
+    duration: 'right',
+    boolean: 'center',
+    date: 'center',
+    datetime: 'center',
+    timestamp: 'center'
+};
 
 export class ConfigManager {
-    private registry: DataTypeRegistry;
-    private legacyConfig: LegacyAppConfig | null = null;
-    private currentDataTypeId: string | null = null;
-    private isLegacyMode: boolean = false;
+    // State
+    private activeConfig: DataTypeConfig | null = null;
+    private fallbackConfig: DataTypeConfig | null = null;
 
-    constructor(config?: any) {
-        this.registry = DataTypeRegistry.getInstance();
+    // Registry State (Consolidated)
+    private appConfig: AppConfig | null = null;
+    private globalSettings: Required<GlobalSettings> = { ...DEFAULT_GLOBAL_SETTINGS };
+    private serviceUrls: Record<string, string> = {};
 
+
+    constructor(config?: AppConfig) {
         if (config) {
-            // Detect config format
-            if (this.isNewConfigFormat(config)) {
-                // New AppConfig format
-                this.initializeFromAppConfig(config as AppConfig);
-            } else {
-                // Legacy format - convert and register
-                this.initializeFromLegacyConfig(config as LegacyAppConfig);
-            }
+            this.initializeWithAppConfig(config);
         }
     }
 
     /**
-     * Check if config is new format (has dataTypes field)
+     * Initialize with static app config (synchronous)
      */
-    private isNewConfigFormat(config: any): boolean {
-        return config && (config.dataTypes || config.app?.name);
-    }
+    private initializeWithAppConfig(config: AppConfig) {
+        this.appConfig = config;
 
-    /**
-     * Initialize from new AppConfig format
-     */
-    private initializeFromAppConfig(config: AppConfig): void {
-        this.isLegacyMode = false;
-        // The registry will handle loading from AppConfig
-        // For now, we'll handle inline configs
-        Object.entries(config.dataTypes || {}).forEach(([id, ref]) => {
-            if (ref.config) {
-                this.registry.registerDataType(ref.config);
-                if (!this.currentDataTypeId) {
-                    this.currentDataTypeId = id;
-                }
-            }
-        });
-    }
-
-    /**
-     * Initialize from legacy config format
-     */
-    private initializeFromLegacyConfig(config: LegacyAppConfig): void {
-        this.isLegacyMode = true;
-        this.legacyConfig = config;
-
-        // Convert to new format and register
-        const dataTypeConfig = DataTypeRegistry.fromLegacyConfig(config);
-        this.registry.registerDataType(dataTypeConfig);
-        this.currentDataTypeId = 'legacy';
-    }
-
-    /**
-     * Async initialization from URLs
-     */
-    public async initializeAsync(configUrl?: string): Promise<void> {
-        if (!configUrl) return;
-
-        try {
-            const response = await fetch(configUrl);
-            if (!response.ok) {
-                console.warn(`Failed to load config from ${configUrl}`);
-                return;
-            }
-
-            const config = await response.json();
-
-            if (this.isNewConfigFormat(config)) {
-                // Initialize registry from app config
-                await this.registry.initialize(config as AppConfig);
-
-                // Set first available data type as current
-                const typeIds = this.registry.getDataTypeIds();
-                if (typeIds.length > 0) {
-                    this.currentDataTypeId = typeIds[0];
-                }
-            } else {
-                // Legacy format
-                this.initializeFromLegacyConfig(config);
-            }
-        } catch (error) {
-            console.error('Error loading configuration:', error);
-        }
-    }
-
-    // =========================================================================
-    // DATA TYPE MANAGEMENT
-    // =========================================================================
-
-    /**
-     * Set the current data type (from API response)
-     */
-    public setCurrentDataType(dataTypeId: string): boolean {
-        if (this.registry.hasDataType(dataTypeId)) {
-            this.currentDataTypeId = dataTypeId;
-            return true;
-        }
-
-        // Try to detect from various formats
-        const detected = this.registry.detectDataType({ dataType: dataTypeId });
-        if (detected) {
-            this.currentDataTypeId = detected;
-            return true;
-        }
-
-        logger.warn(`Data type "${dataTypeId}" not found in registry`);
-        return false;
-    }
-
-    /**
-     * Get current data type ID
-     */
-    public getCurrentDataTypeId(): string | null {
-        return this.currentDataTypeId;
-    }
-
-    /**
-     * Get current data type config
-     */
-    public getCurrentDataType(): DataTypeConfig | undefined {
-        if (!this.currentDataTypeId) return undefined;
-        return this.registry.getDataType(this.currentDataTypeId);
-    }
-
-    /**
-     * Detect and set data type from API response
-     */
-    public detectDataType(apiResponse: any): string | null {
-        const detected = this.registry.detectDataType(apiResponse);
-        if (detected) {
-            this.currentDataTypeId = detected;
-        }
-        return detected;
-    }
-
-    // =========================================================================
-    // TABLE CONFIG ACCESS
-    // =========================================================================
-
-    /**
-     * Get table configuration (resolved with defaults)
-     */
-    public getTableConfig(tableName: string): TableConfig & { name: string } {
-        if (this.currentDataTypeId) {
-            const resolved = this.registry.getResolvedTableConfig(this.currentDataTypeId, tableName);
-            if (resolved) {
-                return this.convertResolvedToLegacy(resolved);
-            }
-        }
-
-        // Fallback to legacy
-        if (this.legacyConfig?.tables?.[tableName]) {
-            const tableConfig = this.legacyConfig.tables[tableName];
-            return {
-                name: tableConfig.name || tableName,
-                categories: tableConfig.categories || [],
-                columns: tableConfig.columns || [],
-                settings: {
-                    ...this.legacyConfig.defaultSettings,
-                    ...(tableConfig.settings || {})
+        // 1. Process Defaults
+        if (config.defaults) {
+            this.globalSettings = {
+                ...DEFAULT_GLOBAL_SETTINGS,
+                ...config.defaults,
+                numberFormat: {
+                    ...DEFAULT_GLOBAL_SETTINGS.numberFormat,
+                    ...config.defaults.numberFormat
                 }
             };
         }
 
-        // Default empty config
+        // 2. Process Service URLs
+        this.serviceUrls = {};
+        if (config.apis) {
+            Object.values(config.apis).forEach(api => {
+                if (api.url) {
+                    this.serviceUrls[api.id] = api.url;
+                }
+            });
+        }
+    }
+
+    /**
+     * Async initialization: Loads fallback and attempts to fetch active workspace config.
+     * @param sourceRef The source object reference (UPA)
+     * @param apiClient API Client for fetching data
+     */
+    public async initialize(sourceRef: string, apiClient: ApiClient): Promise<void> {
+        const resolver = getConfigResolver();
+
+        // 1. Load Fallback (always loaded as safety)
+        try {
+            const fallbackRes = await resolver.resolve(sourceRef, { forceDefault: true });
+            if (fallbackRes.config) {
+                this.fallbackConfig = fallbackRes.config;
+                logger.info(`[ConfigManager] Fallback config loaded: ${this.fallbackConfig.id}`);
+            }
+        } catch (e) {
+            logger.error('[ConfigManager] Failed to load fallback config', e);
+        }
+
+        // 2. Try Workspace (The "Active" slot)
+        try {
+            const mockRes = await resolver.resolveFromWorkspace(sourceRef, apiClient);
+            if (mockRes) {
+                this.activeConfig = mockRes;
+                logger.info(`[ConfigManager] Active config loaded from Workspace: ${this.activeConfig.id}`);
+            }
+        } catch (e) {
+            logger.warn("[ConfigManager] Workspace config retrieval failed, using fallback.", e);
+            this.activeConfig = null;
+        }
+    }
+
+    /**
+     * Get the current effective configuration.
+     * Priority: Active > Fallback > Null
+     */
+    public getConfig(): DataTypeConfig | null {
+        return this.activeConfig || this.fallbackConfig || null;
+    }
+
+    /**
+     * Get table configuration (resolved with defaults)
+     * If table not found in config, returns a default configuration to allow auto-detection
+     */
+    public getTableConfig(tableName: string): ResolvedTableConfig | null {
+        const config = this.getConfig();
+        if (!config) return null;
+
+        const tableSchema = config.tables[tableName] || {
+            displayName: tableName,
+            columns: [],
+            settings: {}
+        };
+
+        return this.resolveTableConfig(config, tableName, tableSchema);
+    }
+
+    /**
+     * Helper to resolve a specific table config using the merged defaults logic
+     */
+    private resolveTableConfig(
+        dataConfig: DataTypeConfig,
+        tableName: string,
+        schema: TableSchema
+    ): ResolvedTableConfig {
+        // Merge settings: global defaults -> dataType defaults -> table settings
+        const settings: Required<TableSettings> = {
+            ...DEFAULT_TABLE_SETTINGS,
+            pageSize: dataConfig.defaults?.pageSize ?? DEFAULT_TABLE_SETTINGS.pageSize,
+            density: dataConfig.defaults?.density ?? DEFAULT_TABLE_SETTINGS.density,
+            showRowNumbers: dataConfig.defaults?.showRowNumbers ?? DEFAULT_TABLE_SETTINGS.showRowNumbers,
+            // Inherit logic can be expanded here
+            ...schema.settings
+        };
+
+        // Merge categories
+        const categories: CategorySchema[] = [
+            ...(dataConfig.sharedCategories || []),
+            ...(schema.categories || [])
+        ];
+
+        // Resolve columns
+        const columns: ResolvedColumnConfig[] = schema.columns.map(col =>
+            this.resolveColumnConfig(col)
+        );
+
         return {
             name: tableName,
-            categories: [],
-            columns: [],
-            settings: this.getGlobalSettings()
+            displayName: schema.displayName || tableName,
+            description: schema.description, // Pass through, handled by UI optional chaining
+            icon: schema.icon,
+            settings,
+            categories,
+            columns,
+            virtualColumns: schema.virtualColumns || [],
+            rowConfig: {
+                selectable: schema.rowConfig?.selectable ?? true,
+                clickable: schema.rowConfig?.clickable ?? false,
+                clickAction: schema.rowConfig?.clickAction ?? '',
+                heightMode: schema.rowConfig?.heightMode ?? 'auto',
+                height: schema.rowConfig?.height ?? 'auto',
+                conditionalStyles: schema.rowConfig?.conditionalStyles ?? []
+            }
+        };
+    }
+
+    private resolveColumnConfig(col: ColumnSchema): ResolvedColumnConfig {
+        const dataType = col.dataType || 'string';
+        const defaultAlign = DATA_TYPE_ALIGNMENTS[dataType] || 'left';
+
+        return {
+            column: col.column,
+            displayName: col.displayName || col.column.replace(/_/g, ' '),
+            dataType,
+            visible: col.visible ?? (DEFAULT_COLUMN_CONFIG.visible ?? true),
+            sortable: col.sortable ?? (DEFAULT_COLUMN_CONFIG.sortable ?? true),
+            filterable: col.filterable ?? (DEFAULT_COLUMN_CONFIG.filterable ?? true),
+            searchable: col.searchable ?? (DEFAULT_COLUMN_CONFIG.searchable ?? true),
+            copyable: col.copyable ?? (dataType === 'id'),
+            width: col.width || 'auto',
+            align: col.align || defaultAlign,
+            categories: col.categories || [],
+            transform: col.transform
         };
     }
 
     /**
-     * Get table schema (new format)
+     * Get table schema (raw)
      */
     public getTableSchema(tableName: string): TableSchema | undefined {
-        if (!this.currentDataTypeId) return undefined;
-        return this.registry.getTableSchema(this.currentDataTypeId, tableName);
-    }
-
-    /**
-     * Get resolved table config (new format)
-     */
-    public getResolvedTableConfig(tableName: string): ResolvedTableConfig | null {
-        if (!this.currentDataTypeId) return null;
-        return this.registry.getResolvedTableConfig(this.currentDataTypeId, tableName);
+        const config = this.getConfig();
+        if (!config) return undefined;
+        return config.tables[tableName];
     }
 
     /**
      * Check if table has configuration
      */
     public hasTableConfig(tableName: string): boolean {
-        if (this.currentDataTypeId) {
-            const schema = this.registry.getTableSchema(this.currentDataTypeId, tableName);
-            if (schema) return true;
-        }
-
-        // Check legacy
-        return !!(this.legacyConfig?.tables &&
-            Object.prototype.hasOwnProperty.call(this.legacyConfig.tables, tableName));
+        const config = this.getConfig();
+        return !!config?.tables[tableName];
     }
 
     /**
-     * Get all table names for current data type
+     * Get all table names
      */
     public getTableNames(): string[] {
-        if (this.currentDataTypeId) {
-            return this.registry.getTableNames(this.currentDataTypeId);
-        }
-
-        if (this.legacyConfig?.tables) {
-            return Object.keys(this.legacyConfig.tables);
-        }
-
-        return [];
+        const config = this.getConfig();
+        return config ? Object.keys(config.tables) : [];
     }
 
     // =========================================================================
-    // APP SETTINGS
+    // APP SETTINGS DELEGATES (Absorbed)
     // =========================================================================
 
-    /**
-     * Get app name
-     */
     public getAppName(): string {
-        return this.registry.getAppName() ||
-            this.legacyConfig?.name ||
-            'DataTables Viewer';
+        return this.appConfig?.app?.name || 'DataTables Viewer';
     }
 
-    /**
-     * Get API configuration
-     */
-    public getApi(id?: string): { id: string, name: string, url: string, type?: string } | undefined {
-        return this.registry.getApi(id);
+    public getServiceUrls(): Record<string, string> {
+        return this.serviceUrls;
     }
 
-    /**
-     * Get all API configurations
+    /** 
+     * Get specific service URL by ID (Upgrade: Direct Lookup)
      */
-    public getApis(): { id: string, name: string, url: string, type?: string }[] {
-        return this.registry.getApis();
+    public getServiceUrl(serviceId: string): string | undefined {
+        return this.serviceUrls[serviceId];
     }
 
-    /**
-     * Get default API ID
-     */
-    public getDefaultApiId(): string | null {
-        return this.registry.getDefaultApiId();
-    }
-
-    /**
-     * Get API URL
-     */
-    public getApiUrl(): string | null {
-        return this.registry.getApiUrl() ||
-            this.legacyConfig?.apiUrl ||
-            null;
-    }
-
-    /**
-     * Get environment
-     */
-    public getEnvironment(): 'local' | 'appdev' | 'prod' {
-        const appConfig = this.registry.getAppConfig();
-        return appConfig?.app.environment ||
-            this.legacyConfig?.environment ||
-            'local';
-    }
-
-    /**
-     * Get global settings
-     */
-    public getGlobalSettings(): Record<string, any> {
-        const registrySettings = this.registry.getGlobalSettings();
-        const legacySettings = this.legacyConfig?.defaultSettings || {};
-
-        // Merge with registry settings taking precedence, then legacy overrides
-        return {
-            ...registrySettings,
-            ...legacySettings
-        };
+    public getGlobalSettings(): Required<GlobalSettings> {
+        return this.globalSettings;
     }
 
     // =========================================================================
-    // HELPERS
+    // LEGACY METHODS (Kept until full removal)
     // =========================================================================
 
-    /**
-     * Convert resolved config to legacy format for backward compatibility
-     */
-    private convertResolvedToLegacy(resolved: ResolvedTableConfig): TableConfig & { name: string } {
-        return {
-            name: resolved.displayName,
-            categories: resolved.categories.map(cat => ({
-                id: cat.id,
-                name: cat.name,
-                icon: cat.icon,
-                color: cat.color,
-                description: cat.description,
-                defaultVisible: cat.defaultVisible
-            })),
-            columns: resolved.columns.map(col => ({
-                column: col.column,
-                displayName: col.displayName,
-                description: col.description,
-                width: col.width,
-                visible: col.visible,
-                sortable: col.sortable,
-                filterable: col.filterable,
-                categories: col.categories,
-                transform: Array.isArray(col.transform)
-                    ? { type: 'chain', options: { transforms: col.transform } }
-                    : col.transform as TransformerConfig | undefined
-            })),
-            settings: {
-                pageSize: resolved.settings.pageSize,
-                density: resolved.settings.density,
-                showRowNumbers: resolved.settings.showRowNumbers,
-                enableSelection: resolved.settings.enableSelection,
-                enableExport: resolved.settings.enableExport
-            }
-        };
-    }
-
-    /**
-     * Get the registry instance
-     */
-    public getRegistry(): DataTypeRegistry {
-        return this.registry;
-    }
-
-    /**
-     * Check if in legacy mode
-     */
-    public isLegacy(): boolean {
-        return this.isLegacyMode;
-    }
-
-    // =========================================================================
-    // CONFIG RESOLUTION (Static Pattern Matching)
-    // =========================================================================
-
-    /**
-     * Resolve and load config for a source reference.
-     * Uses pattern matching from index.json to find the appropriate config.
-     * 
-     * @param sourceRef - Object reference (e.g., "76990/7/2")
-     * @param options - Resolution options
-     * @returns Resolution result with config and metadata
-     */
-    public async resolveConfig(
-        sourceRef: string,
-        options?: ResolveOptions
-    ): Promise<ResolveResult> {
-        const resolver = getConfigResolver();
-        const result = await resolver.resolve(sourceRef, options);
-
-        // Auto-register and set as current
-        if (result.config) {
-            if (!this.registry.hasDataType(result.config.id)) {
-                this.registry.registerDataType(result.config);
-            }
-            this.currentDataTypeId = result.config.id;
-        }
-
-        return result;
-    }
-
-    /**
-     * Check if remote config is enabled.
-     * @deprecated Remote config is not supported - always returns false
-     */
-    public isRemoteEnabled(): boolean {
-        return false;
-    }
-
-    /**
-     * Set auth token for remote config requests.
-     * @deprecated Remote config is not supported - no-op
-     */
-    public setAuthToken(_token: string): void {
-        // No-op - remote config not available
+    public getEnvironment(): string {
+        return 'appdev'; // Deprecated, strictly legacy
     }
 }

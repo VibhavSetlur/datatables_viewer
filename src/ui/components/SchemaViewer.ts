@@ -265,12 +265,12 @@ export class SchemaViewer {
 
             const sourceColumns = (cachedSchema && cachedSchema.length > 0)
                 ? cachedSchema
-                : (stateCols.length > 0 ? stateCols : (config.columns || []));
+                : (stateCols.length > 0 ? stateCols : (config?.columns || []));
 
             // If we already have enriched columns (with type), return as-is
             if (cachedSchema && cachedSchema.length > 0) return cachedSchema;
 
-            const configMap = new Map((config.columns || []).map((c: any) => [c.column, c]));
+            const configMap = new Map((config?.columns || []).map((c: any) => [c.column, c]));
             return sourceColumns.map((c: any) => {
                 const colName = c.column || c.name;
                 const cfg = configMap.get(colName) || {};
@@ -292,14 +292,14 @@ export class SchemaViewer {
             const isLoading = this.loadingTables.has(name);
 
             const tableTitle = config?.name || name;
-            const tableDesc = config?.settings?.description || 'No description available for this table.';
+            const tableDesc = config?.description || 'No description available for this table.';
 
             return `
                 <div style="padding:40px;max-width:960px;margin:0 auto">
                     <div style="margin-bottom:36px">
                         <div style="display:flex;align-items:flex-start;gap:20px">
                             <div style="width:64px;height:64px;border-radius:16px;background:linear-gradient(135deg, var(--c-accent-light) 0%, var(--c-accent-glow) 100%);color:var(--c-accent);display:flex;align-items:center;justify-content:center;font-size:32px;flex-shrink:0;box-shadow:0 4px 16px var(--c-accent-glow)">
-                                <i class="${config?.settings?.icon || 'bi bi-table'}"></i>
+                                <i class="${config?.icon || 'bi bi-table'}"></i>
                             </div>
                             <div style="flex:1">
                                 <h2 style="font-size:24px;font-weight:700;color:var(--c-text-primary);margin:0 0 8px 0">${tableTitle}</h2>
@@ -417,7 +417,7 @@ export class SchemaViewer {
                 const tableMatches = table.name.toLowerCase().includes(queryLower);
                 const config = this.configManager.getTableConfig(table.name);
                 const isLive = currentState.activeTableName === table.name;
-                const columns = isLive ? currentState.columns : (config.columns || []);
+                const columns = isLive ? currentState.columns : (config?.columns || []);
 
                 const matchingColumns = columns.filter((c: any) => {
                     const colName = (c.displayName || c.column || '').toLowerCase();
@@ -568,7 +568,7 @@ export class SchemaViewer {
                     const config = this.configManager.getTableConfig(table);
                     const cols = this.schemaCache[table]?.length
                         ? this.schemaCache[table]
-                        : ((currentState.activeTableName === table) ? currentState.columns : (config.columns || []));
+                        : ((currentState.activeTableName === table) ? currentState.columns : (config?.columns || []));
                     const schemaData = JSON.stringify(config || { tableName: table, columns: cols }, null, 2);
                     const blob = new Blob([schemaData], { type: 'application/json' });
                     const url = URL.createObjectURL(blob);

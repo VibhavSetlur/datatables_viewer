@@ -143,6 +143,23 @@ export interface TableInfo {
     description?: string;
 }
 
+/**
+ * Database information for multi-database objects.
+ * Returned when a workspace object contains multiple pangenome databases.
+ */
+export interface DatabaseInfo {
+    /** Database identifier (e.g., pangenome_id) */
+    db_name: string;
+    /** Human-readable display name */
+    db_display_name: string | null;
+    /** Tables contained in this database */
+    tables: TableInfo[];
+    /** Total rows across all tables in this database */
+    row_count: number | null;
+    /** Schema information per table */
+    schemas: Record<string, Record<string, string>> | null;
+}
+
 // =============================================================================
 // REQUEST TYPES
 // =============================================================================
@@ -227,12 +244,24 @@ export interface TableDataResponse {
  * Response from list tables operation.
  */
 export interface TableListResponse {
-    /** List of tables in database */
+    /** List of tables in database (flattened for backward compat) */
     tables: TableInfo[];
     /** Database type identifier */
     type: string;
     /** KBase object type */
     object_type: string;
+    /** BERDL table ID / object reference */
+    berdl_table_id?: string;
+    /** Total rows across all tables */
+    total_rows?: number;
+    /** API version */
+    api_version?: string;
+    /** List of databases (for multi-database objects) */
+    databases?: DatabaseInfo[];
+    /** Whether this object contains multiple databases */
+    has_multiple_databases?: boolean;
+    /** Schema information per table */
+    schemas?: Record<string, Record<string, string>>;
 }
 
 // =============================================================================

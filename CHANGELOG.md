@@ -5,6 +5,16 @@ All notable changes to DataTables Viewer will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Multi-Database Object Support** - Handle KBase workspace objects containing multiple pangenome databases
+  - New database selection dropdown in sidebar (hidden for single-DB objects)
+  - `handleDatabaseChange()` method in TableRenderer for seamless DB switching
+  - `listDatabases()`, `listTablesInDatabase()`, `getTableDataFromDatabase()` API methods
+  - StateManager extended with `activeDatabase` and `availableDatabases`
+  - Updated `loadObjectFromSidecar()` to detect multi-DB API responses
+
 ## [3.1.1] - 2026-01-27
 
 ### Added
