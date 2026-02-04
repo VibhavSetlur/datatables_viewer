@@ -678,14 +678,14 @@ export class Sidebar extends Component {
 
     /**
      * Update database dropdown for multi-database objects.
-     * Shows the dropdown only when there are multiple databases.
+     * Always shows the active database. Dropdown is enabled when there are multiple DBs.
      * @param databases - Array of DatabaseInfo from the API response
      */
     public updateDatabases(databases: DatabaseInfo[]) {
         if (!this.dom.dbSection || !this.dom.databaseSelect) return;
 
-        // Only show database section if there are multiple databases
-        if (databases.length > 1) {
+        // Always show database section if we have at least one database
+        if (databases.length >= 1) {
             this.dom.dbSection.style.display = 'block';
             this.dom.databaseSelect.innerHTML = '';
 
@@ -700,21 +700,17 @@ export class Sidebar extends Component {
                 this.dom.databaseSelect.appendChild(opt);
             });
 
+            // Disable dropdown if only one database (user can see it but can't change)
+            (this.dom.databaseSelect as HTMLSelectElement).disabled = databases.length <= 1;
+
             // Update state with available databases
             this.stateManager.update({
                 availableDatabases: databases,
                 activeDatabase: databases[0]?.db_name || null
             });
         } else {
-            // Single or no database - hide the section
+            // No databases - hide the section
             this.dom.dbSection.style.display = 'none';
-            if (databases.length === 1) {
-                // Set single database as active without showing dropdown
-                this.stateManager.update({
-                    availableDatabases: databases,
-                    activeDatabase: databases[0]?.db_name || null
-                });
-            }
         }
     }
 

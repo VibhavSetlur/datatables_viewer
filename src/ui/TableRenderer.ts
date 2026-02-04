@@ -116,7 +116,7 @@ export class TableRenderer {
 
         // 1. Check URL Parameters for UPA/Ref
         const urlParams = new URLSearchParams(window.location.search);
-        const urlUpa = urlParams.get('upa') || urlParams.get('ref') || urlParams.get('object');
+        const urlUpa = urlParams.get('upa') || urlParams.get('ref') || urlParams.get('object') || urlParams.get('db');
 
         // 2. Try to fetch sidecar app-config.json (fallback/local dev)
         let sidecarConfig: { upa?: string; token?: string } = {};
@@ -220,13 +220,25 @@ export class TableRenderer {
                     return;
                 }
 
-                // Set single database info if available
-                if (databases.length === 1) {
-                    this.stateManager.update({
-                        activeDatabase: databases[0].db_name,
-                        availableDatabases: databases
-                    });
+                // Create a synthetic database entry if none exists in the response
+                // This ensures the Active Database dropdown always shows
+                let dbList = databases;
+                if (dbList.length === 0) {
+                    // Create a synthetic DB entry with the object ID as the name
+                    dbList = [{
+                        db_name: db,
+                        db_display_name: `Database (${db})`,
+                        row_count: null,
+                        tables: tables
+                    }];
                 }
+
+                // Always update database dropdown (shows active db, disabled if only one)
+                this.sidebar.updateDatabases(dbList);
+                this.stateManager.update({
+                    activeDatabase: dbList[0].db_name,
+                    availableDatabases: dbList
+                });
 
                 this.stateManager.update({ availableTables: tables });
                 this.sidebar.updateTables(tables);
