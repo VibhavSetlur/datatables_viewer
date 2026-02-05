@@ -11,6 +11,7 @@ import {
     type AdvancedFilter,
     type Aggregation,
     type ApiTableDataRequest,
+    type TableDataRequest,
     type ColumnMetadata,
     type QueryMetadata,
     type TableDataResponse,
@@ -52,8 +53,8 @@ export type {
     UploadResponse,
 };
 
-// Use ApiTableDataRequest for API calls
-type TableDataRequest = ApiTableDataRequest;
+// Use ApiTableDataRequest for API calls by default
+type ApiTableRequest = ApiTableDataRequest;
 
 export class ApiClient {
     private baseUrl: string;
@@ -333,7 +334,7 @@ export class ApiClient {
 
 
 
-    public async getTableData(req: TableDataRequest): Promise<TableDataResponse> {
+    public async getTableData(req: ApiTableRequest): Promise<TableDataResponse> {
         // All databases now go through the API
         const body = {
             ...req,

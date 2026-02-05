@@ -1,14 +1,24 @@
 /**
- * Structured Logger
+ * Structured Logger with History
  *
- * Production-grade logging utility with configurable log levels.
- * Replaces ad-hoc console statements for consistent, controllable logging.
+ * Production-grade logging utility with configurable log levels
+ * and in-memory history for debugging.
  *
  * @module logger
  */
 
 const LOG_LEVELS = { debug: 0, info: 1, warn: 2, error: 3 } as const;
 type LogLevel = keyof typeof LOG_LEVELS;
+
+export interface LogEntry {
+    timestamp: string;
+    level: LogLevel;
+    message: string;
+    data?: unknown;
+}
+
+const MAX_LOG_HISTORY = 500;
+const logHistory: LogEntry[] = [];
 
 /**
  * Get configured log level from environment or default to 'warn' for production.
@@ -39,7 +49,24 @@ function formatMessage(prefix: string, msg: string): string {
 }
 
 /**
- * Structured logger with configurable levels.
+ * Add entry to history (always, regardless of log level).
+ */
+function addToHistory(level: LogLevel, msg: string, data?: unknown): void {
+    const entry: LogEntry = {
+        timestamp: new Date().toISOString(),
+        level,
+        message: msg,
+        data: data !== undefined ? data : undefined
+    };
+    logHistory.push(entry);
+    // Trim if over limit
+    if (logHistory.length > MAX_LOG_HISTORY) {
+        logHistory.shift();
+    }
+}
+
+/**
+ * Structured logger with configurable levels and history tracking.
  *
  * Log levels (from lowest to highest priority):
  * - debug: Development debugging information
@@ -54,6 +81,7 @@ export const logger = {
      * Debug-level logging for development.
      */
     debug(msg: string, data?: unknown): void {
+        addToHistory('debug', msg, data);
         if (shouldLog('debug')) {
             if (data !== undefined) {
                 console.info(formatMessage('DEBUG', msg), data);
@@ -67,6 +95,7 @@ export const logger = {
      * Info-level logging for operational messages.
      */
     info(msg: string, data?: unknown): void {
+        addToHistory('info', msg, data);
         if (shouldLog('info')) {
             if (data !== undefined) {
                 console.info(formatMessage('INFO', msg), data);
@@ -80,6 +109,7 @@ export const logger = {
      * Warn-level logging for potential issues.
      */
     warn(msg: string, data?: unknown): void {
+        addToHistory('warn', msg, data);
         if (shouldLog('warn')) {
             if (data !== undefined) {
                 console.warn(formatMessage('WARN', msg), data);
@@ -93,6 +123,7 @@ export const logger = {
      * Error-level logging for failures.
      */
     error(msg: string, data?: unknown): void {
+        addToHistory('error', msg, data);
         if (shouldLog('error')) {
             if (data !== undefined) {
                 console.error(formatMessage('ERROR', msg), data);
@@ -101,6 +132,20 @@ export const logger = {
             }
         }
     },
+
+    /**
+     * Get the log history (all logs, regardless of current level).
+     */
+    getLogHistory(): LogEntry[] {
+        return [...logHistory];
+    },
+
+    /**
+     * Clear log history.
+     */
+    clearHistory(): void {
+        logHistory.length = 0;
+    }
 };
 
 export default logger;

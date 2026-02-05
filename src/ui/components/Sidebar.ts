@@ -463,25 +463,25 @@ export class Sidebar extends Component {
         const state = this.stateManager.getState();
         if (state.columns.length === 0) return;
 
-        // Check if all are currently visible
-        // We check if the size of visibleColumns set matches the total number of columns
-        const allVisible = state.visibleColumns.size === state.columns.length;
-        const newVisible = !allVisible;
+        // Create a NEW Set to ensure state change detection
+        const newVisible = new Set<string>();
 
-        if (newVisible) {
-            // Show all: add all column names to the set
-            state.columns.forEach(c => state.visibleColumns.add(c.column));
+        // Determine current state: all visible, or not
+        const allVisible = state.visibleColumns.size === state.columns.length;
+
+        if (allVisible) {
+            // Hide all: newVisible stays empty
         } else {
-            // Hide all: clear the set
-            state.visibleColumns.clear();
+            // Show all: add all column names to the new set
+            state.columns.forEach(c => newVisible.add(c.column));
         }
 
-        // Push update
-        this.stateManager.update({ visibleColumns: state.visibleColumns });
+        // Push update with new Set reference
+        this.stateManager.update({ visibleColumns: newVisible });
 
         // Update button text
         if (this.dom.controlShowAll) {
-            this.dom.controlShowAll.textContent = newVisible ? 'Hide All' : 'Show All';
+            this.dom.controlShowAll.textContent = allVisible ? 'Show All' : 'Hide All';
         }
     }
 

@@ -8,6 +8,7 @@ import { ConfigManager } from '../core/config/ConfigManager';
 import { type ResolvedColumnConfig as TableColumnConfig } from '../types/schema';
 
 import { StateManager, type AppState } from '../core/state/StateManager';
+import { type DatabaseInfo } from '../types/shared-types';
 import { logger } from '../utils/logger';
 import { CategoryManager } from '../core/managers/CategoryManager';
 import { Sidebar } from './components/Sidebar';
@@ -15,6 +16,7 @@ import { Toolbar } from './components/Toolbar';
 import { DataGrid } from './components/DataGrid';
 import { SchemaViewer } from './components/SchemaViewer';
 import { StatisticsViewer } from './components/StatisticsViewer';
+import { LogViewer } from './components/LogViewer';
 import { Transformers } from '../utils/transformers';
 import { exportManager } from '../core/managers/ExportManager';
 import { registerDefaultShortcuts } from '../core/managers/KeyboardManager';
@@ -41,6 +43,7 @@ export class TableRenderer {
     private grid!: DataGrid;
     private schemaViewer!: SchemaViewer;
     private statsViewer!: StatisticsViewer;
+    private logViewer: LogViewer = new LogViewer();
 
     private theme: 'light' | 'dark' = 'light';
     private density: 'compact' | 'normal' | 'comfortable' = 'normal';
@@ -118,15 +121,19 @@ export class TableRenderer {
         const urlParams = new URLSearchParams(window.location.search);
         const urlUpa = urlParams.get('upa') || urlParams.get('ref') || urlParams.get('object') || urlParams.get('db');
 
-        // 2. Try to fetch sidecar app-config.json (fallback/local dev)
+        // 2. Try to fetch sidecar app-config.json (KBase Narrative runtime config)
         let sidecarConfig: { upa?: string; token?: string } = {};
         try {
-            sidecarConfig = await fetch('./app-config.json').then(r => {
-                if (r.ok) return r.json();
-                return {};
-            }).catch(() => ({}));
-        } catch {
-            // Ignore error
+            // Try both relative paths for compatibility
+            const response = await fetch('app-config.json');
+            if (response.ok) {
+                sidecarConfig = await response.json();
+                logger.info('[TableRenderer] Loaded app-config.json successfully', { upa: sidecarConfig.upa });
+            } else {
+                logger.warn(`[TableRenderer] app-config.json not found: ${response.status} ${response.statusText}`);
+            }
+        } catch (e) {
+            logger.warn('[TableRenderer] Error loading app-config.json:', e);
         }
 
         const sidecarUpa = sidecarConfig.upa;
@@ -138,15 +145,27 @@ export class TableRenderer {
             this.client.setToken(sidecarToken);
         }
 
-        // Determine which source to use
+        // Determine which source to use and update configSource state
         let sourceToLoad: string | null = null;
         if (urlUpa) {
             sourceToLoad = urlUpa;
+            this.configSource = 'kbase_workspace';
+            logger.info('[TableRenderer] Using URL parameter for data source:', urlUpa);
         } else if (sidecarUpa) {
             sourceToLoad = sidecarUpa;
+            this.configSource = 'app_config';
+            logger.info('[TableRenderer] Using app-config.json for data source:', sidecarUpa);
         } else if (defaultSource) {
             sourceToLoad = defaultSource;
+            this.configSource = 'default';
+            logger.warn('[TableRenderer] Using defaultSource (dev/fallback data):', defaultSource);
+        } else {
+            this.configSource = 'fallback';
+            logger.warn('[TableRenderer] No data source found, app will wait for user input');
         }
+
+        // Update the config source indicator in the UI
+        this.updateConfigSourceIndicator();
 
         // Pre-fill the Object ID field
         if (sourceToLoad) {
@@ -154,11 +173,10 @@ export class TableRenderer {
         }
 
         // If we have a source, initialize the config manager with it
-        // This effectively "loads" the object configuration
         if (sourceToLoad) {
             await this.configManager.initialize(sourceToLoad, this.client);
-            // Then trigger actual data load
-            await this.loadObjectFromSidecar(sourceToLoad);
+            // Use the harmonized loadObject logic
+            await this.loadObject(sourceToLoad);
         }
     }
 
@@ -166,93 +184,84 @@ export class TableRenderer {
 
 
     /**
-     * Load data from sidecar config (KBase mode).
-     * Now simplified to just load data, as config is initialized in handleInitialLoad
+     * Load data from a database/object.
+     * Harmonized logic supporting both single and multi-database objects.
      */
-    private async loadObjectFromSidecar(db: string) {
-        // Set token and trigger load
+    private async loadObject(overrideBerdl?: string) {
         const token = this.sidebar.getToken();
+        const berdl = overrideBerdl || this.sidebar.getBerdlId();
+
+        if (!berdl || berdl.trim() === '') {
+            this.showAlert('Object ID or database name is required', 'danger');
+            return;
+        }
+
+        const trimmedBerdl = berdl.trim();
         this.client.setToken(token || '');
-        this.stateManager.update({ berdlTableId: db, loading: true, error: null });
+        this.stateManager.update({ berdlTableId: trimmedBerdl, loading: true, error: null });
 
         try {
-            const res = await this.client.listTables(db);
+            // Initialize config (resolves from workspace if needed)
+            await this.configManager.initialize(trimmedBerdl, this.client);
 
-            // Check for multi-database response
+            // Use listDatabases (v2.1) for better structure
+            const res = await this.client.listDatabases(trimmedBerdl);
             const databases = res.databases || [];
             const hasMultipleDatabases = res.has_multiple_databases || databases.length > 1;
 
-            if (hasMultipleDatabases && databases.length > 0) {
-                // Multi-database object: populate database dropdown
-                this.sidebar.updateDatabases(databases);
+            if (databases.length === 0 && (res.tables && res.tables.length > 0)) {
+                // Fallback for older API versions that don't return 'databases' array
+                const syntheticDb: DatabaseInfo = {
+                    db_name: trimmedBerdl,
+                    db_display_name: `Database (${trimmedBerdl})`,
+                    tables: res.tables,
+                    row_count: res.total_rows || null,
+                    schemas: res.schemas || null
+                };
+                databases.push(syntheticDb);
+            }
 
-                // Load tables from the first database
-                const firstDb = databases[0];
-                const tables = firstDb.tables || [];
+            if (databases.length === 0) {
+                throw new Error(`No tables or databases found in "${trimmedBerdl}"`);
+            }
 
-                if (tables.length === 0) {
-                    this.showAlert(`No tables found in first database "${firstDb.db_name}"`, 'warning');
-                    this.stateManager.update({ loading: false });
-                    return;
-                }
+            // Update UI/State with database info
+            this.sidebar.updateDatabases(databases);
+            this.stateManager.update({
+                availableDatabases: databases,
+                activeDatabase: databases[0].db_name
+            });
 
-                this.stateManager.update({
-                    availableTables: tables,
-                    activeDatabase: firstDb.db_name,
-                    availableDatabases: databases
-                });
-                this.sidebar.updateTables(tables);
+            // Load tables from the first database by default
+            const firstDb = databases[0];
+            const tables = firstDb.tables || [];
 
+            this.stateManager.update({ availableTables: tables });
+            this.sidebar.updateTables(tables);
+
+            if (tables.length > 0) {
                 const targetTable = tables[0].name;
                 await this.switchTable(targetTable);
 
-                this.showAlert(
-                    `Loaded object "${db}" - ${databases.length} databases found, showing "${firstDb.db_display_name || firstDb.db_name}"`,
-                    'success'
-                );
+                const msg = hasMultipleDatabases
+                    ? `Loaded object "${trimmedBerdl}" - ${databases.length} databases found`
+                    : `Loaded database "${trimmedBerdl}" - ${tables.length} tables found`;
+                this.showAlert(msg, 'success');
             } else {
-                // Single-database object: original behavior
-                const tables = res.tables || [];
-
-                if (tables.length === 0) {
-                    this.showAlert(`No tables found in database "${db}"`, 'warning');
-                    this.stateManager.update({ loading: false });
-                    return;
-                }
-
-                // Create a synthetic database entry if none exists in the response
-                // This ensures the Active Database dropdown always shows
-                let dbList = databases;
-                if (dbList.length === 0) {
-                    // Create a synthetic DB entry with the object ID as the name
-                    dbList = [{
-                        db_name: db,
-                        db_display_name: `Database (${db})`,
-                        row_count: null,
-                        tables: tables
-                    }];
-                }
-
-                // Always update database dropdown (shows active db, disabled if only one)
-                this.sidebar.updateDatabases(dbList);
-                this.stateManager.update({
-                    activeDatabase: dbList[0].db_name,
-                    availableDatabases: dbList
-                });
-
-                this.stateManager.update({ availableTables: tables });
-                this.sidebar.updateTables(tables);
-
-                const targetTable = tables[0].name;
-                await this.switchTable(targetTable);
-
-                this.showAlert(`Loaded database "${db}" - ${tables.length} table${tables.length !== 1 ? 's' : ''} found`, 'success');
+                this.showAlert(`No tables found in database "${firstDb.db_name}"`, 'warning');
             }
 
         } catch (e: any) {
-            this.showAlert(`Failed to load database "${db}": ${e.message}`, 'danger');
-            this.stateManager.update({ loading: false, error: e.message });
-            throw e;
+            this.showAlert(`Failed to load database "${trimmedBerdl}": ${e.message}`, 'danger');
+            this.stateManager.update({
+                availableTables: [],
+                activeTableName: null,
+                loading: false,
+                error: e.message
+            });
+            this.sidebar.updateTables([]);
+        } finally {
+            this.stateManager.update({ loading: false });
         }
     }
 
@@ -308,6 +317,11 @@ export class TableRenderer {
                                 <button class="ts-density-opt ${this.density === 'normal' ? 'active' : ''}" data-density="normal" title="Normal"><i class="bi bi-list-ul"></i></button>
                                 <button class="ts-density-opt ${this.density === 'comfortable' ? 'active' : ''}" data-density="comfortable" title="Comfortable"><i class="bi bi-card-heading"></i></button>
                             </div>
+                        </div>
+                        <div class="ts-settings-row" style="margin-top:8px; padding-top:8px; border-top:1px solid var(--c-border);">
+                            <button class="ts-btn-secondary" id="ts-view-logs" style="width:100%;">
+                                <i class="bi bi-terminal"></i> View System Logs
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -427,6 +441,12 @@ export class TableRenderer {
             });
         });
 
+        // View Logs Button
+        const viewLogsBtn = this.container.querySelector('#ts-view-logs');
+        viewLogsBtn?.addEventListener('click', () => {
+            this.logViewer.show();
+        });
+
         // DataGrid
         this.grid = new DataGrid({
             container: this.container.querySelector('#ts-grid-container') as HTMLElement,
@@ -544,7 +564,8 @@ export class TableRenderer {
         // If we don't have a loaded database yet (or the last load failed),
         // perform a full load.
         if (!state.berdlTableId || state.availableTables.length === 0) {
-            this.loadObject();
+            const berdl = this.sidebar.getBerdlId();
+            this.loadObject(berdl);
             return;
         }
         // Database is already loaded – just refresh data with current filters.
@@ -575,91 +596,6 @@ export class TableRenderer {
         });
     }
 
-    private async loadObject() {
-        const token = this.sidebar.getToken();
-        const berdl = this.sidebar.getBerdlId();
-
-        // Validate input
-        if (!berdl || berdl.trim() === '') {
-            this.showAlert('Object ID or database name is required', 'danger');
-            return;
-        }
-
-        const trimmedBerdl = berdl.trim();
-
-        // Local (uploaded) databases don't need token
-        const isLocal = ApiClient.isLocalDb(trimmedBerdl);
-
-        if (!isLocal && !token) {
-            // Check if we have an implicit cookie session via ApiClient
-            // We can't check directly, so we'll just log a warning and let the request proceed.
-            // If it fails, the ApiClient will throw an error which we catch below.
-            logger.debug('[TableRenderer] No explicit token found, relying on KBase session cookie.');
-        }
-
-        this.client.setToken(token || '');
-        this.stateManager.update({ berdlTableId: trimmedBerdl, loading: true, error: null });
-
-        try {
-            // First initialize config (which now attempts to resolve from workspace)
-            await this.configManager.initialize(trimmedBerdl, this.client);
-
-            // Try to load tables
-            const res = await this.client.listTables(trimmedBerdl);
-
-            // Check if response is valid
-            if (!res) {
-                throw new Error('No response from server');
-            }
-
-            // Check if tables were found
-            const tables = res.tables || [];
-
-            if (tables.length === 0) {
-                const message = `No tables found in database "${trimmedBerdl}". The database may be empty or inaccessible.`;
-                this.showAlert(message, 'warning');
-                this.stateManager.update({
-                    availableTables: [],
-                    activeTableName: null,
-                    data: [],
-                    columns: [],
-                    visibleColumns: new Set(),
-                    loading: false
-                });
-                this.sidebar.updateTables([]);
-                return;
-            }
-
-            this.stateManager.update({ availableTables: tables });
-            this.sidebar.updateTables(tables);
-
-            const initialTable = (this as any)._initialTable;
-            const targetTable = initialTable && tables.find((t: any) => t.name === initialTable)
-                ? initialTable : tables[0].name;
-
-            // Show success message
-            const successMsg = `Loaded database "${trimmedBerdl}" - ${tables.length} table${tables.length !== 1 ? 's' : ''} found`;
-            this.showAlert(successMsg, 'success');
-
-            await this.switchTable(targetTable);
-
-        } catch (e: any) {
-            // ... error handling (simplified for this update) ...
-            this.showAlert(`Failed to load database "${trimmedBerdl}": ${e.message}`, 'danger');
-            this.stateManager.update({
-                availableTables: [],
-                activeTableName: null,
-                data: [],
-                columns: [],
-                visibleColumns: new Set(),
-                loading: false,
-                error: e.message
-            });
-            this.sidebar.updateTables([]);
-        } finally {
-            this.stateManager.update({ loading: false });
-        }
-    }
 
 
     /**
@@ -819,22 +755,37 @@ export class TableRenderer {
                 }
             }
 
-            // Global search is now client-side only (highlighting only, no filtering)
-            // Column filters still filter rows server-side
-            const res = await this.client.getTableData({
-                berdl_table_id: state.berdlTableId,
-                table_name: state.activeTableName,
-                limit: state.pageSize,
-                offset: state.currentPage * state.pageSize,
-                // NOTE: search_value is intentionally NOT sent - global search only highlights, doesn't filter
-                // Column filters (col_filter, filters) still filter rows as expected
-                sort_column: state.sortColumn || undefined,
-                sort_order: state.sortOrder === 'asc' ? 'ASC' : 'DESC',
-                col_filter: Object.keys(colFilter).length > 0 ? colFilter : undefined,
-                filters: state.advancedFilters,
-                aggregations: state.aggregations,
-                group_by: state.groupBy
-            });
+            // NEW: Use RESTful GET path for data fetching if possible
+            let res: any;
+            if (state.activeDatabase && !state.aggregations && !state.groupBy) {
+                // Use new RESTful path: GET /object/{upa}/db/{db}/tables/{table}/data
+                res = await this.client.getTableDataFromDatabase(
+                    state.berdlTableId,
+                    state.activeDatabase,
+                    {
+                        table_name: state.activeTableName,
+                        limit: state.pageSize,
+                        offset: state.currentPage * state.pageSize,
+                        sort_column: state.sortColumn || undefined,
+                        sort_order: state.sortOrder === 'asc' ? 'ASC' : 'DESC',
+                        search_value: state.searchValue || undefined
+                    }
+                );
+            } else {
+                // Fallback to legacy POST endpoint for complex queries or when DB not specified
+                res = await this.client.getTableData({
+                    berdl_table_id: state.berdlTableId,
+                    table_name: state.activeTableName,
+                    limit: state.pageSize,
+                    offset: state.currentPage * state.pageSize,
+                    sort_column: state.sortColumn || undefined,
+                    sort_order: state.sortOrder === 'asc' ? 'ASC' : 'DESC',
+                    col_filter: Object.keys(colFilter).length > 0 ? colFilter : undefined,
+                    filters: state.advancedFilters,
+                    aggregations: state.aggregations,
+                    group_by: state.groupBy
+                });
+            }
 
             this.processColumns(res.headers, state.activeTableName);
 
@@ -847,7 +798,7 @@ export class TableRenderer {
                     this.columnSchemas[tableName] = {};
                 }
                 const schema = res.column_schema || [];
-                schema.forEach(col => {
+                schema.forEach((col: any) => {
                     this.columnSchemas[tableName][col.name] = {
                         type: col.type,
                         notnull: col.notnull,
@@ -861,7 +812,7 @@ export class TableRenderer {
 
             let dataObjects = (res.data || []).map((row: any[]) => {
                 const obj: Record<string, any> = {};
-                res.headers.forEach((h, i) => { obj[h] = row[i]; });
+                res.headers.forEach((h: string, i: number) => { obj[h] = row[i]; });
                 return obj;
             });
 
