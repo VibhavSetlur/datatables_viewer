@@ -98,7 +98,7 @@ export class ApiClient {
     ): Promise<Array<{ name: string; type: string; notnull?: boolean; pk?: boolean }>> {
         try {
             const schema = await this.request(
-                `/object/${berdlTableId}/tables/${tableName}/schema`,
+                `/object/${encodeURIComponent(berdlTableId)}/tables/${encodeURIComponent(tableName)}/schema`,
                 'GET',
                 undefined,
                 true
@@ -312,7 +312,7 @@ export class ApiClient {
 
     public async listTables(berdlTableId: string): Promise<any> {
         // All databases now go through the API
-        return this.request(`/object/${berdlTableId}/tables`, 'GET', undefined, true);
+        return this.request(`/object/${encodeURIComponent(berdlTableId)}/tables`, 'GET', undefined, true);
     }
 
     /**
@@ -353,7 +353,7 @@ export class ApiClient {
     public async getSchema(berdlTableId: string): Promise<Record<string, Record<string, string>> | null> {
         try {
             // Try schema endpoint
-            return await this.request(`/schema/${berdlTableId}/tables`, 'GET', undefined, true);
+            return await this.request(`/schema/${encodeURIComponent(berdlTableId)}/tables`, 'GET', undefined, true);
         } catch {
             // Schema endpoint not available, return null
             return null;
@@ -364,7 +364,7 @@ export class ApiClient {
      * Get statistics for a specific table.
      */
     public async getTableStatistics(berdlTableId: string, tableName: string): Promise<any> {
-        return this.request(`/object/${berdlTableId}/tables/${tableName}/stats`, 'GET', undefined, true);
+        return this.request(`/object/${encodeURIComponent(berdlTableId)}/tables/${encodeURIComponent(tableName)}/stats`, 'GET', undefined, true);
     }
 
     // ===== Multi-Database Support (v2.1) =====
@@ -375,7 +375,7 @@ export class ApiClient {
      * @param berdlTableId - Workspace object reference (UPA format)
      */
     public async listDatabases(berdlTableId: string): Promise<TableListResponse> {
-        return this.request(`/object/${berdlTableId}/databases`, 'GET', undefined, true);
+        return this.request(`/object/${encodeURIComponent(berdlTableId)}/databases`, 'GET', undefined, true);
     }
 
     /**
@@ -384,7 +384,7 @@ export class ApiClient {
      * @param dbName - Database name within the object
      */
     public async listTablesInDatabase(berdlTableId: string, dbName: string): Promise<TableListResponse> {
-        return this.request(`/object/${berdlTableId}/db/${encodeURIComponent(dbName)}/tables`, 'GET', undefined, true);
+        return this.request(`/object/${encodeURIComponent(berdlTableId)}/db/${encodeURIComponent(dbName)}/tables`, 'GET', undefined, true);
     }
 
     /**
@@ -408,7 +408,7 @@ export class ApiClient {
         if (req.sort_order) params.set('sort_order', req.sort_order);
         if (req.search_value) params.set('search', req.search_value);
 
-        const path = `/object/${berdlTableId}/db/${encodeURIComponent(dbName)}/tables/${encodeURIComponent(req.table_name)}/data?${params.toString()}`;
+        const path = `/object/${encodeURIComponent(berdlTableId)}/db/${encodeURIComponent(dbName)}/tables/${encodeURIComponent(req.table_name)}/data?${params.toString()}`;
         return this.request(path, 'GET', undefined, true);
     }
 
